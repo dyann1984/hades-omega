@@ -63,8 +63,9 @@ NEAR Bridge → 1 transacción real verificable
 | F-002 | TypeScript strict + Vitest en todos los paquetes | 1 | 2h | F-001 | `tsc --noEmit` pasa; `pnpm test` corre sin errores | PLANIFICADA |
 | F-003 | Tipos base compartidos (interfaces de `06-api-contracts.md`) | 1 | 3h | F-002 | Todos los tipos del spec implementados; `tsc` pasa | PLANIFICADA |
 | F-004 | SQLite + Drizzle ORM — schema inicial | 1 | 2h | F-001 | Tablas: Missions, Tasks, AuditRecords, Policies creadas con migraciones | PLANIFICADA |
-| F-005 | `.gitignore` + `.env.example` + repo GitHub privado | 1 | 1h | — | `git grep -rE "private_key\|ed25519" .` retorna 0 coincidencias | PLANIFICADA |
+| F-005 | `.gitignore` + `.env.example` + repo GitHub privado | 1 | 1h | — | `git grep -rE "private_key\|ed25519" .` retorna 0 coincidencias | VERIFICADA |
 | F-006 | NEAR — verificar/crear cuenta `hades-omega.testnet` | 1 | 1h | VER-003 | `near state hades-omega.testnet` retorna datos de cuenta reales | PLANIFICADA |
+| F-007 | Conectar `dyann1984/hades-omega` a Vercel `hades-omega-preview` + activar deploy desde `develop` | 1 | 0.5h | F-001 | URL Preview protegida activa; push a `develop` genera Preview automáticamente | PLANIFICADA |
 | **CERBERUS** |
 | C-001 | GUARD — parser y evaluador de políticas JSON | 2 | 4h | F-003 | TC-GUARD-001 al TC-GUARD-006 pasan | PLANIFICADA |
 | C-002 | GUARD — determinismo verificado + política default | 2 | 3h | C-001 | TC-GUARD-007 pasa (100 iteraciones idénticas) | PLANIFICADA |
@@ -89,6 +90,7 @@ NEAR Bridge → 1 transacción real verificable
 | N-003 | NEAR Bridge — modo simulación | 7 | 3h | F-003, C-004 | TC-INT-003 pasa; en simulación nunca llama a near-api-js | PLANIFICADA |
 | N-004 | NEAR Bridge — modo real + criterios de registro on-chain | 8 | 3h | N-002, N-003 | TC-INT-004 pasa manualmente; al menos 1 tx real con hash visible en explorador | PLANIFICADA |
 | G-005 | Endpoint NEAR — GET /near/transactions | 8 | 1h | G-001, N-004 | Lista transacciones con txHash y explorerUrl | PLANIFICADA |
+| G-006 | Railway — deploy Node.js + volumen SQLite (`PORT=3001`, `pnpm --filter api start`) | 8 | 1h | G-001, N-004 | Backend accesible públicamente vía HTTPS; `VITE_API_URL` apunta a Railway; frontend conecta sin CORS | PLANIFICADA |
 | **FRONTEND** |
 | UI-001 | Setup React+Vite+TailwindCSS + tokens de color | 9 | 2h | F-001 | App renderiza con tema oscuro correcto; paleta obsidiana/dorado/eléctrico aplicada | PLANIFICADA |
 | UI-002 | Layout responsivo + WebSocket client + toggle tema | 9 | 3h | UI-001, G-002 | Eventos en tiempo real recibidos; layout correcto en mobile y desktop | PLANIFICADA |
@@ -105,7 +107,7 @@ NEAR Bridge → 1 transacción real verificable
 | D-005 | Corrección de bugs E2E | 12 | 4h | D-001, D-002 | Flujo de demo ejecuta sin interrupciones manuales | PLANIFICADA |
 | D-006 | Video de demostración (2–4 min) | 13 | 2h | D-002 | Video muestra misión → DENY → ESCALATE → aprobación → tx NEAR real | PLANIFICADA |
 | D-007 | Capturas de pantalla para X (Twitter) | 13 | 1h | D-002 | 3–5 capturas: núcleo, CERBERUS panel, NEAR tx en explorador | PLANIFICADA |
-| D-008 | README final — instrucciones de instalación y demo | 13 | 1h | D-001 | `pnpm install && pnpm dev` funciona en máquina limpia; pasos de demo documentados |  PLANIFICADA |
+| D-008 | README final en **inglés** — instalación, demo y descripción del proyecto | 13 | 1h | D-001 | README en inglés; `pnpm install && pnpm dev` funciona en máquina limpia; pasos de demo en inglés | PLANIFICADA |
 | D-009 | Repositorio GitHub — hacer público | 13 | 0.5h | D-008 | Repo accesible públicamente; sin secretos en historial de git | PLANIFICADA |
 | D-010 | Publicación en X (Twitter) con video y capturas | 14 | 1h | D-006, D-007 | Post publicado con hashtag del hackathon, enlace al repo, video/capturas | PLANIFICADA |
 | D-011 | Submission oficial al hackathon | 14 | 1h | D-009, D-010, VER-001, VER-002 | Formulario enviado antes del 14 Nov 23:59 UTC; confirmación recibida | PLANIFICADA |
@@ -116,14 +118,14 @@ NEAR Bridge → 1 transacción real verificable
 
 | Día | Fecha | Tareas P0 | Carga (2 personas) | Resultado verificable al final del día |
 |-----|-------|-----------|-------------------|---------------------------------------|
-| 1 | Nov 1 | F-001, F-002, F-003, F-004, F-005, F-006 | 11h | Monorepo corriendo, tipos definidos, cuenta NEAR confirmada |
+| 1 | Nov 1 | F-001, F-002, F-003, F-004, F-005 ✓, F-006, F-007 | 11.5h | Monorepo corriendo, tipos definidos, cuenta NEAR confirmada, Preview Vercel activo |
 | 2 | Nov 2 | C-001, C-002 | 7h | CERBERUS GUARD con TC-GUARD-001 al 007 pasando |
 | 3 | Nov 3 | C-003, C-004, A-000, A-001 | 10h | AUDIT funcionando; LLMProvider + Mission Bus listos |
 | 4 | Nov 4 | A-002, A-003, A-004 | 13h | HADES descompone misión; CHARON evalúa y propone |
 | 5 | Nov 5 | A-005, A-006 | 8h | PERSEPHONE valida presupuesto; MINOS recibe escalaciones |
 | 6 | Nov 6 | G-001, G-002, G-003, G-004 | 10h | API Gateway con WebSocket; misión creada desde HTTP |
 | 7 | Nov 7 | N-001, N-003 | 9h | Contrato Rust con tests; Bridge en simulación funcional |
-| 8 | Nov 8 | N-002, N-004, G-005 | 6h | Contrato deployado en testnet; primera tx real visible |
+| 8 | Nov 8 | N-002, N-004, G-005, G-006 | 7h | Contrato deployado en testnet; primera tx real visible; backend en Railway accesible |
 | 9 | Nov 9 | UI-001, UI-002, UI-003, UI-004 | 13h | Dashboard funcional; agentes en tiempo real |
 | 10 | Nov 10 | UI-005, UI-006, UI-007 | 9h | Panel CERBERUS; aprobación MINOS; badge NEAR |
 | 11 | Nov 11 | D-001, D-002, D-003 | 7h | Flujo E2E completo con tx NEAR real verificada |
@@ -156,6 +158,7 @@ NEAR Bridge → 1 transacción real verificable
 | UI-012 | Animaciones Framer Motion en AgentCards |
 | UI-013 | `prefers-reduced-motion` aplicado |
 | UI-014 | Pantalla de informe final de misión (MissionReport) |
+| UI-015 | Interfaz bilingüe español/inglés (`react-i18next`) — toggle en header | 13 | 4h | UI-003, UI-005 | UI renderiza en ambos idiomas; textos clave en archivos `locales/en.json` y `locales/es.json` |
 
 ---
 
