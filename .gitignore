@@ -1,0 +1,96 @@
+# ============================================================
+# HADES OMEGA — .gitignore
+# Nunca commitear secretos, credenciales ni bases de datos
+# ============================================================
+
+# ── Variables de entorno ─────────────────────────────────────
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.*.local
+
+# ── Credenciales NEAR ────────────────────────────────────────
+# Las claves NEAR se almacenan en ~/.near-credentials/
+# NUNCA incluir archivos de claves en el repositorio
+*.key
+*.pem
+*.near-credentials
+near-credentials/
+.near-credentials/
+**/testnet/*.json
+**/mainnet/*.json
+
+# ── Dependencias ─────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ── Compilación TypeScript ───────────────────────────────────
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# ── Compilación Rust / NEAR contracts ────────────────────────
+target/
+# Cargo.lock se mantiene para contratos NEAR (binarios); descomentar abajo si se agrega una librería Rust pura:
+# Cargo.lock
+
+# ── Base de datos local ───────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/
+*.db-journal
+*.db-shm
+*.db-wal
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# ── Tests y cobertura ─────────────────────────────────────────
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ── Frontend build ────────────────────────────────────────────
+.next/
+.nuxt/
+.vite/
+.svelte-kit/
+
+# ── IDEs ──────────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.suo
+*.user
+
+# ── Sistema operativo ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ── Archivos temporales ───────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# ── Vercel ────────────────────────────────────────────────────
+.vercel
+
+# ── Archivos de auditoría local (no son secretos pero son grandes)
+# audit-export-*.json
