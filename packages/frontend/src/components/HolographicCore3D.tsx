@@ -493,9 +493,10 @@ export function getAgentInfo(name: SubAgent): AgentInfo {
 interface Props {
   selectedAgent?: SubAgent | null
   onAgentSelect?: (name: SubAgent) => void
+  paused?: boolean
 }
 
-export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {} }: Props) {
+export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {}, paused = false }: Props) {
   const agents       = useHadesStore(s => s.agents)
   const nearTxs      = useHadesStore(s => s.nearTxs)
   const auditRecords = useHadesStore(s => s.auditRecords)
@@ -503,7 +504,7 @@ export default function HolographicCore3D({ selectedAgent = null, onAgentSelect 
   const anyActive   = Object.values(agents).some(a => a.status !== 'IDLE')
   const hasAlert    = Object.values(agents).some(a => a.status === 'ERROR')
                     || auditRecords.some(r => r.guardDecision === 'DENY')
-  const speedMult   = anyActive ? 2.4 : 1.0
+  const speedMult   = paused ? 0 : anyActive ? 2.4 : 1.0
   const nearTxCount = nearTxs.length
 
   return (

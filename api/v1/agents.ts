@@ -1,14 +1,15 @@
-// Vercel serverless function — agent status (returns static initial state)
+import { setSafeCors, unauthorized, verifyServerlessRole } from '../_security.js'
+
+// Vercel serverless function — read-only Preview status.
 export const config = { maxDuration: 10 }
 
-const AGENT_NAMES = ['HADES', 'CHARON', 'PERSEPHONE', 'MINOS', 'ELYSIUM', 'TARTARUS'] as const
+const AGENT_NAMES = ['HADES', 'CHARON', 'PERSEPHONE', 'MINOS', 'CERBERUS', 'ELYSIUM', 'TARTARUS'] as const
 
 export default function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  setSafeCors(req, res)
 
   if (req.method === 'OPTIONS') { res.status(200).end(); return }
+  if (!verifyServerlessRole(req, ['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'])) { unauthorized(res); return }
 
   const agents = AGENT_NAMES.map(name => ({
     id:     `agent:${name}:001`,

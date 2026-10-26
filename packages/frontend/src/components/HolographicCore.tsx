@@ -73,9 +73,10 @@ function FallbackCore(): JSX.Element {
 interface Props {
   selectedAgent?: SubAgent | null
   onAgentSelect?: (name: SubAgent) => void
+  paused?: boolean
 }
 
-export default function HolographicCore({ selectedAgent, onAgentSelect }: Props = {}): JSX.Element {
+export default function HolographicCore({ selectedAgent, onAgentSelect, paused }: Props = {}): JSX.Element {
   const prefersReducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -84,7 +85,7 @@ export default function HolographicCore({ selectedAgent, onAgentSelect }: Props 
 
   return (
     <Suspense fallback={<FallbackCore />}>
-      <ThreeDCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} />
+      <ThreeDCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} />
     </Suspense>
   )
 }

@@ -273,11 +273,15 @@ function CorePanel({
   selectedAgent,
   onAgentSelect,
   auditRecords,
+  paused,
+  onTogglePaused,
 }: {
   anyActive: boolean
   selectedAgent: SubAgent | null
   onAgentSelect: (name: SubAgent) => void
   auditRecords: AuditRecord[]
+  paused: boolean
+  onTogglePaused: () => void
 }): JSX.Element {
   return (
     <div className="hades-card rounded-lg overflow-hidden flex flex-col">
@@ -288,6 +292,9 @@ function CorePanel({
           <span className="font-mono text-[12px] font-bold text-gray-300 tracking-[0.2em]">HADES CORE</span>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={onTogglePaused} className="font-mono text-[9px] text-gray-500 hover:text-electric border border-white/10 px-2 py-1 rounded" aria-label="Pausar animación orbital">
+            {paused ? '▶ REANUDAR' : '⏸ PAUSAR'}
+          </button>
           {selectedAgent && (
             <span className="font-mono text-[10px] text-electric">⬡ {selectedAgent}</span>
           )}
@@ -304,7 +311,7 @@ function CorePanel({
           background: 'radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0,212,255,0.045) 0%, rgba(255,215,0,0.02) 35%, rgba(10,10,15,0) 70%)',
         }}
       >
-        <HolographicCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} />
+        <HolographicCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} />
 
         {/* Grid lines — masked */}
         <div
@@ -821,6 +828,7 @@ export default function Dashboard(): JSX.Element {
   const [animProgress,  setAnimProgress]  = useState(0)
   const [lastMissionId, setLastMissionId] = useState<string | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<SubAgent | null>(null)
+  const [orbitalPaused, setOrbitalPaused] = useState(false)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   const activeAgentCount = Object.values(agents).filter(a => a.status !== 'IDLE').length
@@ -937,6 +945,8 @@ export default function Dashboard(): JSX.Element {
           selectedAgent={selectedAgent}
           onAgentSelect={name => setSelectedAgent(prev => prev === name ? null : name)}
           auditRecords={auditRecords}
+          paused={orbitalPaused}
+          onTogglePaused={() => setOrbitalPaused(value => !value)}
         />
         <ActivityPanel
           permits={permits}
