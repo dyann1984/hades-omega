@@ -115,13 +115,25 @@ const defaultAgents: Record<AgentName, AgentState> = {
   TARTARUS:   { name: 'TARTARUS',   status: 'IDLE', currentTask: null },
 }
 
+function loadPersisted<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw) return JSON.parse(raw) as T
+  } catch {}
+  return fallback
+}
+
+function persist(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
+}
+
 export const useHadesStore = create<HadesStore>((set, get) => ({
   agents:         defaultAgents,
-  missions:       [],
+  missions:       loadPersisted<Mission[]>('hades-missions', []),
   activeMission:  null,
-  auditRecords:   [],
-  escalations:    [],
-  nearTxs:        [],
+  auditRecords:   loadPersisted<AuditRecord[]>('hades-audit', []).slice(0, 200),
+  escalations:    loadPersisted<EscalationRequest[]>('hades-escalations', []),
+  nearTxs:        loadPersisted<NEARTx[]>('hades-near-txs', []).slice(0, 50),
   wsConnected:    false,
   serverlessMode: false,
   apiReady:       null,
@@ -133,7 +145,11 @@ export const useHadesStore = create<HadesStore>((set, get) => ({
   },
 
   addAuditRecord: record => {
-    set(s => ({ auditRecords: [record, ...s.auditRecords].slice(0, 200) }))
+    set(s => {
+      const next = [record, ...s.auditRecords].slice(0, 200)
+      persist('hades-audit', next)
+      return { auditRecords: next }
+    })
     const outcome = record.guardDecision
     if (outcome === 'DENY')     get().addNotification('error',   `CERBERUS DENY — ${record.operationType} [${record.agentName}]`)
     if (outcome === 'ESCALATE') get().addNotification('warning', `CERBERUS ESCALATE — ${record.operationType} requiere revisión`)
@@ -141,33 +157,55 @@ export const useHadesStore = create<HadesStore>((set, get) => ({
   },
 
   addMission: mission => {
-    set(s => ({ missions: [mission, ...s.missions], activeMission: mission.id }))
+    set(s => {
+      const next = [mission, ...s.missions]
+      persist('hades-missions', next)
+      return { missions: next, activeMission: mission.id }
+    })
     get().addNotification('info', `Nueva misión: ${mission.title}`)
   },
 
   updateMission: (id, updates) => {
-    set(s => ({
-      missions: s.missions.map(m => m.id === id ? { ...m, ...updates } : m),
-    }))
+    set(s => {
+      const next = s.missions.map(m => m.id === id ? { ...m, ...updates } : m)
+      persist('hades-missions', next)
+      return { missions: next }
+    })
   },
 
   addEscalation: esc => {
-    set(s => ({ escalations: [{ ...esc, status: esc.status ?? 'PENDING' }, ...s.escalations] }))
+    set(s => {
+      const next = [{ ...esc, status: esc.status ?? 'PENDING' }, ...s.escalations]
+      persist('hades-escalations', next)
+      return { escalations: next }
+    })
     get().addNotification('warning', `MINOS: escalación pendiente — ${esc.operationType}`)
   },
 
   removeEscalation: id => {
-    set(s => ({ escalations: s.escalations.filter(e => e.id !== id) }))
+    set(s => {
+      const next = s.escalations.filter(e => e.id !== id)
+      persist('hades-escalations', next)
+      return { escalations: next }
+    })
   },
 
   resolveEscalation: (id, status) => {
-    set(s => ({ escalations: s.escalations.map(e => e.id === id ? { ...e, status } : e) }))
+    set(s => {
+      const next = s.escalations.map(e => e.id === id ? { ...e, status } : e)
+      persist('hades-escalations', next)
+      return { escalations: next }
+    })
     get().addNotification(status === 'APPROVED' ? 'success' : 'warning',
       `MINOS: revisión ${status === 'APPROVED' ? 'aprobada' : 'rechazada'} — la operación requiere ejecución separada`)
   },
 
   addNearTx: tx => {
-    set(s => ({ nearTxs: [tx, ...s.nearTxs].slice(0, 50) }))
+    set(s => {
+      const next = [tx, ...s.nearTxs].slice(0, 50)
+      persist('hades-near-txs', next)
+      return { nearTxs: next }
+    })
   },
 
   setWsConnected:    v => set({ wsConnected: v }),

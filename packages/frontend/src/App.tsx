@@ -7,6 +7,11 @@ import ObservatoryPanel from './pages/ObservatoryPanel.js'
 import ThronePanel from './pages/ThronePanel.js'
 import JudgmentPanel from './pages/JudgmentPanel.js'
 import ArchivesPanel from './pages/ArchivesPanel.js'
+import PantheonPanel from './pages/PantheonPanel.js'
+import DominionPanel from './pages/DominionPanel.js'
+import VaultPanel from './pages/VaultPanel.js'
+import OraclePanel from './pages/OraclePanel.js'
+import ChronosPanel from './pages/ChronosPanel.js'
 import NotificationToast from './components/NotificationToast.js'
 import { useWebSocket } from './hooks/useWebSocket.js'
 import { useApiStatus } from './hooks/useApiStatus.js'
@@ -45,11 +50,16 @@ function AppShell(): JSX.Element {
         <div className="flex-1 overflow-auto p-4 sm:p-6 animate-fade-in">
           <Routes>
             <Route path="/"            element={<Dashboard />} />
-            <Route path="/cerberus"    element={<CerberusPanel />} />
-            <Route path="/observatory" element={<ObservatoryPanel />} />
             <Route path="/throne"      element={<ThronePanel />} />
+            <Route path="/pantheon"    element={<PantheonPanel />} />
+            <Route path="/dominion"    element={<DominionPanel />} />
+            <Route path="/chronos"     element={<ChronosPanel />} />
+            <Route path="/oracle"      element={<OraclePanel />} />
+            <Route path="/vault"       element={<VaultPanel />} />
             <Route path="/judgment"    element={<JudgmentPanel />} />
             <Route path="/archives"    element={<ArchivesPanel />} />
+            <Route path="/cerberus"    element={<CerberusPanel />} />
+            <Route path="/observatory" element={<ObservatoryPanel />} />
           </Routes>
         </div>
       </main>

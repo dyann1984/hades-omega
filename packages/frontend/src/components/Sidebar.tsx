@@ -3,11 +3,16 @@ import clsx from 'clsx'
 import { useHadesStore } from '../store/index.js'
 
 const NAV_ITEMS = [
-  { path: '/',            icon: '⊛', label: 'Pantheon',    shortLabel: 'HQ'   },
+  { path: '/',            icon: '⬡', label: 'Dashboard',   shortLabel: 'HQ'   },
   { path: '/throne',      icon: '✦', label: 'Throne',      shortLabel: 'THR'  },
-  { path: '/cerberus',    icon: '⚔', label: 'Cerberus',    shortLabel: 'CRB'  },
+  { path: '/pantheon',    icon: '⊛', label: 'Pantheon',    shortLabel: 'PAN'  },
+  { path: '/dominion',    icon: '◫', label: 'Dominion',    shortLabel: 'DOM'  },
+  { path: '/chronos',     icon: '◷', label: 'Chronos',     shortLabel: 'CHR'  },
+  { path: '/oracle',      icon: '◈', label: 'Oracle',      shortLabel: 'ORC'  },
+  { path: '/vault',       icon: '◌', label: 'Vault',       shortLabel: 'VLT'  },
   { path: '/judgment',    icon: '⚖', label: 'Judgment',    shortLabel: 'JDG'  },
   { path: '/archives',    icon: '▤', label: 'Archives',    shortLabel: 'ARC'  },
+  { path: '/cerberus',    icon: '⚔', label: 'Cerberus',    shortLabel: 'CRB'  },
   { path: '/observatory', icon: '◎', label: 'Observatory', shortLabel: 'OBS'  },
 ]
 
@@ -60,9 +65,9 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
           >
             <span className="text-base flex-shrink-0 w-5 text-center">{item.icon}</span>
             {!collapsed && <span>{item.label}</span>}
-            {!collapsed && item.path === '/cerberus' && escalations.length > 0 && (
-              <span className="ml-auto bg-yellow-500 text-black text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                {escalations.length}
+            {!collapsed && item.path === '/judgment' && escalations.filter(e => e.status === 'PENDING').length > 0 && (
+              <span className="ml-auto bg-escalate text-black text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                {escalations.filter(e => e.status === 'PENDING').length}
               </span>
             )}
           </NavLink>
