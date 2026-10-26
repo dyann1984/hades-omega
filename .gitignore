@@ -94,3 +94,5 @@ ehthumbs.db
 
 # ── Archivos de auditoría local (no son secretos pero son grandes)
 # audit-export-*.json
+
+.vercel
