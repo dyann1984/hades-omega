@@ -118,7 +118,9 @@ export class HadesOrchestrator extends AgentBase {
     try {
       const result   = await agentFn.receiveTask(task)
       task.result    = result
-      task.status    = result.success ? 'EXECUTED' : 'FAILED'
+      task.status    = (result.data as { pendingApproval?: boolean })?.pendingApproval
+        ? 'CERBERUS_REVIEW'
+        : result.success ? 'EXECUTED' : 'FAILED'
       task.completedAt = Date.now()
     } catch (e) {
       task.status = 'FAILED'
@@ -130,7 +132,7 @@ export class HadesOrchestrator extends AgentBase {
   }
 
   private calculateProgress(mission: Mission): number {
-    const done = mission.tasks.filter(t => ['EXECUTED', 'FAILED'].includes(t.status)).length
+    const done = mission.tasks.filter(t => ['EXECUTED', 'FAILED', 'CERBERUS_REVIEW'].includes(t.status)).length
     return mission.tasks.length ? Math.round((done / mission.tasks.length) * 100) : 0
   }
 
@@ -145,11 +147,14 @@ export class HadesOrchestrator extends AgentBase {
   private generateReport(mission: Mission): void {
     const success = mission.tasks.filter(t => t.status === 'EXECUTED').length
     const failed  = mission.tasks.filter(t => t.status === 'FAILED').length
+    const pending = mission.tasks.filter(t => t.status === 'CERBERUS_REVIEW').length
     const stats   = this.deps.audit.getStats()
 
     mission.report = {
       missionId:    mission.id,
-      summary:      `Misión completada: ${success}/${mission.tasks.length} tareas exitosas. ${stats.nearTxCount} transacciones NEAR registradas.`,
+      summary:      pending
+        ? `Misión pendiente de ${pending} revisión(es) humana(s); no se autorizó ejecución posterior.`
+        : `Misión completada: ${success}/${mission.tasks.length} tareas exitosas. ${stats.nearTxCount} transacciones NEAR registradas.`,
       tasksTotal:   mission.tasks.length,
       tasksSuccess: success,
       tasksFailed:  failed,
@@ -158,11 +163,11 @@ export class HadesOrchestrator extends AgentBase {
       generatedAt:  Date.now(),
     }
 
-    mission.status      = 'COMPLETED'
+    mission.status      = pending ? 'PARTIAL_COMPLETE' : 'COMPLETED'
     mission.updatedAt   = Date.now()
-    mission.completedAt = Date.now()
+    mission.completedAt = pending ? null : Date.now()
 
-    bus.publish({ type: 'MISSION_PROGRESS', payload: { missionId: mission.id, status: 'COMPLETED', progress: 100 } })
+    bus.publish({ type: 'MISSION_PROGRESS', payload: { missionId: mission.id, status: mission.status, progress: 100 } })
   }
 
   getMission(id: string): Mission | null  { return this.missions.get(id) ?? null }

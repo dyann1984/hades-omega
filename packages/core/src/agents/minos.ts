@@ -20,26 +20,15 @@ export class MinosAgent extends AgentBase {
 
     bus.publish({ type: 'ESCALATION_CREATED', payload: { escalation } })
 
-    // In demo mode, auto-resolve after 3 seconds
-    await delay(3000)
-
-    const decision = await this.autoResolveDemo(escalation.id)
-
-    this.setStatus('IDLE')
-    this.currentTask = null
-
     return {
       taskId:      task.id,
-      success:     decision.approved,
-      summary:     decision.approved
-        ? `Escalación aprobada por ${decision.decidedBy} [DEMO]`
-        : `Escalación rechazada por ${decision.decidedBy} [DEMO]`,
+      success:     false,
+      summary:     'Escalación pendiente de decisión humana verificable',
       data:        {
         escalationId: escalation.id,
         fromAgent:    escalation.fromAgent,
         reason:       escalation.reason,
-        approved:     decision.approved,
-        decidedBy:    decision.decidedBy,
+        pendingApproval: true,
       },
       cerberusIds: [],
     }
@@ -59,13 +48,6 @@ export class MinosAgent extends AgentBase {
     }
   }
 
-  private async autoResolveDemo(escalationId: string): Promise<{ approved: boolean; decidedBy: string; decidedAt: number }> {
-    const decision = { approved: true, decidedBy: 'Operador DEMO', decidedAt: Date.now() }
-    this.pendingEscalations.delete(escalationId)
-    this.resolvedEscalations.set(escalationId, decision)
-    return decision
-  }
-
   async humanDecide(escalationId: string, approved: boolean, decidedBy: string): Promise<boolean> {
     if (!this.pendingEscalations.has(escalationId)) return false
     const decision = { approved, decidedBy, decidedAt: Date.now() }
@@ -77,8 +59,4 @@ export class MinosAgent extends AgentBase {
   getPendingEscalations(): EscalationRequest[] {
     return Array.from(this.pendingEscalations.values())
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms))
 }

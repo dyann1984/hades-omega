@@ -5,8 +5,8 @@ import { missionRoutes } from './missions.js'
 describe('mission routes', () => {
   it('rejects an incomplete mission request', async () => {
     const app = Fastify()
-    await app.register(missionRoutes, { prefix: '/api/v1' })
-    const response = await app.inject({ method: 'POST', url: '/api/v1/missions', payload: { title: 'Missing description' } })
+    await missionRoutes(app)
+    const response = await app.inject({ method: 'POST', url: '/missions', payload: { title: 'Missing description' } })
     expect(response.statusCode).toBe(400)
     expect(response.json().error.code).toBe('VALIDATION_ERROR')
     await app.close()
@@ -14,10 +14,10 @@ describe('mission routes', () => {
 
   it('creates a demo supplier-evaluation mission with auditable output', async () => {
     const app = Fastify()
-    await app.register(missionRoutes, { prefix: '/api/v1' })
+    await missionRoutes(app)
     const response = await app.inject({
       method: 'POST',
-      url: '/api/v1/missions',
+      url: '/missions',
       payload: { title: 'Evaluación de proveedores (DEMO)', description: 'Datos de demostración', budgetLimit: 50000 },
     })
     const body = response.json()
