@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "ccr-*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: API Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: packages/api/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+
+  build-frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: packages/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_APP_NAME: HADES OMEGA
+          VITE_APP_VERSION: 0.3.0
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for hardcoded secrets
+        run: |
+          # Fail if any real credentials patterns found in committed code
+          if grep -rE "(NEAR_ACCOUNT_KEY|private_key|seed_phrase|mnemonic)" \
+            --include="*.ts" --include="*.tsx" --include="*.js" \
+            --exclude-dir=node_modules --exclude-dir=dist \
+            .; then
+            echo "ERROR: Possible hardcoded credential found"
+            exit 1
+          fi
+          echo "No hardcoded credentials found"
+
+      - name: Check .env not committed
+        run: |
+          if git ls-files | grep -E "^\.env$|^packages/.+/\.env$"; then
+            echo "ERROR: .env file is committed"
+            exit 1
+          fi
+          echo ".env not committed — OK"

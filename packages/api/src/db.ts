@@ -3,10 +3,12 @@ import { mkdirSync } from 'fs';
 import { resolve } from 'path';
 import type { AuditRecord, Mission, Task } from './types.js';
 
-const DATA_DIR = resolve(process.cwd(), 'data');
-mkdirSync(DATA_DIR, { recursive: true });
+// DB_PATH env var allows Docker/Railway to use a persistent volume mount
+const DB_PATH = process.env.DB_PATH
+  ? resolve(process.env.DB_PATH)
+  : resolve(process.cwd(), 'data', 'hades.db');
 
-const DB_PATH = resolve(DATA_DIR, 'hades.db');
+mkdirSync(resolve(DB_PATH, '..'), { recursive: true });
 const db = new Database(DB_PATH);
 
 db.pragma('journal_mode = WAL');
