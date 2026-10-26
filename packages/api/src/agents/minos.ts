@@ -18,69 +18,62 @@ export class MinosAgent extends AgentBase {
   }
 
   async execute(task: Task): Promise<TaskResult> {
-    this.setStatus('THINKING', 'Processing escalation request');
-    this.log(`MINOS reviewing escalation for task ${task.id.slice(0, 8)}`);
+    this.setStatus('THINKING', 'Reviewing pending escalations');
+    this.log(`MINOS audit pass for task ${task.id.slice(0, 8)}`);
     await this.sleep(400);
-
-    const escalation = this.parseEscalationFromTask(task);
-    const auditRecord = await this.handleEscalation(escalation);
-
+    const pending = this.getPendingEscalations();
     this.setStatus('IDLE');
     return {
-      success: auditRecord.decision === 'PERMIT',
-      summary: `Escalation ${escalation.id.slice(0, 8)} resolved: ${auditRecord.decision === 'PERMIT' ? 'APPROVED' : 'REJECTED'} by ${auditRecord.humanApprovedBy ?? 'timeout'}`,
-      data: { escalation, decision: auditRecord.decision, humanApprovedBy: auditRecord.humanApprovedBy },
-      cerberusAuditId: auditRecord.id,
-      nearTxHash: auditRecord.nearTxHash,
-      nearExplorerUrl: auditRecord.nearExplorerUrl,
+      success: true,
+      summary: pending.length > 0
+        ? `MINOS monitoring ${pending.length} pending escalation(s)`
+        : 'MINOS compliance check complete — no pending escalations',
+      data: { pendingEscalations: pending.length },
     };
   }
 
-  async createEscalation(
+  /**
+   * Called by agents (e.g. CHARON) when CERBERUS returns ESCALATE.
+   * Blocks the calling agent until a human approves or rejects via REST.
+   * Creates a HUMAN_APPROVAL audit record on NEAR for the decision.
+   */
+  async requestApproval(
     missionId: string,
     taskId: string,
-    request: Omit<EscalationRequest, 'id' | 'createdAt' | 'timeout' | 'missionId' | 'taskId'>
-  ): Promise<{ escalationId: string; approved: boolean; auditRecord: AuditRecord }> {
+    details: Omit<EscalationRequest, 'id' | 'createdAt' | 'timeout' | 'missionId' | 'taskId'>
+  ): Promise<{ approved: boolean; escalationId: string; humanApprovedBy?: string; auditRecord: AuditRecord }> {
     const escalation: EscalationRequest = {
       id: uuid(),
       missionId,
       taskId,
-      ...request,
+      ...details,
       timeout: TIMEOUT_MS,
       createdAt: Date.now(),
     };
 
-    const auditRecord = await this.handleEscalation(escalation);
-
-    return {
-      escalationId: escalation.id,
-      approved: auditRecord.decision === 'PERMIT',
-      auditRecord,
-    };
-  }
-
-  private async handleEscalation(escalation: EscalationRequest): Promise<AuditRecord> {
-    this.setStatus('WAITING', `Awaiting human decision: ${escalation.operationType}`);
-
+    const amountLabel = details.amount
+      ? `${details.amount.toLocaleString()} ${details.currency ?? 'MXN'}`
+      : '';
+    this.setStatus('WAITING', `Human review: ${details.operationType} ${amountLabel}`.trim());
     bus.publish('escalation:created', escalation);
-    this.log(`Escalation presented to operator: ${escalation.description}`, 'warn');
+    this.log(`MINOS: Human approval required — ${details.description}`, 'warn');
 
     const approved = await this.waitForHumanDecision(escalation);
-    const approvedBy = approved ? 'operator@hades-omega.demo' : undefined;
+    const humanApprovedBy = approved ? 'operator@hades-omega.demo' : undefined;
 
     const proposal = {
       id: uuid(),
       agentName: this.name,
       operationType: 'HUMAN_APPROVAL',
-      description: `Human ${approved ? 'approval' : 'rejection'}: ${escalation.description}`,
-      amount: escalation.amount,
-      currency: escalation.currency,
+      description: `Human ${approved ? 'approval' : 'rejection'}: ${details.description}`,
+      amount: details.amount,
+      currency: details.currency,
       metadata: {
         escalationId: escalation.id,
-        originalAgent: escalation.agentName,
-        originalType: escalation.operationType,
+        originalAgent: details.agentName,
+        originalType: details.operationType,
         humanDecision: approved ? 'APPROVED' : 'REJECTED',
-        approvedBy,
+        approvedBy: humanApprovedBy,
       },
       timestamp: Date.now(),
     };
@@ -92,17 +85,30 @@ export class MinosAgent extends AgentBase {
       timestamp: Date.now(),
     };
 
-    const auditRecord = await cerberus.audit(proposal, guardResult, approvedBy);
+    const auditRecord = await cerberus.audit(proposal, guardResult, humanApprovedBy);
 
     bus.publish('escalation:resolved', {
       escalationId: escalation.id,
       approved,
-      approvedBy,
+      humanApprovedBy,
       auditRecordId: auditRecord.id,
     });
 
-    this.log(`Escalation ${escalation.id.slice(0, 8)} resolved: ${approved ? 'APPROVED' : 'REJECTED'}`);
-    return auditRecord;
+    this.log(`MINOS: Escalation ${escalation.id.slice(0, 8)} → ${approved ? 'APPROVED' : 'REJECTED'}`);
+    this.setStatus('IDLE');
+
+    return { approved, escalationId: escalation.id, humanApprovedBy, auditRecord };
+  }
+
+  resolveEscalation(escalationId: string, approved: boolean): boolean {
+    const pending = pendingEscalations.get(escalationId);
+    if (!pending) return false;
+    pending.resolve(approved);
+    return true;
+  }
+
+  getPendingEscalations(): EscalationRequest[] {
+    return Array.from(pendingEscalations.values()).map(e => e.request);
   }
 
   private waitForHumanDecision(escalation: EscalationRequest): Promise<boolean> {
@@ -123,31 +129,6 @@ export class MinosAgent extends AgentBase {
         timer,
       });
     });
-  }
-
-  resolveEscalation(escalationId: string, approved: boolean): boolean {
-    const pending = pendingEscalations.get(escalationId);
-    if (!pending) return false;
-    pending.resolve(approved);
-    return true;
-  }
-
-  getPendingEscalations(): EscalationRequest[] {
-    return Array.from(pendingEscalations.values()).map(e => e.request);
-  }
-
-  private parseEscalationFromTask(task: Task): EscalationRequest {
-    return {
-      id: uuid(),
-      missionId: task.missionId,
-      taskId: task.id,
-      agentName: 'HADES',
-      operationType: 'ESCALATED_REVIEW',
-      description: task.description,
-      reason: 'Escalated for human review',
-      timeout: TIMEOUT_MS,
-      createdAt: Date.now(),
-    };
   }
 }
 

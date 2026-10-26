@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { v4 as uuid } from 'crypto';
 import type { AgentState, AuditRecord, BudgetState, EscalationRequest, LogEntry, Mission, NEARStatus, WSMessage } from './types.js';
 
 function genId() {

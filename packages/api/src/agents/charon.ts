@@ -1,7 +1,14 @@
 import { AgentBase } from './base.js';
 import { cerberus } from '../cerberus.js';
+import { minosAgent } from './minos.js';
 import { completeJSON } from '../llm.js';
-import type { Task, TaskResult, VendorEvaluation } from '../types.js';
+import type {
+  CERBERUSGuardResult,
+  OperationProposal,
+  Task,
+  TaskResult,
+  VendorEvaluation,
+} from '../types.js';
 
 const VENDOR_CATALOG = [
   { id: 'v001', name: 'TechServe MX', basePrice: 45000, quality: 88, delivery: 14, compliance: true },
@@ -38,10 +45,10 @@ export class CharonAgent extends AgentBase {
       best.currency
     );
 
-    const auditRecord = await cerberus.audit(proposal, guardResult);
-
+    // ── DENY: hard block, try alternative ──────────────────────────────────
     if (guardResult.decision === 'DENY') {
       this.log(`Purchase order denied: ${guardResult.reason}. Re-evaluating...`, 'warn');
+      await cerberus.audit(proposal, guardResult);
       this.setStatus('THINKING', 'Searching alternative vendor');
       await this.sleep(600);
 
@@ -49,36 +56,111 @@ export class CharonAgent extends AgentBase {
       const { guardResult: g2, proposal: p2 } = await this.propose(
         'PURCHASE_ORDER',
         `Alternative PO for ${alternative.name}: ${alternative.price.toLocaleString()} MXN`,
-        {
-          vendor: alternative.name,
-          vendorId: alternative.vendorId,
-          isAlternative: true,
-          originalDenied: best.name,
-        },
+        { vendor: alternative.name, vendorId: alternative.vendorId, isAlternative: true, originalDenied: best.name },
         alternative.price,
         'MXN'
       );
 
+      if (g2.decision === 'DENY') {
+        const audit2 = await cerberus.audit(p2, g2);
+        this.setStatus('IDLE');
+        return {
+          success: false,
+          summary: `All vendor options denied by CERBERUS. ${alternative.name} (${alternative.price.toLocaleString()} MXN) also exceeds policy limits.`,
+          data: { evaluations, decision: 'DENIED', reason: g2.reason },
+          cerberusAuditId: audit2.id,
+        };
+      }
+
+      if (g2.decision === 'ESCALATE') {
+        return this.handleEscalation(task, alternative, evaluations, g2, p2);
+      }
+
       const audit2 = await cerberus.audit(p2, g2);
       this.setStatus('IDLE');
       return {
-        success: g2.decision !== 'DENY',
-        summary: `Vendor evaluation complete. Original PO denied (${guardResult.reason}). Alternative: ${alternative.name} — ${alternative.price.toLocaleString()} MXN — ${g2.decision}`,
-        data: { evaluations, selectedVendor: alternative, primaryDecision: guardResult.decision, finalDecision: g2.decision },
+        success: true,
+        summary: `Original PO denied. Alternative: ${alternative.name} — ${alternative.price.toLocaleString()} MXN — PERMITTED.`,
+        data: { evaluations, selectedVendor: alternative, decision: 'PERMIT', originalDenied: best.name },
         cerberusAuditId: audit2.id,
         nearTxHash: audit2.nearTxHash,
         nearExplorerUrl: audit2.nearExplorerUrl,
       };
     }
 
+    // ── ESCALATE: request human approval and BLOCK until resolved ──────────
+    if (guardResult.decision === 'ESCALATE') {
+      return this.handleEscalation(task, best, evaluations, guardResult, proposal);
+    }
+
+    // ── PERMIT: record audit and return ────────────────────────────────────
+    const auditRecord = await cerberus.audit(proposal, guardResult);
     this.setStatus('IDLE');
     return {
       success: true,
-      summary: `Vendor evaluation complete. Selected: ${best.name} — ${best.price.toLocaleString()} MXN — ${guardResult.decision}`,
-      data: { evaluations, selectedVendor: best, decision: guardResult.decision },
+      summary: `Vendor ${best.name} selected. ${best.price.toLocaleString()} MXN. PERMITTED by CERBERUS.`,
+      data: { evaluations, selectedVendor: best, decision: 'PERMIT' },
       cerberusAuditId: auditRecord.id,
       nearTxHash: auditRecord.nearTxHash,
       nearExplorerUrl: auditRecord.nearExplorerUrl,
+    };
+  }
+
+  private async handleEscalation(
+    task: Task,
+    vendor: VendorEvaluation,
+    evaluations: VendorEvaluation[],
+    guardResult: CERBERUSGuardResult,
+    proposal: OperationProposal
+  ): Promise<TaskResult> {
+    this.log(`Purchase order requires human approval: ${guardResult.reason}`, 'warn');
+
+    const { approved, humanApprovedBy, auditRecord: humanAuditRecord } = await minosAgent.requestApproval(
+      task.missionId,
+      task.id,
+      {
+        agentName: this.name,
+        operationType: 'PURCHASE_ORDER',
+        description: `${vendor.name}: ${vendor.price.toLocaleString()} ${vendor.currency} — ${vendor.justification}`,
+        amount: vendor.price,
+        currency: vendor.currency,
+        reason: guardResult.reason,
+      }
+    );
+
+    if (!approved) {
+      this.setStatus('IDLE');
+      return {
+        success: false,
+        summary: `Purchase order REJECTED by human review. Vendor: ${vendor.name}, Amount: ${vendor.price.toLocaleString()} MXN.`,
+        data: { evaluations, selectedVendor: vendor, decision: 'REJECTED_BY_HUMAN' },
+        cerberusAuditId: humanAuditRecord.id,
+        nearTxHash: humanAuditRecord.nearTxHash,
+        nearExplorerUrl: humanAuditRecord.nearExplorerUrl,
+      };
+    }
+
+    // Human approved — create the authorized PURCHASE_ORDER audit (now PERMIT with humanApprovedBy)
+    const finalAudit = await cerberus.audit(
+      proposal,
+      guardResult,
+      humanApprovedBy ?? 'operator@hades-omega.demo'
+    );
+
+    this.setStatus('IDLE');
+    return {
+      success: true,
+      summary: `Vendor ${vendor.name} selected. ${vendor.price.toLocaleString()} MXN. HUMAN-APPROVED and recorded on NEAR.`,
+      data: {
+        evaluations,
+        selectedVendor: vendor,
+        decision: 'APPROVED_BY_HUMAN',
+        humanApprovedBy,
+        humanAuditRecordId: humanAuditRecord.id,
+      },
+      cerberusAuditId: finalAudit.id,
+      nearTxHash: finalAudit.nearTxHash,
+      nearExplorerUrl: finalAudit.nearExplorerUrl,
     };
   }
 

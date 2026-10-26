@@ -13,16 +13,20 @@ import type { Mission, MissionReport, MissionStatus, Task, TaskResult } from '..
 const DEMO_MISSION_TEXT = 'Evaluate server vendors for TechCore Industries Q1 2027, budget $50,000 MXN';
 const DEMO_TASKS = [
   {
+    assignedTo: 'ELYSIUM' as const,
+    description: 'Analyze mission scope and compute optimal execution plan for TechCore Industries server vendor evaluation. Budget: $50,000 MXN.',
+  },
+  {
     assignedTo: 'CHARON' as const,
-    description: 'Evaluate and select server hardware vendors. Budget ceiling: $50,000 MXN. Generate ranked vendor comparison and purchase order proposal.',
+    description: 'Evaluate and select server hardware vendors. Budget ceiling: $50,000 MXN. Generate ranked vendor comparison and propose purchase order.',
   },
   {
     assignedTo: 'PERSEPHONE' as const,
-    description: 'Validate available INFRASTRUCTURE budget for server procurement of $38,500 MXN. Check utilization thresholds and flag alerts.',
+    description: 'Validate available INFRASTRUCTURE budget for server procurement. Check utilization thresholds and flag alerts.',
   },
   {
-    assignedTo: 'MINOS' as const,
-    description: 'Review escalated purchase order if CERBERUS requires human approval. Validate compliance and record decision.',
+    assignedTo: 'TARTARUS' as const,
+    description: 'Perform post-execution security scan and anomaly analysis on mission results. Validate threat clearance.',
   },
 ];
 
@@ -156,49 +160,13 @@ export class HadesAgent extends AgentBase {
 
   private async executeTaskOnAgent(task: Task): Promise<TaskResult> {
     switch (task.assignedTo) {
+      case 'ELYSIUM': return this.elysium.execute(task);
       case 'CHARON': return this.charon.execute(task);
       case 'PERSEPHONE': return this.persephone.execute(task);
-      case 'MINOS': return this.handleMinosEscalation(task);
-      case 'ELYSIUM': return this.elysium.execute(task);
+      case 'MINOS': return minos.execute(task);
       case 'TARTARUS': return this.tartarus.execute(task);
       default: return { success: true, summary: 'Task completed', data: {} };
     }
-  }
-
-  private async handleMinosEscalation(task: Task): Promise<TaskResult> {
-    const escalations = minos.getPendingEscalations();
-    if (escalations.length === 0) {
-      this.log('MINOS: No escalations pending for this task cycle');
-      return {
-        success: true,
-        summary: 'No escalations required for this mission',
-        data: { escalationsPending: 0 },
-      };
-    }
-
-    const results = [];
-    for (const esc of escalations) {
-      const { escalationId, approved, auditRecord } = await minos.createEscalation(
-        task.missionId, task.id,
-        {
-          agentName: esc.agentName,
-          operationType: esc.operationType,
-          description: esc.description,
-          amount: esc.amount,
-          currency: esc.currency,
-          reason: esc.reason,
-        }
-      );
-      results.push({ escalationId, approved, auditRecordId: auditRecord.id, nearTxHash: auditRecord.nearTxHash });
-    }
-
-    const allApproved = results.every(r => r.approved);
-    return {
-      success: allApproved,
-      summary: `MINOS resolved ${results.length} escalation(s). All approved: ${allApproved}`,
-      data: { results },
-      nearTxHash: results[0]?.nearTxHash ?? undefined,
-    };
   }
 
   private async decomposeMission(mission: Mission): Promise<typeof DEMO_TASKS> {

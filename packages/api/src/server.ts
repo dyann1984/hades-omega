@@ -52,7 +52,8 @@ bus.subscribe('escalation:resolved', publishToWS('ESCALATION'));
 bus.subscribe('system:log', publishToWS('LOG'));
 
 app.get('/ws', { websocket: true }, (socket) => {
-  wsClients.add(socket);
+  const ws = socket as unknown as WS;
+  wsClients.add(ws);
 
   const initMsg: WebSocketMessage = {
     type: 'SYSTEM',
@@ -63,10 +64,10 @@ app.get('/ws', { websocket: true }, (socket) => {
     },
     timestamp: Date.now(),
   };
-  socket.send(JSON.stringify(initMsg));
+  ws.send(JSON.stringify(initMsg));
 
-  socket.on('close', () => wsClients.delete(socket));
-  socket.on('error', () => wsClients.delete(socket));
+  socket.on('close', () => wsClients.delete(ws));
+  socket.on('error', () => wsClients.delete(ws));
 });
 
 app.post('/api/missions', async (req, reply) => {

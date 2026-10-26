@@ -185,3 +185,38 @@ export interface BudgetValidation {
   requiresEscalation: boolean;
   reason: string;
 }
+
+export interface ElysiumPlan {
+  missionId: string;
+  criticalPath: string[];
+  estimatedDurationMs: number;
+  resourceRequirements: {
+    agents: string[];
+    estimatedCost: number;
+    currency: string;
+  };
+  bottlenecks: string[];
+  optimizationSuggestions: string[];
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  planScore: number;
+}
+
+export interface AnomalyEvent {
+  id: string;
+  type: 'POLICY_VIOLATION' | 'LARGE_AMOUNT' | 'REPEATED_DENY' | 'COMPLIANCE_FAILURE';
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  description: string;
+  agentName: string;
+  amount?: number;
+  timestamp: number;
+}
+
+export interface TartarusReport {
+  threatsDetected: number;
+  threatLevel: 'CLEAR' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  anomalies: AnomalyEvent[];
+  containmentActions: string[];
+  denyEventCount: number;
+  clearanceGranted: boolean;
+  scanTimestamp: number;
+}

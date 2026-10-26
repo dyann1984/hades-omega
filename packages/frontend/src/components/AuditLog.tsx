@@ -2,6 +2,36 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useHadesStore } from '../store.js';
 import type { AuditRecord } from '../types.js';
 
+function NEARModeBadge({ mode, txHash, explorerUrl }: { mode: string; txHash: string; explorerUrl?: string }) {
+  const isReal = mode === 'real';
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+      {/* Mode badge — prominent distinction */}
+      <span
+        className={`text-[7px] font-bold font-mono px-1.5 py-0.5 rounded uppercase tracking-widest border ${
+          isReal
+            ? 'bg-emerald-400/15 border-emerald-400/40 text-emerald-400'
+            : 'bg-golden-400/10 border-golden-400/30 text-golden-500'
+        }`}
+      >
+        {isReal ? '◆ ON-CHAIN' : '◇ SIMULATED'}
+      </span>
+      {/* Hash link */}
+      {txHash && (
+        <a
+          href={explorerUrl ?? '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[8px] text-golden-400/70 hover:text-golden-300 font-mono underline underline-offset-2 truncate max-w-[120px]"
+          title={txHash}
+        >
+          {txHash.slice(0, 12)}…
+        </a>
+      )}
+    </div>
+  );
+}
+
 function AuditRow({ record }: { record: AuditRecord }) {
   const cls = {
     PERMIT:   { badge: 'decision-permit',   icon: '✓' },
@@ -23,14 +53,14 @@ function AuditRow({ record }: { record: AuditRecord }) {
             <span className="text-gray-600 text-[9px]">›</span>
             <span className="text-[9px] text-gray-400 font-mono truncate">{record.operationType}</span>
           </div>
-          {record.metadata?.vendor && (
-            <p className="text-[9px] text-gray-500 truncate">Vendor: {String(record.metadata.vendor)}</p>
+          {record.metadata?.['vendor'] !== undefined && (
+            <p className="text-[9px] text-gray-500 truncate">Vendor: {String(record.metadata['vendor'])}</p>
           )}
-          {record.metadata?.amount && (
-            <p className="text-[9px] text-gray-500">Amount: {Number(record.metadata.amount).toLocaleString()} MXN</p>
+          {record.metadata?.['amount'] !== undefined && (
+            <p className="text-[9px] text-gray-500">Amount: {Number(record.metadata['amount']).toLocaleString()} MXN</p>
           )}
           {record.humanApprovedBy && (
-            <p className="text-[9px] text-emerald-400 font-mono">✓ Approved by {record.humanApprovedBy}</p>
+            <p className="text-[9px] text-emerald-400 font-mono">✓ Human approval: {record.humanApprovedBy}</p>
           )}
         </div>
         <span className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded border shrink-0 ${cls.badge}`}>
@@ -40,24 +70,17 @@ function AuditRow({ record }: { record: AuditRecord }) {
 
       {/* Content hash */}
       <div className="mt-1.5 flex items-center gap-1.5">
-        <span className="text-[8px] text-gray-600 font-mono uppercase">hash</span>
+        <span className="text-[8px] text-gray-600 font-mono uppercase">SHA-256</span>
         <code className="text-[8px] text-electric-400/60 font-mono">{record.contentHash.slice(0, 16)}…</code>
       </div>
 
-      {/* NEAR tx link */}
+      {/* NEAR tx — clearly labeled simulated vs on-chain */}
       {record.nearTxHash && (
-        <div className="mt-1 flex items-center gap-1.5">
-          <span className="text-[8px] text-golden-400 font-mono uppercase">NEAR</span>
-          <a
-            href={record.nearExplorerUrl ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[8px] text-golden-400 hover:text-golden-300 font-mono underline underline-offset-2 truncate"
-          >
-            {record.nearTxHash.slice(0, 16)}…
-          </a>
-          <span className="text-[7px] text-golden-600 uppercase font-mono">{record.nearMode}</span>
-        </div>
+        <NEARModeBadge
+          mode={record.nearMode}
+          txHash={record.nearTxHash}
+          explorerUrl={record.nearExplorerUrl}
+        />
       )}
 
       <div className="mt-1 text-[8px] text-gray-600 font-mono">
@@ -69,12 +92,18 @@ function AuditRow({ record }: { record: AuditRecord }) {
 
 export function AuditLog() {
   const records = useHadesStore(s => s.auditRecords);
+  const simCount = records.filter(r => r.nearTxHash && r.nearMode === 'simulation').length;
+  const realCount = records.filter(r => r.nearTxHash && r.nearMode === 'real').length;
 
   return (
     <div className="flex flex-col gap-2 flex-1 min-h-0">
       <div className="flex items-center justify-between px-0.5 shrink-0">
         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">CERBERUS Audit</div>
-        <div className="text-[9px] text-electric-400 font-mono">{records.length} records</div>
+        <div className="flex items-center gap-2 text-[9px] font-mono">
+          {realCount > 0 && <span className="text-emerald-400">◆ {realCount} on-chain</span>}
+          {simCount > 0 && <span className="text-golden-500">◇ {simCount} simulated</span>}
+          <span className="text-electric-400">{records.length} total</span>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1">
