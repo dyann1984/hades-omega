@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["NODE_ENV", "NEAR_EXECUTION_MODE", "ANTHROPIC_API_KEY", "DATABASE_URL"],
+  "globalEnv": ["NODE_ENV", "NEAR_EXECUTION_MODE", "ANTHROPIC_API_KEY", "DATABASE_URL", "JWT_SECRET", "ALLOWED_ORIGIN", "HADES_DATA_FILE", "PORT", "HOST"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
