@@ -1,7 +1,7 @@
 import { useHadesStore } from '../store/index.js'
 import type { AgentName } from '../store/index.js'
 
-const AGENT_NAMES: AgentName[] = ['HADES', 'CHARON', 'PERSEPHONE', 'MINOS', 'ELYSIUM', 'TARTARUS']
+const AGENT_NAMES: AgentName[] = ['HADES', 'CHARON', 'PERSEPHONE', 'MINOS', 'CERBERUS', 'ELYSIUM', 'TARTARUS']
 
 export default function ObservatoryPanel(): JSX.Element {
   const { agents, auditRecords, missions, nearTxs } = useHadesStore()

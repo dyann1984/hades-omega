@@ -6,6 +6,7 @@ const AGENT_META: Record<AgentName, { icon: string; role: string; symbol: string
   CHARON:     { icon: '⚡', role: 'Compras & Proveedores',     symbol: '⚡' },
   PERSEPHONE: { icon: '₿', role: 'Finanzas & Presupuesto',    symbol: '◈' },
   MINOS:      { icon: '⚖', role: 'Validación & Escalaciones', symbol: '⚖' },
+  CERBERUS:   { icon: '◉', role: 'Políticas & Auditoría',     symbol: '◉' },
   ELYSIUM:    { icon: '⚙', role: 'Planificación',             symbol: '◎' },
   TARTARUS:   { icon: '🛡', role: 'Seguridad & Anomalías',    symbol: '▲' },
 }

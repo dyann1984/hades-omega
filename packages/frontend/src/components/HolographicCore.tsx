@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { useHadesStore } from '../store/index.js'
+import type { SubAgent } from './HolographicCore3D.js'
 
 // Three.js core loaded lazily
 const ThreeDCore = lazy(() => import('./HolographicCore3D.js'))
@@ -69,7 +70,12 @@ function FallbackCore(): JSX.Element {
   )
 }
 
-export default function HolographicCore(): JSX.Element {
+interface Props {
+  selectedAgent?: SubAgent | null
+  onAgentSelect?: (name: SubAgent) => void
+}
+
+export default function HolographicCore({ selectedAgent, onAgentSelect }: Props = {}): JSX.Element {
   const prefersReducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -78,7 +84,7 @@ export default function HolographicCore(): JSX.Element {
 
   return (
     <Suspense fallback={<FallbackCore />}>
-      <ThreeDCore />
+      <ThreeDCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} />
     </Suspense>
   )
 }

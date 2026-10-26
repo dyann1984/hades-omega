@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type AgentName = 'HADES' | 'CHARON' | 'PERSEPHONE' | 'MINOS' | 'ELYSIUM' | 'TARTARUS'
+export type AgentName = 'HADES' | 'CHARON' | 'PERSEPHONE' | 'MINOS' | 'CERBERUS' | 'ELYSIUM' | 'TARTARUS'
 export type AgentStatus = 'IDLE' | 'THINKING' | 'EXECUTING' | 'WAITING' | 'ERROR' | 'SUSPENDED'
 export type GUARDOutcome = 'PERMIT' | 'DENY' | 'ESCALATE'
 export type MissionStatus = 'RECEIVED' | 'ANALYZING' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'PARTIAL_COMPLETE' | 'FAILED'
@@ -22,6 +22,11 @@ export interface AuditRecord {
   nearTxHash:    string | null
   nearExplorerUrl: string | null
   executionMode: 'simulation' | 'real'
+  /** Optional evidence retained when supplied by the API. */
+  guardReason?: string | null
+  policyHits?: string[]
+  payload?: unknown
+  sha256?: string | null
 }
 
 export interface Mission {
@@ -49,7 +54,12 @@ export interface EscalationRequest {
   reason:        string
   priority:      'LOW' | 'MEDIUM' | 'HIGH'
   createdAt:     number
+  /** A decision resolves the review; it never grants the underlying operation. */
+  status:        'PENDING' | 'APPROVED' | 'REJECTED'
+  context?:      unknown
 }
+
+export type Escalation = EscalationRequest
 
 export interface NEARTx {
   auditId:     string
@@ -85,6 +95,7 @@ export interface HadesStore {
   updateMission:  (id: string, updates: Partial<Mission>) => void
   addEscalation:  (esc: EscalationRequest) => void
   removeEscalation: (id: string) => void
+  resolveEscalation: (id: string, status: 'APPROVED' | 'REJECTED') => void
   addNearTx:      (tx: NEARTx) => void
   setWsConnected:    (v: boolean) => void
   setServerlessMode: (v: boolean) => void
@@ -99,6 +110,7 @@ const defaultAgents: Record<AgentName, AgentState> = {
   CHARON:     { name: 'CHARON',     status: 'IDLE', currentTask: null },
   PERSEPHONE: { name: 'PERSEPHONE', status: 'IDLE', currentTask: null },
   MINOS:      { name: 'MINOS',      status: 'IDLE', currentTask: null },
+  CERBERUS:   { name: 'CERBERUS',   status: 'IDLE', currentTask: null },
   ELYSIUM:    { name: 'ELYSIUM',    status: 'IDLE', currentTask: null },
   TARTARUS:   { name: 'TARTARUS',   status: 'IDLE', currentTask: null },
 }
@@ -140,12 +152,18 @@ export const useHadesStore = create<HadesStore>((set, get) => ({
   },
 
   addEscalation: esc => {
-    set(s => ({ escalations: [esc, ...s.escalations] }))
+    set(s => ({ escalations: [{ ...esc, status: esc.status ?? 'PENDING' }, ...s.escalations] }))
     get().addNotification('warning', `MINOS: escalación pendiente — ${esc.operationType}`)
   },
 
   removeEscalation: id => {
     set(s => ({ escalations: s.escalations.filter(e => e.id !== id) }))
+  },
+
+  resolveEscalation: (id, status) => {
+    set(s => ({ escalations: s.escalations.map(e => e.id === id ? { ...e, status } : e) }))
+    get().addNotification(status === 'APPROVED' ? 'success' : 'warning',
+      `MINOS: revisión ${status === 'APPROVED' ? 'aprobada' : 'rechazada'} — la operación requiere ejecución separada`)
   },
 
   addNearTx: tx => {

@@ -5,24 +5,43 @@ import * as THREE from 'three'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName } from '../store/index.js'
 
-type SubAgent = Exclude<AgentName, 'HADES'>
+export type SubAgent = Exclude<AgentName, 'HADES'>
 
-// Pentagon arrangement for 5 sub-agents (72° apart, starting top)
-const ORBIT_POSITIONS: Record<SubAgent, [number, number, number]> = {
-  CHARON:     [  0.00,  2.20,  0 ],  // 90° top
-  PERSEPHONE: [  2.09,  0.68,  0 ],  // 18° upper-right
-  MINOS:      [  1.29, -1.78,  0 ],  // 306° lower-right
-  ELYSIUM:    [ -1.29, -1.78,  0 ],  // 234° lower-left
-  TARTARUS:   [ -2.09,  0.68,  0 ],  // 162° upper-left
+// Six operational agents — equal 60° apart, each on a distinct 3D orbital plane.
+const ORBIT_RADIUS = 2.20
+const ORBIT_ANGLES: Record<SubAgent, number> = {
+  CHARON:     Math.PI / 2,
+  PERSEPHONE: Math.PI / 2 - (Math.PI * 2) / 6,
+  MINOS:      Math.PI / 2 - (Math.PI * 4) / 6,
+  CERBERUS:   Math.PI / 2 - (Math.PI * 6) / 6,
+  ELYSIUM:    Math.PI / 2 - (Math.PI * 8) / 6,
+  TARTARUS:   Math.PI / 2 - (Math.PI * 10) / 6,
 }
+
+const ORBIT_POSITIONS: Record<SubAgent, [number, number, number]> = Object.fromEntries(
+  (Object.entries(ORBIT_ANGLES) as [SubAgent, number][]).map(([name, a]) => [
+    name,
+    [ORBIT_RADIUS * Math.cos(a), ORBIT_RADIUS * Math.sin(a), 0] as [number, number, number],
+  ])
+) as Record<SubAgent, [number, number, number]>
 
 const AGENT_COLOR: Record<AgentName, string> = {
   HADES:      '#FFD700',
   CHARON:     '#00D4FF',
   PERSEPHONE: '#00CCEE',
   MINOS:      '#00BBDD',
+  CERBERUS:   '#FFB800',
   ELYSIUM:    '#00D4FF',
   TARTARUS:   '#0099CC',
+}
+
+const AGENT_SYMBOL: Record<SubAgent, string> = {
+  CHARON:     '⚡',
+  PERSEPHONE: '◈',
+  MINOS:      '⚖',
+  CERBERUS:   '◉',
+  ELYSIUM:    '◎',
+  TARTARUS:   '▲',
 }
 
 // ─── CORE SPHERE (center) ────────────────────────────────────────────────────
@@ -60,7 +79,6 @@ function CoreSphere({ active, speed }: { active: boolean; speed: number }) {
 
   return (
     <group>
-      {/* Solid metallic gold core */}
       <mesh ref={coreRef}>
         <sphereGeometry args={[0.15, 20, 20]} />
         <meshStandardMaterial
@@ -71,7 +89,6 @@ function CoreSphere({ active, speed }: { active: boolean; speed: number }) {
           roughness={0.12}
         />
       </mesh>
-      {/* Glow shells — simulate bloom */}
       <mesh ref={g1Ref}>
         <sphereGeometry args={[0.30, 8, 8]} />
         <meshBasicMaterial color="#FFD700" transparent opacity={0.10} depthWrite={false} />
@@ -89,7 +106,7 @@ function CoreSphere({ active, speed }: { active: boolean; speed: number }) {
   )
 }
 
-// ─── SACRED GEOMETRY (inner crystal layers) ──────────────────────────────────
+// ─── SACRED GEOMETRY ─────────────────────────────────────────────────────────
 
 function SacredGeometry({ active, speed }: { active: boolean; speed: number }) {
   const icosaRef  = useRef<THREE.Mesh>(null)
@@ -114,17 +131,14 @@ function SacredGeometry({ active, speed }: { active: boolean; speed: number }) {
 
   return (
     <group>
-      {/* Outer icosahedron — gold */}
       <mesh ref={icosaRef}>
         <icosahedronGeometry args={[0.64, 1]} />
         <meshBasicMaterial color="#FFD700" wireframe transparent opacity={active ? 0.55 : 0.26} depthWrite={false} />
       </mesh>
-      {/* Middle octahedron — brighter gold */}
       <mesh ref={octaRef}>
         <octahedronGeometry args={[0.42, 0]} />
         <meshBasicMaterial color="#FFE060" wireframe transparent opacity={active ? 0.72 : 0.42} depthWrite={false} />
       </mesh>
-      {/* Inner dodecahedron — subtle */}
       <mesh ref={dodecaRef}>
         <dodecahedronGeometry args={[0.27, 0]} />
         <meshBasicMaterial color="#FFA000" wireframe transparent opacity={active ? 0.42 : 0.18} depthWrite={false} />
@@ -133,7 +147,7 @@ function SacredGeometry({ active, speed }: { active: boolean; speed: number }) {
   )
 }
 
-// ─── ORBIT RINGS (5 rings) ───────────────────────────────────────────────────
+// ─── ORBIT RINGS ─────────────────────────────────────────────────────────────
 
 interface RingCfg {
   radius: number; tube: number
@@ -162,7 +176,7 @@ function OrbitRing({ cfg, speedMult }: { cfg: RingCfg; speedMult: number }) {
   )
 }
 
-// ─── ENERGY FIELD (outer structure) ──────────────────────────────────────────
+// ─── ENERGY FIELD ────────────────────────────────────────────────────────────
 
 function EnergyField({ active, alert }: { active: boolean; alert: boolean }) {
   const ref1 = useRef<THREE.Mesh>(null)
@@ -180,25 +194,31 @@ function EnergyField({ active, alert }: { active: boolean; alert: boolean }) {
     }
   })
 
-  const col1 = alert ? '#FF3366' : active ? '#00D4FF' : '#223355'
-  const op1  = alert ? 0.10 : active ? 0.055 : 0.020
-  const op2  = active ? 0.028 : 0.008
-
   return (
     <>
       <mesh ref={ref1}>
         <icosahedronGeometry args={[2.35, 1]} />
-        <meshBasicMaterial color={col1} wireframe transparent opacity={op1} depthWrite={false} />
+        <meshBasicMaterial
+          color={alert ? '#FF3366' : active ? '#00D4FF' : '#223355'}
+          wireframe transparent
+          opacity={alert ? 0.10 : active ? 0.055 : 0.020}
+          depthWrite={false}
+        />
       </mesh>
       <mesh ref={ref2}>
         <icosahedronGeometry args={[2.65, 1]} />
-        <meshBasicMaterial color={active ? '#004466' : '#0A1020'} wireframe transparent opacity={op2} depthWrite={false} />
+        <meshBasicMaterial
+          color={active ? '#004466' : '#0A1020'}
+          wireframe transparent
+          opacity={active ? 0.028 : 0.008}
+          depthWrite={false}
+        />
       </mesh>
     </>
   )
 }
 
-// ─── HALO RING (outermost presence) ──────────────────────────────────────────
+// ─── HALO RING ───────────────────────────────────────────────────────────────
 
 function HaloRing() {
   const ref = useRef<THREE.Mesh>(null)
@@ -213,7 +233,7 @@ function HaloRing() {
   )
 }
 
-// ─── SCAN LINE (active only) ──────────────────────────────────────────────────
+// ─── SCAN LINE ───────────────────────────────────────────────────────────────
 
 function ScanLine({ active }: { active: boolean }) {
   const ref = useRef<THREE.Mesh>(null)
@@ -231,17 +251,16 @@ function ScanLine({ active }: { active: boolean }) {
   )
 }
 
-// ─── PULSE WAVE (NEAR event) ──────────────────────────────────────────────────
+// ─── PULSE WAVE ──────────────────────────────────────────────────────────────
 
 function PulseWave({ trigger }: { trigger: number }) {
-  const meshRef    = useRef<THREE.Mesh>(null)
-  const startRef   = useRef<number | null>(null)
+  const meshRef     = useRef<THREE.Mesh>(null)
+  const startRef    = useRef<number | null>(null)
   const prevTrigger = useRef(trigger)
 
   useFrame(({ clock }) => {
     if (!meshRef.current) return
     const mat = meshRef.current.material as THREE.MeshBasicMaterial
-    // Detect new trigger
     if (prevTrigger.current !== trigger) {
       prevTrigger.current = trigger
       startRef.current = clock.getElapsedTime()
@@ -271,42 +290,40 @@ function PulseWave({ trigger }: { trigger: number }) {
   )
 }
 
-// ─── PARTICLE CLOUD ───────────────────────────────────────────────────────────
+// ─── PARTICLE CLOUD ──────────────────────────────────────────────────────────
 
 function ParticleCloud() {
   const outerRef = useRef<THREE.Points>(null)
   const innerRef = useRef<THREE.Points>(null)
 
   const outerPositions = useMemo(() => {
-    const n = 180
-    const arr = new Float32Array(n * 3)
+    const n = 180; const arr = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) {
       const theta = Math.random() * Math.PI * 2
       const phi   = Math.acos(2 * Math.random() - 1)
       const r     = 1.9 + Math.random() * 1.2
-      arr[i * 3]     = r * Math.sin(phi) * Math.cos(theta)
-      arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-      arr[i * 3 + 2] = r * Math.cos(phi)
+      arr[i*3] = r*Math.sin(phi)*Math.cos(theta)
+      arr[i*3+1] = r*Math.sin(phi)*Math.sin(theta)
+      arr[i*3+2] = r*Math.cos(phi)
     }
     return arr
   }, [])
 
   const innerPositions = useMemo(() => {
-    const n = 50
-    const arr = new Float32Array(n * 3)
+    const n = 50; const arr = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) {
       const theta = Math.random() * Math.PI * 2
       const phi   = Math.acos(2 * Math.random() - 1)
       const r     = 0.88 + Math.random() * 0.55
-      arr[i * 3]     = r * Math.sin(phi) * Math.cos(theta)
-      arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-      arr[i * 3 + 2] = r * Math.cos(phi)
+      arr[i*3] = r*Math.sin(phi)*Math.cos(theta)
+      arr[i*3+1] = r*Math.sin(phi)*Math.sin(theta)
+      arr[i*3+2] = r*Math.cos(phi)
     }
     return arr
   }, [])
 
   useFrame(({ clock }) => {
-    if (outerRef.current) outerRef.current.rotation.y = clock.getElapsedTime() * 0.042
+    if (outerRef.current) outerRef.current.rotation.y =  clock.getElapsedTime() * 0.042
     if (innerRef.current) innerRef.current.rotation.y = -clock.getElapsedTime() * 0.065
   })
 
@@ -314,13 +331,13 @@ function ParticleCloud() {
     <>
       <points ref={outerRef}>
         <bufferGeometry>
-          <bufferAttribute attach="attributes-position" array={outerPositions} count={outerPositions.length / 3} itemSize={3} />
+          <bufferAttribute attach="attributes-position" array={outerPositions} count={outerPositions.length/3} itemSize={3} />
         </bufferGeometry>
         <pointsMaterial color="#00D4FF" size={0.026} transparent opacity={0.38} sizeAttenuation depthWrite={false} />
       </points>
       <points ref={innerRef}>
         <bufferGeometry>
-          <bufferAttribute attach="attributes-position" array={innerPositions} count={innerPositions.length / 3} itemSize={3} />
+          <bufferAttribute attach="attributes-position" array={innerPositions} count={innerPositions.length/3} itemSize={3} />
         </bufferGeometry>
         <pointsMaterial color="#FFD700" size={0.048} transparent opacity={0.52} sizeAttenuation depthWrite={false} />
       </points>
@@ -328,11 +345,19 @@ function ParticleCloud() {
   )
 }
 
-// ─── AGENT NODES ─────────────────────────────────────────────────────────────
+// ─── AGENT NODE ──────────────────────────────────────────────────────────────
 
-function AgentNode({ name, position }: { name: SubAgent; position: [number, number, number] }) {
-  const ref   = useRef<THREE.Mesh>(null)
-  const agent = useHadesStore(s => s.agents[name])
+interface AgentNodeProps {
+  name:     SubAgent
+  position: [number, number, number]
+  selected: boolean
+  onSelect: () => void
+}
+
+function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
+  const ref    = useRef<THREE.Mesh>(null)
+  const ringRef = useRef<THREE.Mesh>(null)
+  const agent  = useHadesStore(s => s.agents[name])
   const active  = agent?.status !== 'IDLE'
   const isError = agent?.status === 'ERROR'
   const isWait  = agent?.status === 'WAITING'
@@ -340,96 +365,160 @@ function AgentNode({ name, position }: { name: SubAgent; position: [number, numb
   const color   = new THREE.Color(hex)
 
   useFrame(({ clock }) => {
-    if (!ref.current || !active) return
-    ref.current.rotation.y = clock.getElapsedTime() * 2.2
-    ref.current.rotation.x = clock.getElapsedTime() * 1.1
+    const t = clock.getElapsedTime()
+    if (ref.current && active) {
+      ref.current.rotation.y = t * 2.2
+      ref.current.rotation.x = t * 1.1
+    }
+    if (ringRef.current) {
+      const op = selected ? 0.85 : active ? 0.68 : 0.14
+      ;(ringRef.current.material as THREE.MeshBasicMaterial).opacity = op
+      ringRef.current.rotation.z = t * 1.2
+    }
   })
 
   return (
     <group position={position}>
-      <mesh ref={ref}>
+      {/* Clickable main sphere */}
+      <mesh
+        ref={ref}
+        onClick={e => { e.stopPropagation(); onSelect() }}
+        onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer' }}
+        onPointerOut={e => { e.stopPropagation(); document.body.style.cursor = 'default' }}
+      >
         <sphereGeometry args={[active ? 0.155 : 0.11, 10, 10]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={active ? 0.90 : 0.08}
+          emissiveIntensity={selected ? 1.4 : active ? 0.90 : 0.08}
           metalness={0.35}
           roughness={0.55}
         />
       </mesh>
-      {/* Orbital ring */}
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.26, 0.014, 4, 32]} />
-        <meshBasicMaterial color={hex} transparent opacity={active ? 0.68 : 0.14} depthWrite={false} />
+      {/* Selection ring */}
+      <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[selected ? 0.34 : 0.26, 0.014, 4, 32]} />
+        <meshBasicMaterial color={hex} transparent opacity={0.14} depthWrite={false} />
       </mesh>
-      {active && (
+      {/* Active glow */}
+      {(active || selected) && (
         <>
           <mesh>
-            <sphereGeometry args={[0.30, 8, 8]} />
-            <meshBasicMaterial color={hex} transparent opacity={0.10} depthWrite={false} />
+            <sphereGeometry args={[selected ? 0.38 : 0.30, 8, 8]} />
+            <meshBasicMaterial color={hex} transparent opacity={selected ? 0.18 : 0.10} depthWrite={false} />
           </mesh>
-          <pointLight color={hex} intensity={0.8} distance={1.6} decay={2} />
+          <pointLight color={hex} intensity={selected ? 1.4 : 0.8} distance={1.6} decay={2} />
         </>
+      )}
+      {/* Label indicator: outer glow ring when selected */}
+      {selected && (
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.50, 0.004, 3, 40]} />
+          <meshBasicMaterial color={hex} transparent opacity={0.55} depthWrite={false} />
+        </mesh>
       )}
     </group>
   )
 }
 
-// ─── CONNECTION LINES ────────────────────────────────────────────────────────
+// ─── ORBITAL SYSTEM (agents + connections, rotates together for 3D depth) ────
 
-function ConnectionLines() {
-  const agents = useHadesStore(s => s.agents)
-  const center: [number, number, number] = [0, 0, 0]
+interface OrbitalSystemProps {
+  speedMult:     number
+  selectedAgent: SubAgent | null
+  onAgentSelect: (name: SubAgent) => void
+}
+
+function OrbitalSystem({ speedMult, selectedAgent, onAgentSelect }: OrbitalSystemProps) {
+  const groupRef  = useRef<THREE.Group>(null)
+  const agents    = useHadesStore(s => s.agents)
+  const CENTER: [number, number, number] = [0, 0, 0]
+
+  useFrame(({ clock }) => {
+    if (groupRef.current) {
+      // Slow orbital rotation — full lap ~50s at rest, ~21s when active
+      groupRef.current.rotation.y = clock.getElapsedTime() * 0.125 * speedMult
+    }
+  })
+
   return (
-    <>
+    // Tilt group ~25° around X for true 3D orbital depth
+    <group ref={groupRef} rotation={[0.44, 0, 0.06]}>
+      {/* Connection lines — inside group so they rotate with agents */}
       {(Object.entries(ORBIT_POSITIONS) as [SubAgent, [number, number, number]][]).map(([name, pos]) => {
         const a      = agents[name]
         const active = a?.status !== 'IDLE'
         return (
           <Line
             key={name}
-            points={[center, pos]}
-            color={active ? AGENT_COLOR[name] : '#1A1A2E'}
-            lineWidth={active ? 1.6 : 0.45}
-            opacity={active ? 0.82 : 0.18}
+            points={[CENTER, pos]}
+            color={selectedAgent === name ? AGENT_COLOR[name] : active ? AGENT_COLOR[name] : '#1A1A2E'}
+            lineWidth={selectedAgent === name ? 2.2 : active ? 1.6 : 0.45}
+            opacity={selectedAgent === name ? 1.0 : active ? 0.82 : 0.18}
             transparent
-            dashed={!active}
+            dashed={!active && selectedAgent !== name}
             dashSize={0.14}
             gapSize={0.14}
           />
         )
       })}
-    </>
+      {/* Agent nodes */}
+      {(Object.entries(ORBIT_POSITIONS) as [SubAgent, [number, number, number]][]).map(([name, pos]) => (
+        <AgentNode
+          key={name}
+          name={name}
+          position={pos}
+          selected={selectedAgent === name}
+          onSelect={() => onAgentSelect(name)}
+        />
+      ))}
+    </group>
   )
+}
+
+// ─── AGENT LABEL OVERLAY (HTML-rendered, outside Canvas) ─────────────────────
+
+export interface AgentInfo {
+  name:     SubAgent
+  symbol:   string
+  color:    string
+}
+
+export function getAgentInfo(name: SubAgent): AgentInfo {
+  return { name, symbol: AGENT_SYMBOL[name], color: AGENT_COLOR[name] }
 }
 
 // ─── MAIN CANVAS ─────────────────────────────────────────────────────────────
 
-export default function HolographicCore3D() {
+interface Props {
+  selectedAgent?: SubAgent | null
+  onAgentSelect?: (name: SubAgent) => void
+}
+
+export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {} }: Props) {
   const agents       = useHadesStore(s => s.agents)
   const nearTxs      = useHadesStore(s => s.nearTxs)
   const auditRecords = useHadesStore(s => s.auditRecords)
 
-  const anyActive    = Object.values(agents).some(a => a.status !== 'IDLE')
-  const hasAlert     = Object.values(agents).some(a => a.status === 'ERROR')
-                     || auditRecords.some(r => r.guardDecision === 'DENY')
-  const speedMult    = anyActive ? 2.4 : 1.0
-  const nearTxCount  = nearTxs.length
+  const anyActive   = Object.values(agents).some(a => a.status !== 'IDLE')
+  const hasAlert    = Object.values(agents).some(a => a.status === 'ERROR')
+                    || auditRecords.some(r => r.guardDecision === 'DENY')
+  const speedMult   = anyActive ? 2.4 : 1.0
+  const nearTxCount = nearTxs.length
 
   return (
     <Canvas
       camera={{ position: [0, 0, 6.2], fov: 47 }}
       gl={{
-        antialias:            true,
-        alpha:                true,
-        toneMapping:          THREE.ACESFilmicToneMapping,
-        toneMappingExposure:  1.25,
+        antialias:           true,
+        alpha:               true,
+        toneMapping:         THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 1.25,
       }}
       style={{ background: 'transparent' }}
     >
       <PerformanceMonitor onDecline={() => {}} />
 
-      {/* Scene lights */}
       <ambientLight intensity={0.10} color="#1A2244" />
       <pointLight position={[0,  5,  3]}  color="#FFD700" intensity={1.8} decay={2} />
       <pointLight position={[-3, -2,  2]} color="#00D4FF" intensity={1.1} decay={2} />
@@ -437,7 +526,6 @@ export default function HolographicCore3D() {
       {anyActive && <pointLight position={[0, -3, 2]} color="#00AAFF" intensity={0.8} decay={2} />}
       {hasAlert  && <pointLight position={[0,  0, 3]} color="#FF3366" intensity={0.6} decay={2} />}
 
-      {/* Back → front rendering order */}
       <HaloRing />
       <EnergyField active={anyActive} alert={hasAlert} />
       <ParticleCloud />
@@ -450,12 +538,14 @@ export default function HolographicCore3D() {
       <SacredGeometry active={anyActive} speed={speedMult} />
       <CoreSphere     active={anyActive} speed={speedMult} />
 
-      <ConnectionLines />
-      <PulseWave trigger={nearTxCount} />
+      {/* Orbital system with 3D tilt + slow rotation */}
+      <OrbitalSystem
+        speedMult={speedMult}
+        selectedAgent={selectedAgent}
+        onAgentSelect={onAgentSelect}
+      />
 
-      {(Object.entries(ORBIT_POSITIONS) as [SubAgent, [number, number, number]][]).map(([name, pos]) => (
-        <AgentNode key={name} name={name} position={pos} />
-      ))}
+      <PulseWave trigger={nearTxCount} />
     </Canvas>
   )
 }

@@ -1,13 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Sidebar from './components/Sidebar.js'
 import Dashboard from './pages/Dashboard.js'
 import CerberusPanel from './pages/CerberusPanel.js'
 import ObservatoryPanel from './pages/ObservatoryPanel.js'
+import ThronePanel from './pages/ThronePanel.js'
+import JudgmentPanel from './pages/JudgmentPanel.js'
+import ArchivesPanel from './pages/ArchivesPanel.js'
 import NotificationToast from './components/NotificationToast.js'
 import { useWebSocket } from './hooks/useWebSocket.js'
 import { useApiStatus } from './hooks/useApiStatus.js'
 import { useHadesStore } from './store/index.js'
+
+// Visual preview lab — dev only, does NOT affect dashboard
+const NeuralLabPage = lazy(() => import('./pages/NeuralLabPage.js'))
 
 function AppShell(): JSX.Element {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -41,6 +47,9 @@ function AppShell(): JSX.Element {
             <Route path="/"            element={<Dashboard />} />
             <Route path="/cerberus"    element={<CerberusPanel />} />
             <Route path="/observatory" element={<ObservatoryPanel />} />
+            <Route path="/throne"      element={<ThronePanel />} />
+            <Route path="/judgment"    element={<JudgmentPanel />} />
+            <Route path="/archives"    element={<ArchivesPanel />} />
           </Routes>
         </div>
       </main>
@@ -53,7 +62,16 @@ function AppShell(): JSX.Element {
 export default function App(): JSX.Element {
   return (
     <BrowserRouter>
-      <AppShell />
+      <Routes>
+        {/* Visual lab — full-screen, no sidebar */}
+        <Route path="/lab" element={
+          <Suspense fallback={<div style={{ background: '#000408', height: '100vh' }} />}>
+            <NeuralLabPage />
+          </Suspense>
+        } />
+        {/* Main app shell */}
+        <Route path="/*" element={<AppShell />} />
+      </Routes>
     </BrowserRouter>
   )
 }

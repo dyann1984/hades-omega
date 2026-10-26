@@ -3,8 +3,11 @@ import clsx from 'clsx'
 import { useHadesStore } from '../store/index.js'
 
 const NAV_ITEMS = [
-  { path: '/',            icon: '⊛', label: 'Dashboard',   shortLabel: 'HQ'   },
+  { path: '/',            icon: '⊛', label: 'Pantheon',    shortLabel: 'HQ'   },
+  { path: '/throne',      icon: '✦', label: 'Throne',      shortLabel: 'THR'  },
   { path: '/cerberus',    icon: '⚔', label: 'Cerberus',    shortLabel: 'CRB'  },
+  { path: '/judgment',    icon: '⚖', label: 'Judgment',    shortLabel: 'JDG'  },
+  { path: '/archives',    icon: '▤', label: 'Archives',    shortLabel: 'ARC'  },
   { path: '/observatory', icon: '◎', label: 'Observatory', shortLabel: 'OBS'  },
 ]
 

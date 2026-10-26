@@ -3,16 +3,18 @@ import { motion, AnimatePresence } from 'framer-motion'
 import HolographicCore from '../components/HolographicCore.js'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName, AgentState, AuditRecord, NEARTx, Mission, MissionTask } from '../store/index.js'
+import type { SubAgent } from '../components/HolographicCore3D.js'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
-const AGENT_NAMES: AgentName[] = ['HADES', 'CHARON', 'PERSEPHONE', 'MINOS', 'ELYSIUM', 'TARTARUS']
+const AGENT_NAMES: AgentName[] = ['HADES', 'CHARON', 'PERSEPHONE', 'MINOS', 'CERBERUS', 'ELYSIUM', 'TARTARUS']
 
 const AGENT_META: Record<AgentName, { role: string; symbol: string }> = {
   HADES:      { role: 'Orquestador Central',       symbol: '⬡' },
   CHARON:     { role: 'Compras & Proveedores',     symbol: '⚡' },
   PERSEPHONE: { role: 'Finanzas & Presupuesto',    symbol: '◈' },
   MINOS:      { role: 'Validación & Políticas',    symbol: '⚖' },
+  CERBERUS:   { role: 'Políticas & Auditoría',     symbol: '◉' },
   ELYSIUM:    { role: 'Planificación Táctica',     symbol: '◎' },
   TARTARUS:   { role: 'Seguridad & Anomalías',     symbol: '▲' },
 }
@@ -189,9 +191,94 @@ function AgentsPanel({ agents }: { agents: Record<AgentName, AgentState> }): JSX
   )
 }
 
+// ─── AGENT DETAIL OVERLAY ────────────────────────────────────────────────────
+
+const AGENT_ROLES: Record<AgentName, string> = {
+  HADES:      'Orquestador Central',
+  CHARON:     'Compras & Proveedores',
+  PERSEPHONE: 'Finanzas & Presupuesto',
+  MINOS:      'Validación & Políticas',
+  CERBERUS:   'Políticas & Auditoría',
+  ELYSIUM:    'Planificación Táctica',
+  TARTARUS:   'Seguridad & Anomalías',
+}
+
+function AgentDetailOverlay({
+  agentName,
+  onClose,
+  auditRecords,
+}: {
+  agentName: SubAgent
+  onClose: () => void
+  auditRecords: AuditRecord[]
+}): JSX.Element {
+  const agent  = useHadesStore(s => s.agents[agentName])
+  const active = agent?.status !== 'IDLE'
+  const recentRecords = auditRecords.filter(r => r.agentName === agentName).slice(0, 4)
+
+  const statusColor = agent?.status === 'ERROR' ? 'text-deny'
+    : agent?.status === 'WAITING'   ? 'text-escalate'
+    : active                         ? 'text-electric'
+    : 'text-gray-600'
+
+  const STATUS_LABELS: Record<string, string> = {
+    IDLE: 'INACTIVO', THINKING: 'ANALIZANDO', EXECUTING: 'EJECUTANDO',
+    WAITING: 'ESPERANDO', ERROR: 'ERROR', SUSPENDED: 'SUSPENDIDO',
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 16 }}
+      className="absolute bottom-0 right-0 w-52 m-3 bg-[#0D0D18] border border-electric/25 rounded-lg shadow-2xl z-10"
+    >
+      <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between">
+        <span className="font-mono text-[11px] text-electric font-bold">{agentName}</span>
+        <button onClick={onClose} className="text-gray-600 hover:text-gray-400 text-xs">✕</button>
+      </div>
+      <div className="px-3 py-2.5 flex flex-col gap-2">
+        <p className="text-[10px] text-gray-500">{AGENT_ROLES[agentName]}</p>
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-electric animate-pulse' : 'bg-gray-700'}`} />
+          <span className={`font-mono text-[10px] ${statusColor}`}>{STATUS_LABELS[agent?.status ?? 'IDLE']}</span>
+        </div>
+        {active && agent?.currentTask && (
+          <p className="text-[10px] text-electric/70 leading-snug">{agent.currentTask}</p>
+        )}
+        {recentRecords.length > 0 && (
+          <div className="border-t border-white/5 pt-2 flex flex-col gap-1.5">
+            <p className="font-mono text-[9px] text-gray-600 tracking-widest">ÚLTIMAS DECISIONES</p>
+            {recentRecords.map(r => (
+              <div key={r.id} className="flex items-center gap-1.5">
+                <span className={`font-mono text-[8px] px-1 rounded ${
+                  r.guardDecision === 'PERMIT' ? 'bg-permit/20 text-permit' :
+                  r.guardDecision === 'DENY'   ? 'bg-deny/20 text-deny' :
+                  'bg-escalate/20 text-escalate'
+                }`}>{r.guardDecision}</span>
+                <span className="text-[9px] text-gray-600 truncate">{r.operationType}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
 // ─── CORE PANEL ──────────────────────────────────────────────────────────────
 
-function CorePanel({ anyActive }: { anyActive: boolean }): JSX.Element {
+function CorePanel({
+  anyActive,
+  selectedAgent,
+  onAgentSelect,
+  auditRecords,
+}: {
+  anyActive: boolean
+  selectedAgent: SubAgent | null
+  onAgentSelect: (name: SubAgent) => void
+  auditRecords: AuditRecord[]
+}): JSX.Element {
   return (
     <div className="hades-card rounded-lg overflow-hidden flex flex-col">
       {/* Header */}
@@ -200,9 +287,14 @@ function CorePanel({ anyActive }: { anyActive: boolean }): JSX.Element {
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${anyActive ? 'bg-gold animate-pulse' : 'bg-gray-700'}`} />
           <span className="font-mono text-[12px] font-bold text-gray-300 tracking-[0.2em]">HADES CORE</span>
         </div>
-        <span className={`font-mono text-[10px] tracking-wider ${anyActive ? 'text-electric animate-pulse' : 'text-gray-600'}`}>
-          {anyActive ? '◉ PROCESANDO MISIÓN' : '○ EN ESPERA'}
-        </span>
+        <div className="flex items-center gap-2">
+          {selectedAgent && (
+            <span className="font-mono text-[10px] text-electric">⬡ {selectedAgent}</span>
+          )}
+          <span className={`font-mono text-[10px] tracking-wider ${anyActive ? 'text-electric animate-pulse' : 'text-gray-600'}`}>
+            {anyActive ? '◉ PROCESANDO' : '○ EN ESPERA'}
+          </span>
+        </div>
       </div>
 
       {/* 3D holographic core — tall container */}
@@ -212,9 +304,9 @@ function CorePanel({ anyActive }: { anyActive: boolean }): JSX.Element {
           background: 'radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0,212,255,0.045) 0%, rgba(255,215,0,0.02) 35%, rgba(10,10,15,0) 70%)',
         }}
       >
-        <HolographicCore />
+        <HolographicCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} />
 
-        {/* Grid — masked so it appears at edges, invisible at center */}
+        {/* Grid lines — masked */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -228,14 +320,33 @@ function CorePanel({ anyActive }: { anyActive: boolean }): JSX.Element {
           }}
         />
 
-        {/* Corner accent brackets */}
+        {/* Corner brackets */}
         <div className="absolute top-3 left-3 w-5 h-5 border-t-2 border-l-2 border-electric/25 pointer-events-none rounded-tl" />
         <div className="absolute top-3 right-3 w-5 h-5 border-t-2 border-r-2 border-electric/25 pointer-events-none rounded-tr" />
         <div className="absolute bottom-3 left-3 w-5 h-5 border-b-2 border-l-2 border-electric/25 pointer-events-none rounded-bl" />
         <div className="absolute bottom-3 right-3 w-5 h-5 border-b-2 border-r-2 border-electric/25 pointer-events-none rounded-br" />
+
+        {/* Hint label */}
+        {!selectedAgent && (
+          <p className="absolute bottom-4 left-1/2 -translate-x-1/2 font-mono text-[9px] text-gray-700 pointer-events-none whitespace-nowrap">
+            Haz clic en un agente para ver su estado
+          </p>
+        )}
+
+        {/* Agent detail overlay */}
+        <AnimatePresence>
+          {selectedAgent && (
+            <AgentDetailOverlay
+              key={selectedAgent}
+              agentName={selectedAgent}
+              onClose={() => onAgentSelect(selectedAgent)}
+              auditRecords={auditRecords}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Footer — 3-column operational status */}
+      {/* Footer */}
       <div className="px-4 py-3 border-t border-white/5 grid grid-cols-3 gap-0 text-center">
         <div className="flex flex-col gap-0.5">
           <p className="font-mono text-[9px] text-gray-600 tracking-widest uppercase">Sistema</p>
@@ -705,10 +816,11 @@ interface FormState {
 export default function Dashboard(): JSX.Element {
   const { agents, missions, auditRecords, nearTxs, wsConnected, serverlessMode, apiReady } = useHadesStore()
 
-  const [phase,        setPhase]        = useState<'idle' | 'form' | 'executing' | 'done'>('idle')
-  const [form,         setForm]         = useState<FormState>({ title: '', description: '', budget: '50000' })
-  const [animProgress, setAnimProgress] = useState(0)
+  const [phase,         setPhase]         = useState<'idle' | 'form' | 'executing' | 'done'>('idle')
+  const [form,          setForm]          = useState<FormState>({ title: '', description: '', budget: '50000' })
+  const [animProgress,  setAnimProgress]  = useState(0)
   const [lastMissionId, setLastMissionId] = useState<string | null>(null)
+  const [selectedAgent, setSelectedAgent] = useState<SubAgent | null>(null)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   const activeAgentCount = Object.values(agents).filter(a => a.status !== 'IDLE').length
@@ -820,7 +932,12 @@ export default function Dashboard(): JSX.Element {
       {/* 3-column grid: Agents | Core | Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_260px] gap-4">
         <AgentsPanel agents={agents} />
-        <CorePanel anyActive={anyActive} />
+        <CorePanel
+          anyActive={anyActive}
+          selectedAgent={selectedAgent}
+          onAgentSelect={name => setSelectedAgent(prev => prev === name ? null : name)}
+          auditRecords={auditRecords}
+        />
         <ActivityPanel
           permits={permits}
           denies={denies}
