@@ -92,5 +92,9 @@ ehthumbs.db
 # ── Vercel ────────────────────────────────────────────────────
 .vercel
 
+# ── pnpm lock override ───────────────────────────────────────
+# pnpm-lock.yaml is tracked; .npmrc overrides are local
+.npmrc.local
+
 # ── Archivos de auditoría local (no son secretos pero son grandes)
 # audit-export-*.json

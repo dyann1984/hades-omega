@@ -1,0 +1,15 @@
+{
+  "name": "hades-omega",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enterprise AI Agent Operating System — NEAR Hackathon 2026",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @hades/api dev\" \"pnpm --filter @hades/frontend dev\"",
+    "build": "pnpm --filter @hades/api build && pnpm --filter @hades/frontend build",
+    "start": "pnpm --filter @hades/api start",
+    "test": "pnpm --filter @hades/api test"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
