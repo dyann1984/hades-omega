@@ -38,6 +38,12 @@ if not defined FRONTEND_PORT (
   exit /b 1
 )
 set "ALLOWED_ORIGIN=http://127.0.0.1:%FRONTEND_PORT%,http://localhost:%FRONTEND_PORT%"
+for /f "usebackq delims=" %%T in (`node.exe scripts\create-dev-token.cjs`) do set "VITE_DEV_TOKEN=%%T"
+if not defined VITE_DEV_TOKEN (
+  echo [ERROR] No se pudo generar el token local de desarrollo.
+  pause
+  exit /b 1
+)
 
 > "%ENV_FILE%" (
   echo NODE_ENV=development
@@ -49,6 +55,7 @@ set "ALLOWED_ORIGIN=http://127.0.0.1:%FRONTEND_PORT%,http://localhost:%FRONTEND_
   echo NEAR_EXECUTION_MODE=simulation
   echo VITE_API_URL=http://127.0.0.1:%PORT%
   echo VITE_WS_URL=ws://127.0.0.1:%PORT%/ws
+  echo VITE_DEV_TOKEN=%VITE_DEV_TOKEN%
 )
 
 call :api_ready

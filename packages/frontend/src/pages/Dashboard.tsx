@@ -4,6 +4,7 @@ import HolographicCore from '../components/HolographicCore.js'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName, AgentState, AuditRecord, NEARTx, Mission, MissionTask } from '../store/index.js'
 import type { SubAgent } from '../components/HolographicCore3D.js'
+import { apiHeaders, apiPath } from '../lib/api.js'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
@@ -871,11 +872,9 @@ export default function Dashboard(): JSX.Element {
     startStageAnimation()
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const apiBase = (import.meta as any).env?.VITE_API_URL ?? ''
-      const res = await fetch(`${apiBase}/api/v1/missions`, {
+      const res = await fetch(apiPath('/api/v1/missions'), {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: apiHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({
           title:       form.title,
           description: form.description || `Misión de evaluación: ${form.title}`,

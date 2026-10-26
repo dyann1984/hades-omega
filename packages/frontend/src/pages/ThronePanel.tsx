@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName, Mission } from '../store/index.js'
+import { apiHeaders, apiPath } from '../lib/api.js'
 
 const AGENT_META: Record<AgentName, { role: string; symbol: string }> = {
   HADES:      { role: 'Orquestador',      symbol: '⬡' },
@@ -73,10 +74,9 @@ export default function ThronePanel(): JSX.Element {
     addLog('⬡ HADES — Analizando y distribuyendo tareas…', 'agent')
 
     try {
-      const apiBase = (import.meta as any).env?.VITE_API_URL ?? ''
-      const res = await fetch(`${apiBase}/api/v1/missions`, {
+      const res = await fetch(apiPath('/api/v1/missions'), {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: apiHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({ title, description: description || title, budgetLimit: Number(budget) }),
       })
       const json = await res.json()
