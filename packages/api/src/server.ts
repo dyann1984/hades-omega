@@ -13,8 +13,9 @@ const HOST = process.env['HOST'] ?? '0.0.0.0'
 const app = Fastify({ logger: { level: 'info' } })
 
 async function bootstrap(): Promise<void> {
+  const allowedOrigin = process.env['ALLOWED_ORIGIN']
   await app.register(cors, {
-    origin:  process.env['NODE_ENV'] === 'production' ? false : true,
+    origin: allowedOrigin ? allowedOrigin.split(',').map(s => s.trim()) : true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   })
 

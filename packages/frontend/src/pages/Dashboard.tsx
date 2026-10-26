@@ -29,7 +29,8 @@ export default function Dashboard(): JSX.Element {
     if (!form.title.trim()) return
     setLoading(true)
     try {
-      const res = await fetch('/api/v1/missions', {
+      const apiBase = (import.meta as any).env?.VITE_API_URL ?? ''
+      const res = await fetch(`${apiBase}/api/v1/missions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
