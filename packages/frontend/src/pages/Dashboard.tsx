@@ -42,17 +42,19 @@ export default function Dashboard(): JSX.Element {
       const json = await res.json()
       if (json.success) {
         const m = json.data
-        useHadesStore.getState().addMission({
-          id:          m.id,
-          title:       m.title,
-          description: m.description,
-          status:      m.status,
-          progress:    0,
-          createdAt:   m.createdAt,
-          tasks:       m.tasks?.map((t: any) => ({
-            id: t.id, title: t.title, assignedTo: t.assignedTo, status: t.status,
-          })) ?? [],
-        })
+        const tasks = m.tasks?.map((t: any) => ({
+          id: t.id, title: t.title, assignedTo: t.assignedTo, status: t.status,
+        })) ?? []
+        const done = tasks.filter((t: any) => t.status === 'EXECUTED' || t.status === 'FAILED').length
+        const progress = tasks.length ? Math.round((done / tasks.length) * 100) : 0
+
+        const store = useHadesStore.getState()
+        store.addMission({ id: m.id, title: m.title, description: m.description, status: m.status, progress, createdAt: m.createdAt, tasks })
+
+        // Populate CERBERUS audit log and NEAR txs from synchronous API response
+        json.auditRecords?.forEach((r: any) => store.addAuditRecord(r))
+        json.nearTxs?.forEach((tx: any) => store.addNearTx({ auditId: tx.auditId, txHash: tx.txHash, explorerUrl: tx.explorerUrl }))
+
         setShowForm(false)
         setForm({ title: '', description: '', budget: '50000' })
       }
