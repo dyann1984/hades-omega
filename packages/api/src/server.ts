@@ -21,13 +21,15 @@ async function bootstrap(): Promise<void> {
 
   await app.register(websocketPlugin)
 
-  // Health check
-  app.get('/health', async () => ({
+  const healthResponse = async () => ({
     status:    'ok',
     version:   '0.3.0',
+    mode:      'fastify-dev',
     timestamp: Date.now(),
     ws:        { clients: getConnectedClientsCount() },
-  }))
+  })
+  app.get('/health',     healthResponse)
+  app.get('/api/health', healthResponse)
 
   // API routes
   await app.register(async (api) => {

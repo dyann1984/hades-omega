@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { hades } from '../runtime.js'
+import { hades, audit, near } from '../runtime.js'
 
 export async function missionRoutes(app: FastifyInstance): Promise<void> {
   app.post('/missions', async (req, reply) => {
@@ -7,8 +7,10 @@ export async function missionRoutes(app: FastifyInstance): Promise<void> {
     if (!title || !description) {
       return reply.code(400).send(err('VALIDATION_ERROR', 'title y description son requeridos'))
     }
-    const mission = await hades.createMission(title, description, budgetLimit ?? 50000)
-    return ok(mission)
+    const mission      = await hades.createMission(title, description, budgetLimit ?? 50000)
+    const auditRecords = audit.query({})
+    const nearTxs      = near.getAllTransactions()
+    return { ...ok(mission), auditRecords, nearTxs }
   })
 
   app.get('/missions', async () => {

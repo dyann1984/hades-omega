@@ -2,7 +2,13 @@ import { useEffect, useRef } from 'react'
 import { useHadesStore } from '../store/index.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? `ws://${window.location.hostname}:3001/ws`
+const VITE_WS_URL = (import.meta as any).env?.VITE_WS_URL as string | undefined
+const IS_LOCAL = typeof window !== 'undefined'
+  && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+
+// Only attempt WS if on localhost or an explicit WS URL is configured
+const SHOULD_CONNECT = IS_LOCAL || !!VITE_WS_URL
+const WS_URL = VITE_WS_URL ?? 'ws://localhost:3001/ws'
 
 export function useWebSocket(): void {
   const store     = useHadesStore()
@@ -10,6 +16,11 @@ export function useWebSocket(): void {
   const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    if (!SHOULD_CONNECT) {
+      // Serverless mode — no persistent WS server available (Vercel)
+      useHadesStore.getState().setServerlessMode(true)
+      return
+    }
     connect()
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)

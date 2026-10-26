@@ -6,11 +6,13 @@ import CerberusPanel from './pages/CerberusPanel.js'
 import ObservatoryPanel from './pages/ObservatoryPanel.js'
 import NotificationToast from './components/NotificationToast.js'
 import { useWebSocket } from './hooks/useWebSocket.js'
+import { useApiStatus } from './hooks/useApiStatus.js'
 import { useHadesStore } from './store/index.js'
 
 function AppShell(): JSX.Element {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   useWebSocket()
+  useApiStatus()
 
   useEffect(() => {
     const saved = localStorage.getItem('hades-theme') as 'dark' | 'light' | null

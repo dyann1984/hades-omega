@@ -70,7 +70,9 @@ export interface HadesStore {
   // NEAR
   nearTxs:      NEARTx[]
   // Connection
-  wsConnected:  boolean
+  wsConnected:   boolean
+  serverlessMode: boolean
+  apiReady:       boolean | null
   // Theme
   theme:        'dark' | 'light'
   // Notifications
@@ -84,7 +86,9 @@ export interface HadesStore {
   addEscalation:  (esc: EscalationRequest) => void
   removeEscalation: (id: string) => void
   addNearTx:      (tx: NEARTx) => void
-  setWsConnected: (v: boolean) => void
+  setWsConnected:    (v: boolean) => void
+  setServerlessMode: (v: boolean) => void
+  setApiReady:       (v: boolean | null) => void
   setTheme:       (t: 'dark' | 'light') => void
   addNotification: (type: 'info' | 'success' | 'warning' | 'error', message: string) => void
   removeNotification: (id: string) => void
@@ -107,6 +111,8 @@ export const useHadesStore = create<HadesStore>((set, get) => ({
   escalations:    [],
   nearTxs:        [],
   wsConnected:    false,
+  serverlessMode: false,
+  apiReady:       null,
   theme:          'dark',
   notifications:  [],
 
@@ -146,7 +152,9 @@ export const useHadesStore = create<HadesStore>((set, get) => ({
     set(s => ({ nearTxs: [tx, ...s.nearTxs].slice(0, 50) }))
   },
 
-  setWsConnected: v => set({ wsConnected: v }),
+  setWsConnected:    v => set({ wsConnected: v }),
+  setServerlessMode: v => set({ serverlessMode: v }),
+  setApiReady:       v => set({ apiReady: v }),
 
   setTheme: t => {
     set({ theme: t })
