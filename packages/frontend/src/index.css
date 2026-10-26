@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --obsidian: #0A0A0F;
+  --electric: #00D4FF;
+  --golden: #FFD700;
+  --ruby: #FF4D6D;
+  --emerald: #00FF88;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--obsidian);
+  color: #E8E8F0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0F0F1A; }
+::-webkit-scrollbar-thumb { background: #00D4FF22; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #00D4FF44; }
+
+/* Glass card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+/* Status indicators */
+.status-idle      { background: #1a1a24; color: #6B7280; border-color: #2a2a38; }
+.status-thinking  { background: #1A1A3E; color: #818CF8; border-color: #818CF833; }
+.status-executing { background: #0a2030; color: #00D4FF; border-color: #00D4FF33; }
+.status-waiting   { background: #2E2A0A; color: #FFD700; border-color: #FFD70033; }
+.status-error     { background: #2e0a12; color: #FF4D6D; border-color: #FF4D6D33; }
+.status-completed { background: #0A2218; color: #00FF88; border-color: #00FF8833; }
+.status-suspended { background: #2E1A0A; color: #FF9F43; border-color: #FF9F4333; }
+
+/* Decision badges */
+.decision-permit   { color: #00FF88; border-color: #00FF8844; background: #00FF8811; }
+.decision-deny     { color: #FF4D6D; border-color: #FF4D6D44; background: #FF4D6D11; }
+.decision-escalate { color: #FFD700; border-color: #FFD70044; background: #FFD70011; }
+
+/* NEAR badge */
+.near-badge {
+  background: linear-gradient(135deg, #0F2A3E 0%, #0A1A2E 100%);
+  border: 1px solid #00D4FF22;
+}
+
+/* Pipeline connector */
+.pipeline-connector {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #00D4FF22, transparent);
+  flex: 1;
+}
+
+/* Mobile safe area */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .bottom-tab-bar {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
