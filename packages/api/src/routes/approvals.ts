@@ -3,7 +3,7 @@ import type { JsonRepository } from '../persistence.js'
 import { requireRole } from '../security.js'
 
 export async function approvalRoutes(app: FastifyInstance, repository: JsonRepository): Promise<void> {
-  app.get('/approvals', async () => ({ success: true, data: repository.listApprovals() }))
+  app.get('/approvals', async req => { requireRole(req, ['ADMIN']); return { success: true, data: repository.listApprovals() } })
   app.post('/approvals/:escalationId/decision', async (req, reply) => {
     requireRole(req, ['ADMIN'])
     const body = req.body as { status?: string; justification?: string }

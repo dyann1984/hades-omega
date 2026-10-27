@@ -32,11 +32,12 @@ export class HadesOrchestrator extends AgentBase {
     this.subAgents = agents
   }
 
-  async createMission(title: string, description: string, budgetLimit = 50000): Promise<Mission> {
+  async createMission(title: string, description: string, budgetLimit = 50000, ownerId?: string): Promise<Mission> {
     this.setStatus('THINKING', `Procesando misión: ${title}`)
 
     const mission: Mission = {
       id:          uuidv4(),
+      ownerId,
       title,
       description,
       context: {
@@ -220,18 +221,17 @@ export class HadesOrchestrator extends AgentBase {
     const success = mission.tasks.filter(t => t.status === 'EXECUTED').length
     const failed  = mission.tasks.filter(t => t.status === 'FAILED').length
     const pending = mission.tasks.filter(t => !['EXECUTED', 'FAILED'].includes(t.status)).length
-    const stats   = this.deps.audit.getStats()
 
     mission.report = {
       missionId:    mission.id,
       summary:      pending
         ? `Misión incompleta: ${pending} tarea(s) pendientes o suspendidas; no se autorizaron dependencias.`
-        : `Misión ${failed ? 'fallida' : 'completada'}: ${success}/${mission.tasks.length} tareas exitosas. ${stats.nearTxCount} transacciones NEAR registradas.`,
+        : `Misión ${failed ? 'fallida' : 'completada'}: ${success}/${mission.tasks.length} tareas exitosas.`,
       tasksTotal:   mission.tasks.length,
       tasksSuccess: success,
       tasksFailed:  failed,
-      decisions:    Object.entries(stats.byOutcome).map(([o, c]) => ({ outcome: o as any, count: c })),
-      nearTxCount:  stats.nearTxCount,
+      decisions:    [],
+      nearTxCount:  0,
       generatedAt:  Date.now(),
     }
 

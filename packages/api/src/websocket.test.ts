@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bus } from '@hades/core'
 import { registerSecurity } from './security.js'
 import { setupWebSocket } from './websocket.js'
+import type { JsonRepository } from './persistence.js'
 
 const app = Fastify()
 let url: string
@@ -14,7 +15,7 @@ const closed = (ws: WebSocket) => new Promise<number>(resolve => ws.once('close'
 async function connect() { const ws = new WebSocket(url); await new Promise<void>((resolve, reject) => { ws.once('open', () => resolve()); ws.once('error', reject) }); return ws }
 beforeAll(async () => {
   process.env.JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'
-  await app.register(websocketPlugin); await registerSecurity(app); setupWebSocket(app)
+  await app.register(websocketPlugin); await registerSecurity(app); setupWebSocket(app, { getMission: (id: string) => id === 'mission-a' ? { ownerId: 'a' } : id === 'mission-b' ? { ownerId: 'b' } : undefined } as JsonRepository)
   const address = await app.listen({ host: '127.0.0.1', port: 0 }); url = address.replace('http:', 'ws:') + '/ws'
 })
 afterAll(async () => { await app.close(); process.env.JWT_SECRET = oldSecret })
@@ -22,6 +23,16 @@ describe('WebSocket security', () => {
   it('rejects invalid authentication and malformed messages', async () => {
     const ws = await connect(); const done = closed(ws); ws.send(JSON.stringify({ type: 'AUTH', token: 'bad' })); expect(await done).toBe(1008)
     const ws2 = await connect(); const done2 = closed(ws2); ws2.send('{'); expect(await done2).toBe(1008)
+  })
+  it('delivers mission events only to the owner or an administrator', async () => {
+    const a = await connect(); const b = await connect()
+    for (const [ws, sub] of [[a,'a'],[b,'b']] as const) { const reply=next(ws); ws.send(JSON.stringify({type:'AUTH',token:app.jwt.sign({sub,roles:['OPERATOR'],exp:Math.floor(Date.now()/1000)+60})})); await reply }
+    const seenA: string[]=[]; const seenB: string[]=[]
+    a.on('message', d => { const x=JSON.parse(d.toString()); if(x.type==='MISSION_PROGRESS') seenA.push(x.payload.missionId) })
+    b.on('message', d => { const x=JSON.parse(d.toString()); if(x.type==='MISSION_PROGRESS') seenB.push(x.payload.missionId) })
+    for (const missionId of ['mission-a','mission-b']) bus.publish({type:'MISSION_PROGRESS',payload:{missionId,status:'IN_PROGRESS',progress:1}})
+    const pa=next(a), pb=next(b); a.send(JSON.stringify({type:'PING'})); b.send(JSON.stringify({type:'PING'})); await Promise.all([pa,pb]);
+    expect(seenA).toEqual(['mission-a']); expect(seenB).toEqual(['mission-b']); a.close(); b.close()
   })
   it('limits sensitive events to administrators', async () => {
     const viewer = await connect(); const admin = await connect()

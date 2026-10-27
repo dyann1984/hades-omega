@@ -10,7 +10,10 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' })
   app.addHook('preHandler', async (request, reply) => {
     if (!request.url.startsWith('/api/v1')) return
-    try { await request.jwtVerify() } catch { return reply.code(401).send({ success: false, error: { code: 'UNAUTHENTICATED' } }) }
+    try {
+      const claims = await request.jwtVerify<{ sub?: unknown; roles?: unknown; exp?: unknown }>()
+      if (typeof claims.sub !== 'string' || !claims.sub.trim() || !Array.isArray(claims.roles) || !claims.roles.some(r => ['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'].includes(r)) || typeof claims.exp !== 'number' || claims.exp <= Date.now() / 1000) throw new Error('Invalid claims')
+    } catch { return reply.code(401).send({ success: false, error: { code: 'UNAUTHENTICATED' } }) }
   })
 }
 export function requireRole(request: FastifyRequest, roles: Role[]): void {

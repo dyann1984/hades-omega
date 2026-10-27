@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify'
+import { requireRole } from '../security.js'
 import { guard, audit, near } from '../runtime.js'
 import type { AuditFilter, GUARDOutcome, AgentName } from '@hades/core'
 
 export async function cerberusRoutes(app: FastifyInstance): Promise<void> {
+  app.addHook('preHandler', async req => requireRole(req, ['ADMIN']))
   app.get('/cerberus/status', async () => {
     return ok({
       active:          true,

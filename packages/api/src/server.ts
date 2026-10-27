@@ -42,12 +42,12 @@ async function bootstrap(): Promise<void> {
   await app.register(async (api) => {
     await missionRoutes(api, repository)
     await agentRoutes(api)
-    await cerberusRoutes(api)
+    await api.register(cerberusRoutes)
     await approvalRoutes(api, repository)
   }, { prefix: '/api/v1' })
 
   // WebSocket
-  setupWebSocket(app)
+  setupWebSocket(app, repository)
 
   // Heartbeat every 30s
   setInterval(() => {

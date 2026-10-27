@@ -83,6 +83,7 @@ export interface MissionReport {
 }
 
 export interface Mission {
+  ownerId?: string // Legacy records have no owner and are restricted to administrators.
   id:          ID
   title:       string
   description: string

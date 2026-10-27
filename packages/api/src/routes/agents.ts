@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { requireRole } from '../security.js'
 import { hades, charon, persephone, minos, elysium, tartarus } from '../runtime.js'
 
 
@@ -12,7 +13,8 @@ const agentMap = {
 } as const
 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/agents', async () => {
+  app.get('/agents', async req => {
+    requireRole(req, ['ADMIN'])
     const agents = Object.entries(agentMap).map(([name, agent]) => ({
       name,
       id:          agent.id,
@@ -23,6 +25,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   })
 
   app.get('/agents/:name', async (req, reply) => {
+    requireRole(req, ['ADMIN'])
     const { name } = req.params as { name: string }
     const agent = agentMap[name.toUpperCase() as keyof typeof agentMap]
     if (!agent) return reply.code(404).send(err('AGENT_NOT_FOUND', `Agente ${name} no encontrado`))

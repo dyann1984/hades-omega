@@ -3,13 +3,14 @@ import { randomUUID } from 'node:crypto'
 import { bus } from '@hades/core'
 import type { ServerEvent } from '@hades/core'
 import type { WebSocket } from 'ws'
+import type { JsonRepository } from './persistence.js'
 
 interface Claims { sub?: unknown; roles?: unknown; exp?: unknown }
 interface WSClient { socket: WebSocket; token: string }
 const clients = new Map<string, WSClient>()
 const allowedRoles = new Set(['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'])
 
-export function setupWebSocket(app: FastifyInstance): void {
+export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository): void {
   app.get('/ws', { websocket: true }, (socket, request) => {
     const id = randomUUID()
     let token: string | undefined
@@ -40,8 +41,10 @@ export function setupWebSocket(app: FastifyInstance): void {
         unsubscribe = bus.subscribe((event: ServerEvent) => {
           const claims = token && claimsFor(token)
           if (!claims) return reject('session_expired')
-          // Ownership is not modeled yet. Deny all sensitive events to non-admins.
-          if (event.type !== 'SYSTEM_HEARTBEAT' && !(claims.roles as string[]).includes('ADMIN')) return
+          if (event.type !== 'SYSTEM_HEARTBEAT' && !(claims.roles as string[]).includes('ADMIN')) {
+            const missionId = event.type === 'MISSION_PROGRESS' ? event.payload.missionId : event.type === 'TASK_UPDATED' ? event.payload.task.missionId : undefined
+            if (!missionId || !repository || repository.getMission(missionId)?.ownerId !== claims.sub) return
+          }
           if (socket.readyState === 1) socket.send(JSON.stringify(event))
         })
         socket.send(JSON.stringify({ type: 'CONNECTED', clientId: id }))
