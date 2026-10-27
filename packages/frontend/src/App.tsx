@@ -17,8 +17,9 @@ import { useWebSocket } from './hooks/useWebSocket.js'
 import { useApiStatus } from './hooks/useApiStatus.js'
 import { useHadesStore } from './store/index.js'
 
-// Visual preview lab — dev only, does NOT affect dashboard
-const NeuralLabPage = lazy(() => import('./pages/NeuralLabPage.js'))
+// Visual preview labs — dev only, do NOT affect dashboard
+const NeuralLabPage   = lazy(() => import('./pages/NeuralLabPage.js'))
+const SovereignLab    = lazy(() => import('./pages/SovereignLab.js'))
 
 function AppShell(): JSX.Element {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -73,10 +74,15 @@ export default function App(): JSX.Element {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Visual lab — full-screen, no sidebar */}
+        {/* Visual labs — full-screen, no sidebar */}
         <Route path="/lab" element={
           <Suspense fallback={<div style={{ background: '#000408', height: '100vh' }} />}>
             <NeuralLabPage />
+          </Suspense>
+        } />
+        <Route path="/lab/sovereign" element={
+          <Suspense fallback={<div style={{ background: '#05080F', height: '100vh' }} />}>
+            <SovereignLab />
           </Suspense>
         } />
         {/* Main app shell */}
