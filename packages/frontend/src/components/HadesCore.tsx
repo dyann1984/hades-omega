@@ -1,13 +1,12 @@
 /**
- * HadesCore — SOVEREIGN NEURAL INTELLIGENCE CORE v3
+ * HadesCore — SOVEREIGN NEURAL INTELLIGENCE CORE v4
  *
- * Visual system:
- *  - Per-agent accent colors (steel-blue, turquoise, amber, crimson, silver, violet)
- *  - 3D inclined orbits: unique orbital plane per agent → complex 3D constellation, not flat solar system
- *  - CoreHalo: 3 translucent energy field spheres that breathe with the core
- *  - CoreParticles: 3 concentric rotating particle bands (inner=blue, mid=cyan, outer=gold)
- *  - Neural filaments: dual per-agent lines colored to match agent accent + dense particle flow
- *  - Dominant crystal core (heightBase 0.68) — sovereign architectural mass
+ * Performance fix: shared materials per crystal cluster (ONE useFrame per cluster, not per shard).
+ * Visual focus: obsidian material, prominent gold edges, dominant core, tight composition.
+ *
+ * Removed:  CoreParticles, CoreHalo, per-shard useFrame, offset filament (were hurting FPS)
+ * Added:    MeshStandardMaterial obsidian (no transmission), shared edge/body materials per cluster
+ * Changed:  Core scale +32% (heightBase 0.90), tighter orbit (2.5-3.0), closer camera
  */
 
 import { useRef, useMemo, useState, useCallback, CSSProperties } from 'react'
@@ -24,15 +23,15 @@ export type HadesCoreState =
 interface SP { intensity: number; alertFactor: number; speed: number; bloom: number }
 
 const STATES: Record<HadesCoreState, SP> = {
-  IDLE:      { intensity: 0.44, alertFactor: 0,   speed: 0.65, bloom: 0.50 },
-  THINKING:  { intensity: 0.72, alertFactor: 0,   speed: 1.10, bloom: 0.65 },
-  EXECUTING: { intensity: 1.00, alertFactor: 0,   speed: 1.55, bloom: 0.85 },
-  WAITING:   { intensity: 0.26, alertFactor: 0,   speed: 0.40, bloom: 0.30 },
-  ALERT:     { intensity: 0.92, alertFactor: 1.0, speed: 1.40, bloom: 0.95 },
+  IDLE:      { intensity: 0.44, alertFactor: 0,   speed: 0.65, bloom: 0.52 },
+  THINKING:  { intensity: 0.72, alertFactor: 0,   speed: 1.10, bloom: 0.68 },
+  EXECUTING: { intensity: 1.00, alertFactor: 0,   speed: 1.55, bloom: 0.88 },
+  WAITING:   { intensity: 0.26, alertFactor: 0,   speed: 0.40, bloom: 0.28 },
+  ALERT:     { intensity: 0.92, alertFactor: 1.0, speed: 1.40, bloom: 0.98 },
   COMPLETED: { intensity: 0.65, alertFactor: 0,   speed: 0.85, bloom: 0.58 },
 }
 
-// ─── Shared Geometries ────────────────────────────────────────────────────────
+// ─── Shared Geometries (module-level) ─────────────────────────────────────────
 
 const OCT_GEO   = new THREE.OctahedronGeometry(1, 0)
 const OCT_EDGES = new THREE.EdgesGeometry(OCT_GEO, 5)
@@ -41,7 +40,6 @@ const OCT_EDGES = new THREE.EdgesGeometry(OCT_GEO, 5)
 
 interface ShardDef { r: number; a: number; hs: number; t: number; roll: number }
 
-// HADES CORE — 12 monumental spires
 const CORE_SHARDS: ShardDef[] = [
   { r:0.00, a:  0, hs:2.80, t: 0, roll:  0 },
   { r:0.32, a: 22, hs:2.25, t: 6, roll: 12 },
@@ -80,144 +78,58 @@ const SHARDS_ANGULAR: ShardDef[] = [
 const toRad = (d: number) => d * Math.PI / 180
 
 // ─── Agent Configs ────────────────────────────────────────────────────────────
-// Each agent orbits on a uniquely TILTED plane (orbInc + orbLng) — not a flat solar system.
-// 3D orbital mechanics: longitude of ascending node (orbLng) + inclination (orbInc)
-// give each agent a distinct orbital plane in 3D space.
 
 interface AgentCfg {
   id:         string
   name:       string
   role:       string
-  angle:      number     // orbit start angle °
-  orbitR:     number     // orbit radius
-  orbitSpd:   number     // orbit speed rad/s (very slow: 0.04-0.06 — elegant drift)
-  orbInc:     number     // orbital inclination ° (15-30° — tilted planes)
-  orbLng:     number     // longitude of ascending node ° (spread at 60° intervals)
+  angle:      number
+  orbitR:     number
+  orbitSpd:   number   // very slow: 0.025-0.060 rad/s
+  orbInc:     number   // inclination ° — tilted 3D orbital planes, not flat solar-system
+  orbLng:     number   // longitude of ascending node ° — spreads planes 60° apart
   shards:     ShardDef[]
-  accentHex:  number     // edge/glow color — gives each agent its identity
-  emissiveHex:number     // body core sphere color
+  accentHex:  number
+  emissiveHex:number
   status:     'active' | 'standby' | 'alert'
 }
 
 export const AGENTS: AgentCfg[] = [
-  {
-    id:'cerberus', name:'CERBERUS', role:'Seguridad & Políticas',
-    angle:  0, orbitR:3.25, orbitSpd:0.055, orbInc:18, orbLng:  0,
-    shards:SHARDS_PRISM,
-    accentHex:0xCC2200, emissiveHex:0x330800,  // deep crimson — guarding / alert
-    status:'active',
-  },
-  {
-    id:'minos', name:'MINOS', role:'Validación & Aprobaciones',
-    angle: 60, orbitR:3.20, orbitSpd:0.045, orbInc:25, orbLng: 60,
-    shards:SHARDS_PRISM,
-    accentHex:0xB8900A, emissiveHex:0x442200,  // muted tech amber — judicial
-    status:'active',
-  },
-  {
-    id:'persephone', name:'PERSEPHONE', role:'Finanzas & Presupuesto',
-    angle:120, orbitR:3.40, orbitSpd:0.040, orbInc:30, orbLng:120,
-    shards:SHARDS_TALL,
-    accentHex:0x00CCBB, emissiveHex:0x004444,  // bright turquoise — prosperity
-    status:'active',
-  },
-  {
-    id:'charon', name:'CHARON', role:'Compras & Proveedores',
-    angle:180, orbitR:3.15, orbitSpd:0.060, orbInc:15, orbLng:180,
-    shards:SHARDS_ANGULAR,
-    accentHex:0x1A9FBB, emissiveHex:0x003355,  // steel blue / dark cyan — transit
-    status:'active',
-  },
-  {
-    id:'elysium', name:'ELYSIUM', role:'Planificación & Resultados',
-    angle:240, orbitR:3.30, orbitSpd:0.035, orbInc:28, orbLng:240,
-    shards:SHARDS_TALL,
-    accentHex:0x88AADD, emissiveHex:0x102040,  // cold silver-blue — clarity
-    status:'active',
-  },
-  {
-    id:'tartarus', name:'TARTARUS', role:'Anomalías & Contención',
-    angle:300, orbitR:3.50, orbitSpd:0.025, orbInc:22, orbLng:300,
-    shards:SHARDS_ANGULAR,
-    accentHex:0x8833BB, emissiveHex:0x1A0033,  // deep violet — containment
-    status:'alert',
-  },
+  { id:'cerberus',   name:'CERBERUS',   role:'Seguridad & Políticas',       angle:  0, orbitR:2.85, orbitSpd:0.055, orbInc:15, orbLng:  0, shards:SHARDS_PRISM,   accentHex:0xCC2200, emissiveHex:0x330800, status:'active'  },
+  { id:'minos',      name:'MINOS',      role:'Validación & Aprobaciones',   angle: 60, orbitR:2.75, orbitSpd:0.045, orbInc:20, orbLng: 60, shards:SHARDS_PRISM,   accentHex:0xB8900A, emissiveHex:0x442200, status:'active'  },
+  { id:'persephone', name:'PERSEPHONE', role:'Finanzas & Presupuesto',      angle:120, orbitR:2.95, orbitSpd:0.040, orbInc:25, orbLng:120, shards:SHARDS_TALL,    accentHex:0x00CCBB, emissiveHex:0x004444, status:'active'  },
+  { id:'charon',     name:'CHARON',     role:'Compras & Proveedores',       angle:180, orbitR:2.70, orbitSpd:0.060, orbInc:12, orbLng:180, shards:SHARDS_ANGULAR, accentHex:0x1A9FBB, emissiveHex:0x003355, status:'active'  },
+  { id:'elysium',    name:'ELYSIUM',    role:'Planificación & Resultados',  angle:240, orbitR:2.80, orbitSpd:0.035, orbInc:22, orbLng:240, shards:SHARDS_TALL,    accentHex:0x88AADD, emissiveHex:0x102040, status:'active'  },
+  { id:'tartarus',   name:'TARTARUS',   role:'Anomalías & Contención',      angle:300, orbitR:3.05, orbitSpd:0.025, orbInc:18, orbLng:300, shards:SHARDS_ANGULAR, accentHex:0x8833BB, emissiveHex:0x1A0033, status:'alert'   },
 ]
 
 // ─── Crystal Shard ────────────────────────────────────────────────────────────
+// Pure geometry — NO useFrame. Accepts shared materials from parent cluster.
+// All shards in a cluster share one bodyMat + one edgeMat → single update point.
 
 interface ShardProps {
-  def:         ShardDef
-  heightBase:  number
-  wScale:      number
-  dScale:      number
-  intensity:   number
-  alertFactor: number
-  paused:      boolean
-  phase:       number
-  accentHex:   number    // per-agent or gold for HADES CORE
+  def:      ShardDef
+  heightBase: number
+  wScale:   number
+  dScale:   number
+  bodyMat:  THREE.MeshStandardMaterial
+  edgeMat:  THREE.LineBasicMaterial
 }
 
-function CrystalShard({ def, heightBase, wScale, dScale, intensity, alertFactor, paused, phase, accentHex }: ShardProps) {
-  const edgeMatRef  = useRef<THREE.LineBasicMaterial>(null)
-  const bodyMatRef  = useRef<THREE.MeshPhysicalMaterial>(null)
-  const accentColor = useMemo(() => new THREE.Color(accentHex), [accentHex])
-
+function CrystalShard({ def, heightBase, wScale, dScale, bodyMat, edgeMat }: ShardProps) {
   const H      = def.hs * heightBase
   const scaleY = H / 2
   const posY   = H / 2
-
-  useFrame(({ clock }) => {
-    if (paused) return
-    const t    = clock.getElapsedTime()
-    const beat = 0.55 + 0.35 * Math.sin(t * 1.1 + phase) * intensity
-
-    if (edgeMatRef.current) {
-      if (alertFactor > 0.1) {
-        edgeMatRef.current.color.setRGB(0.95, 0.45 * beat, 0.02)
-      } else {
-        edgeMatRef.current.color.setRGB(
-          accentColor.r * beat,
-          accentColor.g * beat,
-          accentColor.b * beat,
-        )
-      }
-      edgeMatRef.current.opacity = 0.50 + 0.32 * beat
-    }
-
-    if (bodyMatRef.current) {
-      bodyMatRef.current.emissiveIntensity = 0.18 + 0.16 * Math.sin(t * 0.7 + phase) * intensity
-    }
-  })
-
-  const phi = toRad(def.a)
+  const phi    = toRad(def.a)
 
   return (
     <group rotation-y={phi}>
       <group position-x={def.r} rotation-z={-toRad(def.t)} rotation-x={toRad(def.roll)}>
         <mesh geometry={OCT_GEO} position-y={posY} scale={[wScale, scaleY, dScale]}>
-          <meshPhysicalMaterial
-            ref={bodyMatRef}
-            color={0x030810}
-            emissive={alertFactor > 0.1 ? 0x150200 : 0x010618}
-            emissiveIntensity={0.20}
-            metalness={0.90}
-            roughness={0.10}
-            transmission={0.04}
-            thickness={0.25}
-            transparent
-            opacity={0.94}
-          />
+          <primitive object={bodyMat} attach="material" />
         </mesh>
         <lineSegments geometry={OCT_EDGES} position-y={posY} scale={[wScale, scaleY, dScale]}>
-          <lineBasicMaterial
-            ref={edgeMatRef}
-            color={accentHex}
-            transparent
-            opacity={0.60}
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-          />
+          <primitive object={edgeMat} attach="material" />
         </lineSegments>
       </group>
     </group>
@@ -225,6 +137,7 @@ function CrystalShard({ def, heightBase, wScale, dScale, intensity, alertFactor,
 }
 
 // ─── Crystal Cluster ─────────────────────────────────────────────────────────
+// Creates shared materials; one useFrame updates all shards at once.
 
 interface ClusterProps {
   shards:      ShardDef[]
@@ -242,25 +155,57 @@ interface ClusterProps {
 
 function CrystalCluster({
   shards, heightBase, wScale, dScale, coreRadius,
-  intensity, alertFactor, speed, paused, accentHex, emissiveHex
+  intensity, alertFactor, speed, paused, accentHex, emissiveHex,
 }: ClusterProps) {
+  // Shared materials — one update drives all shards
+  const bodyMat = useMemo(() => new THREE.MeshStandardMaterial({
+    color:              0x040810,
+    emissive:           emissiveHex,
+    emissiveIntensity:  0.18,
+    metalness:          0.94,
+    roughness:          0.07,
+  }), [emissiveHex])
+
+  const edgeMat = useMemo(() => new THREE.LineBasicMaterial({
+    color:       accentHex,
+    transparent: true,
+    opacity:     0.82,
+    depthWrite:  false,
+    blending:    THREE.AdditiveBlending,
+  }), [accentHex])
+
+  const accentColor  = useMemo(() => new THREE.Color(accentHex), [accentHex])
   const coreRef      = useRef<THREE.Mesh>(null)
   const coreMatRef   = useRef<THREE.MeshStandardMaterial>(null)
   const coreLightRef = useRef<THREE.PointLight>(null)
 
+  // Single useFrame for ALL shard materials + core sphere
   useFrame(({ clock }) => {
     if (paused) return
-    const t     = clock.getElapsedTime() * speed
-    const pulse = 1.0 + 0.14 * Math.sin(t * 2.8) * intensity
+    const t    = clock.getElapsedTime() * speed
+    const beat = 0.60 + 0.38 * Math.sin(t * 1.15) * intensity
 
-    if (coreRef.current) coreRef.current.scale.setScalar(pulse)
+    // Edge glow modulation
+    if (alertFactor > 0.1) {
+      edgeMat.color.setRGB(0.95, 0.42 * beat, 0.02)
+    } else {
+      edgeMat.color.setRGB(accentColor.r * beat, accentColor.g * beat, accentColor.b * beat)
+    }
+    edgeMat.opacity = 0.62 + 0.28 * beat
+
+    bodyMat.emissiveIntensity = 0.15 + 0.14 * Math.sin(t * 0.75) * intensity
+
+    // Core sphere
+    if (coreRef.current) {
+      coreRef.current.scale.setScalar(1.0 + 0.13 * Math.sin(t * 2.8) * intensity)
+    }
     if (coreMatRef.current) {
-      coreMatRef.current.emissiveIntensity = 3.5 + 1.8 * Math.sin(t * 2.2) * intensity
+      coreMatRef.current.emissiveIntensity = 3.2 + 1.8 * Math.sin(t * 2.2) * intensity
       coreMatRef.current.emissive.setHex(alertFactor > 0.1 ? 0xFF2200 : accentHex)
     }
     if (coreLightRef.current) {
       const li = (1.2 + 0.8 * Math.sin(t * 1.8)) * intensity
-      coreLightRef.current.intensity = alertFactor > 0.1 ? li * 0.7 : li
+      coreLightRef.current.intensity = alertFactor > 0.1 ? li * 0.6 : li
       coreLightRef.current.color.setHex(alertFactor > 0.1 ? 0xFF3300 : accentHex)
     }
   })
@@ -274,34 +219,31 @@ function CrystalCluster({
           heightBase={heightBase}
           wScale={wScale}
           dScale={dScale}
-          intensity={intensity}
-          alertFactor={alertFactor}
-          paused={paused}
-          phase={i * 0.72 + def.a * 0.02}
-          accentHex={accentHex}
+          bodyMat={bodyMat}
+          edgeMat={edgeMat}
         />
       ))}
 
-      {/* Energy core */}
+      {/* Energy nucleus */}
       <mesh ref={coreRef}>
         <sphereGeometry args={[coreRadius, 16, 16]} />
         <meshStandardMaterial
           ref={coreMatRef}
           color={emissiveHex}
           emissive={accentHex}
-          emissiveIntensity={3.5}
+          emissiveIntensity={3.2}
           transparent
           opacity={0.95}
         />
       </mesh>
 
-      {/* Inner hot-white core */}
+      {/* Inner hot-white kernel */}
       <mesh>
-        <sphereGeometry args={[coreRadius * 0.52, 10, 10]} />
+        <sphereGeometry args={[coreRadius * 0.50, 10, 10]} />
         <meshBasicMaterial
           color={0xCCEEFF}
           transparent
-          opacity={0.88}
+          opacity={0.90}
           blending={THREE.AdditiveBlending}
         />
       </mesh>
@@ -310,132 +252,10 @@ function CrystalCluster({
         ref={coreLightRef}
         color={accentHex}
         intensity={1.2}
-        distance={coreRadius * 15}
+        distance={coreRadius * 18}
         decay={2}
       />
     </group>
-  )
-}
-
-// ─── Core Energy Halo ─────────────────────────────────────────────────────────
-// Three translucent energy field spheres that breathe and pulse.
-// NOT circular rings — spherical containment fields, invisible from a distance.
-
-function CoreHalo({ intensity, alertFactor, paused }: { intensity: number; alertFactor: number; paused: boolean }) {
-  const h1 = useRef<THREE.Mesh>(null)
-  const h2 = useRef<THREE.Mesh>(null)
-  const h3 = useRef<THREE.Mesh>(null)
-
-  useFrame(({ clock }) => {
-    if (paused) return
-    const t = clock.getElapsedTime()
-
-    if (h1.current) {
-      h1.current.scale.setScalar(1.0 + 0.07 * Math.sin(t * 1.3) * intensity)
-      ;(h1.current.material as THREE.MeshBasicMaterial).opacity =
-        (0.060 + 0.030 * Math.sin(t * 1.1)) * (0.35 + 0.65 * intensity)
-    }
-    if (h2.current) {
-      h2.current.scale.setScalar(1.0 + 0.05 * Math.sin(t * 0.9 + 1.0) * intensity)
-      ;(h2.current.material as THREE.MeshBasicMaterial).opacity =
-        (0.040 + 0.018 * Math.sin(t * 0.8 + 1)) * (0.35 + 0.65 * intensity)
-    }
-    if (h3.current) {
-      h3.current.scale.setScalar(1.0 + 0.03 * Math.sin(t * 0.6 + 2.1) * intensity)
-      ;(h3.current.material as THREE.MeshBasicMaterial).opacity =
-        (0.022 + 0.010 * Math.sin(t * 0.5 + 2)) * (0.35 + 0.65 * intensity)
-    }
-  })
-
-  const col = alertFactor > 0.1 ? 0x440000 : 0x001C55
-
-  return (
-    <group>
-      <mesh ref={h1}>
-        <sphereGeometry args={[1.12, 16, 12]} />
-        <meshBasicMaterial color={col} transparent opacity={0.060} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-      <mesh ref={h2}>
-        <sphereGeometry args={[1.70, 16, 12]} />
-        <meshBasicMaterial color={col} transparent opacity={0.038} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-      <mesh ref={h3}>
-        <sphereGeometry args={[2.30, 16, 12]} />
-        <meshBasicMaterial color={col} transparent opacity={0.020} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-    </group>
-  )
-}
-
-// ─── Core Particle Cloud ──────────────────────────────────────────────────────
-// Three concentric rotating particle bands — inner blue, mid cyan, outer gold.
-// Each group rotates at a different speed. O(1) per frame (group.rotation, not per-particle).
-
-function CoreParticles({ intensity, paused }: { intensity: number; paused: boolean }) {
-  const g1 = useRef<THREE.Group>(null)
-  const g2 = useRef<THREE.Group>(null)
-  const g3 = useRef<THREE.Group>(null)
-  const m1 = useRef<THREE.PointsMaterial>(null)
-  const m2 = useRef<THREE.PointsMaterial>(null)
-  const m3 = useRef<THREE.PointsMaterial>(null)
-
-  const { pos1, pos2, pos3 } = useMemo(() => {
-    const pts = (n: number, rMin: number, rMax: number) => {
-      const p = new Float32Array(n * 3)
-      for (let i = 0; i < n; i++) {
-        const r   = rMin + Math.random() * (rMax - rMin)
-        const th  = Math.random() * Math.PI * 2
-        const ph  = Math.acos(2 * Math.random() - 1)
-        p[i*3]   = r * Math.sin(ph) * Math.cos(th)
-        p[i*3+1] = r * Math.cos(ph) * 0.7  // slightly flattened — disk-like, not sphere
-        p[i*3+2] = r * Math.sin(ph) * Math.sin(th)
-      }
-      return p
-    }
-    return { pos1: pts(65, 0.85, 1.35), pos2: pts(75, 1.35, 1.95), pos3: pts(55, 1.95, 2.65) }
-  }, [])
-
-  useFrame(({ clock }, delta) => {
-    if (paused) return
-    const t = clock.getElapsedTime()
-    const spd = intensity * 0.8 + 0.2
-
-    if (g1.current) g1.current.rotation.y += delta * 0.14 * spd
-    if (g2.current) g2.current.rotation.y -= delta * 0.08 * spd
-    if (g3.current) g3.current.rotation.y += delta * 0.04 * spd
-
-    if (m1.current) m1.current.opacity = (0.70 + 0.20 * Math.sin(t * 1.2)) * intensity
-    if (m2.current) m2.current.opacity = (0.62 + 0.18 * Math.sin(t * 0.8 + 1)) * intensity
-    if (m3.current) m3.current.opacity = (0.50 + 0.15 * Math.sin(t * 0.5 + 2)) * intensity
-  })
-
-  return (
-    <>
-      <group ref={g1}>
-        <points>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" array={pos1} count={pos1.length/3} itemSize={3} />
-          </bufferGeometry>
-          <pointsMaterial ref={m1} size={0.024} color="#3388FF" transparent opacity={0.70} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
-        </points>
-      </group>
-      <group ref={g2}>
-        <points>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" array={pos2} count={pos2.length/3} itemSize={3} />
-          </bufferGeometry>
-          <pointsMaterial ref={m2} size={0.020} color="#00BBCC" transparent opacity={0.60} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
-        </points>
-      </group>
-      <group ref={g3}>
-        <points>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" array={pos3} count={pos3.length/3} itemSize={3} />
-          </bufferGeometry>
-          <pointsMaterial ref={m3} size={0.018} color="#C89020" transparent opacity={0.50} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
-        </points>
-      </group>
-    </>
   )
 }
 
@@ -450,40 +270,40 @@ function TechPlatform({ intensity, paused }: { intensity: number; paused: boolea
     ringRefs.current.forEach((m, i) => {
       if (!m) return
       ;(m.material as THREE.MeshBasicMaterial).opacity =
-        0.32 + 0.24 * Math.sin(t * 0.5 + i * 0.8) * intensity
+        0.28 + 0.22 * Math.sin(t * 0.5 + i * 0.8) * intensity
     })
   })
 
-  const RING_RADII = [1.6, 2.8, 4.4, 5.2]
+  const RING_RADII = [1.4, 2.6, 4.0]   // 3 rings, tighter platform radius
 
   return (
     <group position-y={-0.11}>
       <mesh>
-        <cylinderGeometry args={[5.8, 5.8, 0.12, 72, 1]} />
-        <meshPhysicalMaterial color={0x040812} metalness={0.92} roughness={0.10} reflectivity={0.6} />
+        <cylinderGeometry args={[4.6, 4.6, 0.11, 64, 1]} />
+        <meshStandardMaterial color={0x04080E} metalness={0.92} roughness={0.10} />
       </mesh>
-      <mesh position-y={0.061}>
-        <cylinderGeometry args={[5.78, 5.78, 0.001, 72, 1]} />
-        <meshPhysicalMaterial color={0x060C1A} metalness={1.0} roughness={0.05} transparent opacity={0.70} />
+      <mesh position-y={0.056}>
+        <cylinderGeometry args={[4.58, 4.58, 0.001, 64, 1]} />
+        <meshStandardMaterial color={0x060C1A} metalness={1.0} roughness={0.04} transparent opacity={0.72} />
       </mesh>
       {RING_RADII.map((r, i) => (
-        <mesh key={i} ref={el => { ringRefs.current[i] = el }} position-y={0.062} rotation-x={-Math.PI / 2}>
-          <torusGeometry args={[r, 0.022, 6, 80]} />
-          <meshBasicMaterial color="#C89020" transparent opacity={0.30 + i * 0.05} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <mesh key={i} ref={el => { ringRefs.current[i] = el }} position-y={0.057} rotation-x={-Math.PI / 2}>
+          <torusGeometry args={[r, 0.020, 6, 80]} />
+          <meshBasicMaterial color="#C89020" transparent opacity={0.28 + i * 0.06} blending={THREE.AdditiveBlending} depthWrite={false} />
         </mesh>
       ))}
-      <mesh position-y={0.063} rotation-x={-Math.PI / 2}>
-        <circleGeometry args={[1.55, 48]} />
-        <meshBasicMaterial color="#001A66" transparent opacity={0.25} blending={THREE.AdditiveBlending} depthWrite={false} />
+      {/* Inner disc glow */}
+      <mesh position-y={0.058} rotation-x={-Math.PI / 2}>
+        <circleGeometry args={[1.35, 48]} />
+        <meshBasicMaterial color="#001A66" transparent opacity={0.28} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
     </group>
   )
 }
 
 // ─── Orbital Agent ────────────────────────────────────────────────────────────
-// 3D Keplerian orbit: orbInc (inclination) + orbLng (longitude of ascending node)
-// give each agent a unique tilted orbital plane.
-// This creates a 3D network/constellation — NOT a flat solar system.
+// 3D Keplerian orbit: orbInc + orbLng give each agent a UNIQUE orbital plane.
+// The 3D depth makes them read as satellite nodes, not planets on a flat diagram.
 
 interface AgentProps {
   agent:       AgentCfg
@@ -497,40 +317,29 @@ interface AgentProps {
 }
 
 function OrbitalAgent({ agent, intensity, alertFactor, speed, paused, isSelected, onSelect, groupRef }: AgentProps) {
-  const isAlert     = agent.status === 'alert' || (agent.id === 'tartarus' && alertFactor > 0.5)
-  const baseRingRef = useRef<THREE.Mesh>(null)
+  const isAlert = agent.status === 'alert' || (agent.id === 'tartarus' && alertFactor > 0.5)
 
-  // Pre-compute trig for orbit plane transform
-  const lng = toRad(agent.orbLng)
-  const inc = toRad(agent.orbInc)
-  const cosLng = Math.cos(lng), sinLng = Math.sin(lng)
-  const cosInc = Math.cos(inc), sinInc = Math.sin(inc)
+  // Pre-computed constants for this agent's orbital plane (never change)
+  const cosLng = Math.cos(toRad(agent.orbLng))
+  const sinLng = Math.sin(toRad(agent.orbLng))
+  const cosInc = Math.cos(toRad(agent.orbInc))
+  const sinInc = Math.sin(toRad(agent.orbInc))
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return
     const T   = clock.getElapsedTime() * (paused ? 0 : speed)
     const ang = toRad(agent.angle) + T * agent.orbitSpd
+    const xo  = agent.orbitR * Math.cos(ang)
+    const yo  = agent.orbitR * Math.sin(ang)
 
-    // Keplerian 3D orbit position
-    const xo = agent.orbitR * Math.cos(ang)
-    const yo = agent.orbitR * Math.sin(ang)
-    const x  =  xo * cosLng - yo * cosInc * sinLng
-    const y  =  yo * sinInc
-    const z  =  xo * sinLng + yo * cosInc * cosLng
-
-    groupRef.current.position.set(x, y, z)
-
-    // Station ring pulse
-    if (baseRingRef.current) {
-      const m = baseRingRef.current.material as THREE.MeshBasicMaterial
-      const beat = 0.35 + 0.22 * Math.sin(clock.getElapsedTime() * 0.9 + agent.orbLng * 0.01)
-      m.opacity  = isAlert ? 0.60 : beat * 0.55 * intensity
-      m.color.setHex(isAlert ? 0xFF3300 : agent.accentHex)
-    }
+    groupRef.current.position.set(
+      xo * cosLng - yo * cosInc * sinLng,
+      yo * sinInc,
+      xo * sinLng + yo * cosInc * cosLng,
+    )
   })
 
   const statusColor = isAlert ? '#FF3333' : agent.status === 'standby' ? '#C9A84C' : '#00EE88'
-  const cR = isAlert ? 0.9 : intensity
 
   return (
     <group
@@ -541,11 +350,11 @@ function OrbitalAgent({ agent, intensity, alertFactor, speed, paused, isSelected
     >
       <CrystalCluster
         shards={agent.shards}
-        heightBase={0.155}
-        wScale={0.092}
-        dScale={0.072}
-        coreRadius={0.062}
-        intensity={cR}
+        heightBase={0.18}
+        wScale={0.100}
+        dScale={0.078}
+        coreRadius={0.066}
+        intensity={isAlert ? 0.9 : intensity}
         alertFactor={isAlert ? 1 : 0}
         speed={speed}
         paused={paused}
@@ -553,15 +362,10 @@ function OrbitalAgent({ agent, intensity, alertFactor, speed, paused, isSelected
         emissiveHex={agent.emissiveHex}
       />
 
-      {/* Station base ring — marks this as an installed node, not a floating body */}
-      <mesh ref={baseRingRef} position-y={-0.09} rotation-x={-Math.PI / 2}>
-        <torusGeometry args={[0.44, 0.020, 8, 48]} />
-        <meshBasicMaterial color={agent.accentHex} transparent opacity={0.40} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-
+      {/* Station base ring — marks node as a fixed installation */}
       {isSelected && (
-        <mesh position-y={-0.09} rotation-x={-Math.PI / 2}>
-          <torusGeometry args={[0.58, 0.016, 6, 48]} />
+        <mesh position-y={-0.10} rotation-x={-Math.PI / 2}>
+          <torusGeometry args={[0.48, 0.016, 6, 48]} />
           <meshBasicMaterial color={agent.accentHex} blending={THREE.AdditiveBlending} />
         </mesh>
       )}
@@ -570,7 +374,7 @@ function OrbitalAgent({ agent, intensity, alertFactor, speed, paused, isSelected
         center
         distanceFactor={9}
         style={{ pointerEvents:'none', whiteSpace:'nowrap' }}
-        position={[0, 0.72, 0]}
+        position={[0, 0.76, 0]}
       >
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'3px' }}>
           <div style={{
@@ -581,10 +385,7 @@ function OrbitalAgent({ agent, intensity, alertFactor, speed, paused, isSelected
           }}>
             {agent.name}
           </div>
-          <div style={{
-            fontSize:'7px', letterSpacing:'0.08em', color:'rgba(215,238,255,0.50)',
-            fontFamily:'"Inter", system-ui, sans-serif',
-          }}>
+          <div style={{ fontSize:'7px', letterSpacing:'0.08em', color:'rgba(215,238,255,0.50)', fontFamily:'"Inter", system-ui, sans-serif' }}>
             {agent.role}
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:'4px' }}>
@@ -600,11 +401,10 @@ function OrbitalAgent({ agent, intensity, alertFactor, speed, paused, isSelected
 }
 
 // ─── Neural Filaments ─────────────────────────────────────────────────────────
-// Two filaments per agent, colored with agent's accent.
-// Dense particle flow from core to agent — reads as data transfer, not decoration.
+// One colored filament per agent + particle flow. Per-agent accent color.
 
-const N_SEGS   = 40
-const N_FLOW   = 16
+const N_SEGS   = 38
+const N_FLOW   = 14
 const VEC_ZERO = new THREE.Vector3(0, 0, 0)
 
 function quad(A: THREE.Vector3, B: THREE.Vector3, C: THREE.Vector3, t: number): THREE.Vector3 {
@@ -627,24 +427,18 @@ interface FilamentProps {
 }
 
 function NeuralFilaments({ agentGroupRefs, intensity, alertFactor, speed, paused, visible, selectedId }: FilamentProps) {
-  const { mainObjs, offsetObjs, mainMats, offsetMats, flowObjs, flowGeos, flowMats, flowOffsets } = useMemo(() => {
-    const makeLineGeo = () => {
+  const { lineObjs, lineMats, flowObjs, flowGeos, flowMats, flowOffsets } = useMemo(() => {
+    const makeGeo = () => {
       const g = new THREE.BufferGeometry()
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((N_SEGS+1)*3), 3))
       return g
     }
 
-    const mainMats   = AGENTS.map(a => new THREE.LineBasicMaterial({
-      color: a.accentHex, transparent: true, opacity: 0.22,
+    const lineMats = AGENTS.map(a => new THREE.LineBasicMaterial({
+      color: a.accentHex, transparent: true, opacity: 0.20,
       depthWrite: false, blending: THREE.AdditiveBlending,
     }))
-    const offsetMats = AGENTS.map(a => new THREE.LineBasicMaterial({
-      color: a.accentHex, transparent: true, opacity: 0.12,
-      depthWrite: false, blending: THREE.AdditiveBlending,
-    }))
-
-    const mainObjs   = AGENTS.map((_, i) => new THREE.Line(makeLineGeo(), mainMats[i]))
-    const offsetObjs = AGENTS.map((_, i) => new THREE.Line(makeLineGeo(), offsetMats[i]))
+    const lineObjs = AGENTS.map((_, i) => new THREE.Line(makeGeo(), lineMats[i]))
 
     const flowGeos = AGENTS.map(() => {
       const g = new THREE.BufferGeometry()
@@ -652,13 +446,13 @@ function NeuralFilaments({ agentGroupRefs, intensity, alertFactor, speed, paused
       return g
     })
     const flowMats = AGENTS.map(a => new THREE.PointsMaterial({
-      color: a.accentHex, size: 0.052, transparent: true, opacity: 0.88,
+      color: a.accentHex, size: 0.048, transparent: true, opacity: 0.90,
       depthWrite: false, sizeAttenuation: true, blending: THREE.AdditiveBlending,
     }))
     const flowObjs = AGENTS.map((_, i) => new THREE.Points(flowGeos[i], flowMats[i]))
-
     const flowOffsets = AGENTS.map(() => Array.from({ length: N_FLOW }, (_, j) => j / N_FLOW))
-    return { mainObjs, offsetObjs, mainMats, offsetMats, flowObjs, flowGeos, flowMats, flowOffsets }
+
+    return { lineObjs, lineMats, flowObjs, flowGeos, flowMats, flowOffsets }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -670,43 +464,26 @@ function NeuralFilaments({ agentGroupRefs, intensity, alertFactor, speed, paused
       const grp = agentGroupRefs.current[i]
       if (!grp) return
       const aPos = grp.position.clone()
+      const ctrl = new THREE.Vector3(aPos.x * 0.42, 0.55 + aPos.y * 0.28, aPos.z * 0.42)
 
-      // Main filament
-      const ctrl = new THREE.Vector3(aPos.x * 0.45, 0.55 + aPos.y * 0.3, aPos.z * 0.45)
-      const mainGeo = mainObjs[i].geometry as THREE.BufferGeometry
-      const mArr = mainGeo.attributes.position.array as Float32Array
+      // Update line geometry
+      const lineGeo = lineObjs[i].geometry as THREE.BufferGeometry
+      const lArr    = lineGeo.attributes.position.array as Float32Array
       for (let s = 0; s <= N_SEGS; s++) {
         const pt = quad(VEC_ZERO, ctrl, aPos, s / N_SEGS)
-        mArr[s*3]=pt.x; mArr[s*3+1]=pt.y; mArr[s*3+2]=pt.z
+        lArr[s*3]=pt.x; lArr[s*3+1]=pt.y; lArr[s*3+2]=pt.z
       }
-      mainGeo.attributes.position.needsUpdate = true
+      lineGeo.attributes.position.needsUpdate = true
 
-      // Offset filament (slight perpendicular nudge)
-      const phi    = toRad(agent.angle)
-      const perpX  = -Math.sin(phi) * 0.28
-      const perpZ  =  Math.cos(phi) * 0.28
-      const ctrl2  = new THREE.Vector3(aPos.x * 0.5 + perpX, 0.38 + aPos.y * 0.2, aPos.z * 0.5 + perpZ)
-      const end2   = new THREE.Vector3(aPos.x + perpX * 0.35, aPos.y, aPos.z + perpZ * 0.35)
-      const offGeo = offsetObjs[i].geometry as THREE.BufferGeometry
-      const oArr   = offGeo.attributes.position.array as Float32Array
-      for (let s = 0; s <= N_SEGS; s++) {
-        const pt = quad(VEC_ZERO, ctrl2, end2, s / N_SEGS)
-        oArr[s*3]=pt.x; oArr[s*3+1]=pt.y; oArr[s*3+2]=pt.z
-      }
-      offGeo.attributes.position.needsUpdate = true
-
-      // Colors
-      const isSel = selectedId === agent.id
-      const col   = alertFactor > 0.5 ? 0xFF2200 : agent.accentHex
-      mainMats[i].opacity   = isSel ? 0.55 : 0.18 + intensity * 0.12
-      offsetMats[i].opacity = isSel ? 0.28 : 0.09 + intensity * 0.06
-      mainMats[i].color.setHex(col)
-      offsetMats[i].color.setHex(col)
+      // Update colors
+      const col = alertFactor > 0.5 ? 0xFF2200 : agent.accentHex
+      lineMats[i].opacity = selectedId === agent.id ? 0.55 : 0.16 + intensity * 0.12
+      lineMats[i].color.setHex(col)
       flowMats[i].color.setHex(alertFactor > 0.5 ? 0xFF3300 : agent.accentHex)
 
-      // Particle flow
+      // Update particle positions
       const fArr    = flowGeos[i].attributes.position.array as Float32Array
-      const flowSpd = 0.10 + (i % 3) * 0.012
+      const flowSpd = 0.10 + (i * 0.012)
       flowOffsets[i].forEach((off, j) => {
         const tv = (off + T * flowSpd) % 1
         const pt = quad(VEC_ZERO, ctrl, aPos, tv)
@@ -722,8 +499,7 @@ function NeuralFilaments({ agentGroupRefs, intensity, alertFactor, speed, paused
     <group>
       {AGENTS.map((_, i) => (
         <group key={AGENTS[i].id}>
-          <primitive object={mainObjs[i]} />
-          <primitive object={offsetObjs[i]} />
+          <primitive object={lineObjs[i]} />
           <primitive object={flowObjs[i]} />
         </group>
       ))}
@@ -735,7 +511,7 @@ function NeuralFilaments({ agentGroupRefs, intensity, alertFactor, speed, paused
 
 function StarField() {
   const { positions, colors } = useMemo(() => {
-    const N = 2400
+    const N = 1800    // reduced from 2400 — contributes little visually, saves fillrate
     const positions = new Float32Array(N * 3)
     const colors    = new Float32Array(N * 3)
     for (let i = 0; i < N; i++) {
@@ -745,7 +521,7 @@ function StarField() {
       positions[i*3]   = r * Math.sin(ph) * Math.cos(th)
       positions[i*3+1] = r * Math.cos(ph)
       positions[i*3+2] = r * Math.sin(ph) * Math.sin(th)
-      const k = 0.15 + Math.random() * 0.85
+      const k = 0.18 + Math.random() * 0.82
       colors[i*3]   = k * 0.35
       colors[i*3+1] = k * 0.50
       colors[i*3+2] = k
@@ -759,7 +535,7 @@ function StarField() {
         <bufferAttribute attach="attributes-position" array={positions} count={positions.length/3} itemSize={3} />
         <bufferAttribute attach="attributes-color"    array={colors}    count={colors.length/3}    itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial size={0.10} vertexColors transparent opacity={0.75} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
+      <pointsMaterial size={0.09} vertexColors transparent opacity={0.72} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
     </points>
   )
 }
@@ -776,18 +552,18 @@ const METRICS: Record<string, Array<{ lbl: string; val: string; fill: number }>>
 }
 
 function AgentPanel({ agent, onClose }: { agent: AgentCfg; onClose: () => void }) {
-  const metrics     = METRICS[agent.id] ?? []
-  const isAlert     = agent.status === 'alert'
-  const accentStr   = '#' + agent.accentHex.toString(16).padStart(6, '0')
-  const statusColor = isAlert ? '#FF4422' : agent.status === 'standby' ? '#C9A84C' : '#00EE88'
+  const metrics   = METRICS[agent.id] ?? []
+  const isAlert   = agent.status === 'alert'
+  const accentStr = '#' + agent.accentHex.toString(16).padStart(6, '0')
+  const statColor = isAlert ? '#FF4422' : agent.status === 'standby' ? '#C9A84C' : '#00EE88'
 
   return (
-    <Html center distanceFactor={5.5} style={{ pointerEvents:'none' }} position={[2.6, 0.8, 0]}>
-      <div style={{ background:'rgba(2,5,16,0.95)', border:`1px solid ${accentStr}50`, borderRadius:'8px', width:'228px', backdropFilter:'blur(24px)', pointerEvents:'auto', overflow:'hidden' }}>
+    <Html center distanceFactor={5.5} style={{ pointerEvents:'none' }} position={[2.5, 0.8, 0]}>
+      <div style={{ background:'rgba(2,5,16,0.96)', border:`1px solid ${accentStr}50`, borderRadius:'8px', width:'228px', backdropFilter:'blur(24px)', pointerEvents:'auto', overflow:'hidden' }}>
         <div style={{ height:'2px', background:`linear-gradient(90deg, ${accentStr}, #C89020)` }} />
         <div style={{ padding:'10px 12px 8px', borderBottom:'1px solid rgba(8,124,255,0.10)', display:'flex', alignItems:'center', gap:'8px' }}>
           <div style={{ flex:1, fontSize:'12px', fontWeight:700, letterSpacing:'0.12em', color:'#D7EEFF', fontFamily:'"Inter", sans-serif' }}>{agent.name}</div>
-          <div style={{ fontSize:'7px', letterSpacing:'0.12em', padding:'2px 7px', borderRadius:'10px', background:`${statusColor}18`, color:statusColor, border:`1px solid ${statusColor}44`, fontFamily:'"Inter", sans-serif' }}>
+          <div style={{ fontSize:'7px', padding:'2px 7px', borderRadius:'10px', background:`${statColor}18`, color:statColor, border:`1px solid ${statColor}44`, fontFamily:'"Inter", sans-serif', letterSpacing:'0.12em' }}>
             {isAlert ? 'ALERTA' : 'ACTIVO'}
           </div>
           <button onClick={onClose} style={{ width:'18px', height:'18px', border:'1px solid rgba(215,238,255,0.15)', borderRadius:'3px', background:'transparent', color:'rgba(215,238,255,0.45)', cursor:'pointer', fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'auto' }}>✕</button>
@@ -843,44 +619,36 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
 
   return (
     <>
-      {/* Lighting — blue-dominant, gold accent, deep space */}
+      {/* Lighting: deep-space dark ambient, strong blue core, gold key, subtle fill */}
       <ambientLight intensity={0.03} color="#010305" />
-      <pointLight position={[0, 0.4, 0]}  color="#0055FF" intensity={2.5 + p.intensity * 1.8} distance={10} decay={2} />
-      <pointLight position={[5, 7, 3]}    color="#C89020" intensity={1.3} distance={22} decay={2} />
-      <pointLight position={[-4, 2, -5]}  color="#001A44" intensity={0.9} decay={2} />
-      <pointLight position={[0, -2, 0]}   color="#000D33" intensity={0.5} decay={2} />
-      {/* Cyan fill for the particle cloud */}
-      <pointLight position={[0, 2.5, 0]}  color="#003355" intensity={0.6 * p.intensity} distance={5} decay={2} />
+      <pointLight position={[0, 0.5, 0]}  color="#0055FF" intensity={2.8 + p.intensity * 2.0} distance={9}  decay={2} />
+      <pointLight position={[4.5, 8, 2.5]} color="#C89020" intensity={1.4} distance={22} decay={2} />
+      <pointLight position={[-3, 2, -4]}   color="#001A44" intensity={0.8} decay={2} />
+      <pointLight position={[0, -1.5, 0]}  color="#000D33" intensity={0.4} decay={2} />
 
       <StarField />
       <TechPlatform intensity={p.intensity} paused={paused} />
 
-      {/* HADES CORE — heightBase 0.68 for architectural dominance */}
+      {/* HADES CORE — dominant crystal architecture */}
       <CrystalCluster
         shards={CORE_SHARDS}
-        heightBase={0.68}
-        wScale={0.28}
-        dScale={0.20}
-        coreRadius={0.18}
+        heightBase={0.90}
+        wScale={0.30}
+        dScale={0.22}
+        coreRadius={0.20}
         intensity={p.intensity}
         alertFactor={p.alertFactor}
         speed={speed}
         paused={paused}
-        accentHex={0x0066FF}
+        accentHex={0xC89020}      // gold edges — core signature
         emissiveHex={0x001A66}
       />
 
-      {/* Energy field halos around core */}
-      <CoreHalo intensity={p.intensity} alertFactor={p.alertFactor} paused={paused} />
-
-      {/* Ambient neural particle cloud */}
-      <CoreParticles intensity={p.intensity} paused={paused} />
-
-      {/* Core identity */}
-      <Html center distanceFactor={8} position={[0, -0.24, 0]} style={{ pointerEvents:'none' }}>
+      {/* Core identity label */}
+      <Html center distanceFactor={8} position={[0, -0.28, 0]} style={{ pointerEvents:'none' }}>
         <div style={{ textAlign:'center' }}>
-          <div style={{ fontSize:'14px', fontWeight:700, letterSpacing:'0.30em', color:'#D7EEFF', fontFamily:'"Inter", system-ui, sans-serif', textShadow:'0 0 20px rgba(8,124,255,0.6)' }}>HADES</div>
-          <div style={{ fontSize:'7px', letterSpacing:'0.25em', color:'rgba(92,207,255,0.55)', fontFamily:'"Inter", system-ui, sans-serif', marginTop:'2px' }}>SOVEREIGN INTELLIGENCE</div>
+          <div style={{ fontSize:'14px', fontWeight:700, letterSpacing:'0.30em', color:'#D7EEFF', fontFamily:'"Inter", system-ui, sans-serif', textShadow:'0 0 20px rgba(8,124,255,0.65)' }}>HADES</div>
+          <div style={{ fontSize:'7px', letterSpacing:'0.25em', color:'rgba(92,207,255,0.52)', fontFamily:'"Inter", system-ui, sans-serif', marginTop:'2px' }}>SOVEREIGN INTELLIGENCE</div>
         </div>
       </Html>
 
@@ -899,7 +667,7 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
         />
       ))}
 
-      {/* Neural filament network */}
+      {/* Per-agent colored neural filaments */}
       <NeuralFilaments
         agentGroupRefs={agentGroupRefs}
         intensity={p.intensity}
@@ -917,12 +685,12 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
       <EffectComposer>
         <Bloom
           intensity={p.bloom}
-          luminanceThreshold={0.52}
-          luminanceSmoothing={0.06}
-          radius={0.72}
+          luminanceThreshold={0.58}
+          luminanceSmoothing={0.05}
+          radius={0.68}
           mipmapBlur
         />
-        <Vignette eskil={false} offset={0.18} darkness={0.75} />
+        <Vignette eskil={false} offset={0.18} darkness={0.78} />
       </EffectComposer>
     </>
   )
@@ -951,27 +719,27 @@ export default function HadesCore({
 }: HadesCoreProps): JSX.Element {
   return (
     <Canvas
-      camera={{ position: [0, 5.5, 9.0], fov: 50 }}
+      camera={{ position: [0, 4.2, 7.8], fov: 46 }}
       gl={{
         antialias:           true,
         alpha:               true,
         toneMapping:         THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 0.94,
+        toneMappingExposure: 0.96,
         powerPreference:     'high-performance',
       }}
-      dpr={[1, 2]}
+      dpr={[1, 1.8]}   // cap at 1.8 instead of 2 — minor FPS benefit on high-DPI screens
       style={{ background: 'transparent', ...style }}
       className={className}
     >
       <AdaptiveDpr pixelated />
       <OrbitControls
-        target={[0, 1.2, 0]}
+        target={[0, 1.4, 0]}
         enableDamping
         dampingFactor={0.06}
-        minDistance={5}
-        maxDistance={24}
+        minDistance={4.5}
+        maxDistance={22}
         autoRotate={!paused}
-        autoRotateSpeed={0.22}
+        autoRotateSpeed={0.20}
         enablePan={false}
       />
       <HadesCoreScene
