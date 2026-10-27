@@ -96,3 +96,8 @@ ehthumbs.db
 # audit-export-*.json
 
 .vercel
+
+# SQLite journals and legacy migration backups
+*.sqlite-wal
+*.sqlite-shm
+*.json.backup-*

@@ -1,0 +1,42 @@
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, it, expect } from 'vitest'
+import { SqliteRepository } from './sqlite.js'
+
+describe('SQLite migration and persistence', () => {
+  it('backs up and imports legacy records once, preserving tasks and decisions after restart', async () => {
+    const dir=await mkdtemp(join(tmpdir(),'hades-sqlite-')); const json=join(dir,'legacy.json'); const db=join(dir,'data.sqlite')
+    const legacy={version:1,missions:[{id:'m1',ownerId:'a',tasks:[{id:'t1',missionId:'m1',status:'CERBERUS_REVIEW',result:{data:{escalationId:'e1'}}}]}],audits:[],approvals:[],events:[],idempotency:{}}
+    const original=JSON.stringify(legacy); await writeFile(json,original)
+    try {
+      const first=new SqliteRepository(db,json); await first.init()
+      expect(first.getMission('m1')?.tasks[0].id).toBe('t1')
+      await first.decideApproval({escalationId:'e1',status:'APPROVED',justification:'Reviewed',decidedBy:'admin'})
+      await expect(first.decideApproval({escalationId:'e1',status:'REJECTED',justification:'Duplicate',decidedBy:'admin'})).rejects.toThrow('APPROVAL_ALREADY_RESOLVED')
+      first.close()
+      const second=new SqliteRepository(db,json); await second.init()
+      expect(second.listMissions()).toHaveLength(1); expect(second.listApprovals()).toHaveLength(1); second.close()
+      expect(await readFile(json,'utf8')).toBe(original)
+      const backup=(await readdir(dir)).find(x=>x.startsWith('legacy.json.backup-')); expect(backup).toBeDefined(); expect(await readFile(join(dir,backup!),'utf8')).toBe(original)
+    } finally { await rm(dir,{recursive:true,force:true}) }
+  })
+  it('recovers a pending local approval across restart and commits one deterministic result', async () => {
+    const dir=await mkdtemp(join(tmpdir(),'hades-recovery-')); const db=join(dir,'data.sqlite'), json=join(dir,'none.json')
+    try {
+      const first=new SqliteRepository(db,json); await first.init(); const {mission,approvalId}=await first.createLocalMission('owner','Real operation','hello'); first.close()
+      const second=new SqliteRepository(db,json); await second.init()
+      expect(second.listPendingLocalOperations().map(item=>item.id)).toContain(approvalId)
+      const results=await Promise.allSettled([second.decideLocalOperation(approvalId,'APPROVED','admin','Reviewed'),second.decideLocalOperation(approvalId,'APPROVED','admin','Reviewed')])
+      expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1)
+      expect(second.getMission(mission.id)?.tasks[0].status).toBe('EXECUTED')
+      expect(second.listMissionEvents(mission.id).map(e=>(e.payload as {state:string}).state)).toEqual(['CREATED','QUEUED','RUNNING','WAITING_APPROVAL','APPROVED','RESUMING','RUNNING','COMPLETED'])
+      second.close()
+    } finally { await rm(dir,{recursive:true,force:true}) }
+  })
+  it('fails safely on malformed legacy JSON without deleting the original', async () => {
+    const dir=await mkdtemp(join(tmpdir(),'hades-sqlite-')); const json=join(dir,'legacy.json'); await writeFile(json,'invalid')
+    try { const repo=new SqliteRepository(join(dir,'data.sqlite'),json); await expect(repo.init()).rejects.toThrow(); repo.close(); expect(await readFile(json,'utf8')).toBe('invalid') }
+    finally { await rm(dir,{recursive:true,force:true}) }
+  })
+})

@@ -5,7 +5,7 @@ import type { AuditRecord, Mission } from '@hades/core'
 export type Role = 'ADMIN' | 'OPERATOR' | 'AUDITOR' | 'VIEWER'
 export interface StoredApproval {
   id: string; escalationId: string; status: 'APPROVED' | 'REJECTED'
-  justification: string; decidedBy: string; decidedAt: number; executionAuthorized: false
+  justification: string; decidedBy: string; decidedAt: number; executionAuthorized: boolean
 }
 export interface SystemEvent { id: string; type: string; actor: string; timestamp: number; payload: unknown }
 interface StoreData {

@@ -6,9 +6,10 @@ import { agentRoutes }   from './routes/agents.js'
 import { cerberusRoutes }  from './routes/cerberus.js'
 import { setupWebSocket, getConnectedClientsCount } from './websocket.js'
 import { bus } from '@hades/core'
-import { JsonRepository } from './persistence.js'
+import { SqliteRepository } from './sqlite.js'
 import { registerSecurity } from './security.js'
 import { approvalRoutes } from './routes/approvals.js'
+import { localMissionRoutes } from './routes/local-missions.js'
 
 const PORT = Number(process.env['PORT'] ?? 3001)
 const HOST = process.env['HOST'] ?? '0.0.0.0'
@@ -25,8 +26,10 @@ async function bootstrap(): Promise<void> {
 
   await app.register(websocketPlugin)
   await registerSecurity(app)
-  const repository = new JsonRepository(process.env['HADES_DATA_FILE'] ?? './data/hades.json')
+  const legacyPath = process.env['HADES_DATA_FILE'] ?? './data/hades.json'
+  const repository = new SqliteRepository(process.env['HADES_DB_FILE'] ?? `${legacyPath}.sqlite`, legacyPath)
   await repository.init()
+  app.addHook('onClose', async () => { repository.close() })
 
   const healthResponse = async () => ({
     status:    'ok',
@@ -44,6 +47,7 @@ async function bootstrap(): Promise<void> {
     await agentRoutes(api)
     await api.register(cerberusRoutes)
     await approvalRoutes(api, repository)
+    await localMissionRoutes(api, repository)
   }, { prefix: '/api/v1' })
 
   // WebSocket
