@@ -10,7 +10,8 @@ export async function registerSecurity(app: FastifyInstance, repository?: Sqlite
   await app.register(jwt, { secret })
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' })
   app.addHook('preHandler', async (request, reply) => {
-    if (!request.url.startsWith('/api/v1') || request.url.split('?')[0] === '/api/v1/auth/login') return
+    const path = request.url.split('?')[0]!
+    if (!request.url.startsWith('/api/v1') || path === '/api/v1/auth/login' || path === '/api/v1/setup/init') return
     try {
       const claims = await request.jwtVerify<{ sub?: unknown; roles?: unknown; exp?: unknown; sid?: unknown }>()
       if (typeof claims.sub !== 'string' || !claims.sub.trim() || !Array.isArray(claims.roles) || !claims.roles.some(r => ['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'].includes(r)) || typeof claims.exp !== 'number' || claims.exp <= Date.now() / 1000) throw new Error('Invalid claims')

@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { path: '/archives',    icon: '▤', label: 'Archives',    shortLabel: 'ARC'  },
   { path: '/cerberus',    icon: '⚔', label: 'Cerberus',    shortLabel: 'CRB'  },
   { path: '/observatory', icon: '◎', label: 'Observatory', shortLabel: 'OBS'  },
+  { path: '/documents',   icon: '▤', label: 'Documentos',  shortLabel: 'DOC'  },
 ]
 
 interface Props {

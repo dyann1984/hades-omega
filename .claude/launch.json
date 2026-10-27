@@ -4,9 +4,9 @@
     {
       "name": "hades-frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=packages/frontend"],
-      "port": 5173,
-      "url": "http://127.0.0.1:5173"
+      "runtimeArgs": ["run", "dev", "--workspace=packages/frontend", "--", "--port", "5180", "--strictPort"],
+      "port": 5180,
+      "url": "http://127.0.0.1:5180"
     }
   ]
 }

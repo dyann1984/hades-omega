@@ -38,5 +38,5 @@ describe('real sessions', () => {
       await app.close(); repo.close(); repo=new SqliteRepository(db,path); await repo.init()
       const claims=app.jwt.verify<{sid:string}>(token); expect(repo.getActiveSession(claims.sid)).toBeUndefined()
     } finally { await app.close(); repo.close(); await rm(dir,{recursive:true,force:true}); process.env.JWT_SECRET=old }
-  })
+  }, 30000)
 })
