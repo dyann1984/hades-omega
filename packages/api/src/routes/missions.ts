@@ -16,14 +16,14 @@ export async function missionRoutes(app: FastifyInstance, repository?: JsonRepos
     const fingerprint = createHash('sha256').update(JSON.stringify({ title, description, budgetLimit: budgetLimit ?? 50000 })).digest('hex')
     const idempotencyKey = req.headers['idempotency-key']
     if (typeof idempotencyKey === 'string' && repository) {
-      const prior = repository.getIdempotent(`${actor}:${idempotencyKey}`, fingerprint)
+      const prior = repository.getIdempotent(JSON.stringify([actor, idempotencyKey]), fingerprint)
       if (prior) return { ...ok(prior), auditRecords: [], nearTxs: [], meta: { ...ok(prior).meta, idempotentReplay: true } }
     }
     const mission      = await hades.createMission(title.trim(), description.trim(), budgetLimit ?? 50000, actor)
     const auditRecords = audit.query({})
     const nearTxs      = near.getAllTransactions()
     if (repository) {
-      await repository.saveMission(mission, typeof idempotencyKey === 'string' ? { key: `${actor}:${idempotencyKey}`, fingerprint } : undefined)
+      await repository.saveMission(mission, typeof idempotencyKey === 'string' ? { key: JSON.stringify([actor, idempotencyKey]), fingerprint } : undefined)
       await repository.recordMissionEvidence(auditRecords, (req.user as { sub?: string }).sub ?? 'unknown')
     }
     const isAdmin = !repository || (req.user as { roles: string[] }).roles.includes('ADMIN')
