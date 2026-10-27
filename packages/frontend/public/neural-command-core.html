@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HADES — Neural Command Core</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --obsidian: #010208;
+      --blue-deep: #001A4D;
+      --blue-electric: #0055FF;
+      --blue-bright: #0099FF;
+      --cyan: #00CCFF;
+      --cold-white: #E8F4FF;
+      --gold: #C9A84C;
+      --panel-bg: rgba(1, 4, 14, 0.94);
+      --panel-border: rgba(0, 153, 255, 0.2);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--obsidian);
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, sans-serif;
+      color: var(--cold-white);
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+    }
+
+    /* ── Scan lines overlay ── */
+    .scan-lines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0, 85, 255, 0.012) 2px, rgba(0, 85, 255, 0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* ── Corner brackets ── */
+    .corner {
+      position: fixed;
+      width: 28px;
+      height: 28px;
+      z-index: 10;
+      opacity: 0.5;
+    }
+    .c-tl { top: 14px; left: 14px; border-top: 1px solid #0099FF; border-left: 1px solid #0099FF; }
+    .c-tr { top: 14px; right: 14px; border-top: 1px solid #0099FF; border-right: 1px solid #0099FF; }
+    .c-bl { bottom: 14px; left: 14px; border-bottom: 1px solid #0099FF; border-left: 1px solid #0099FF; }
+    .c-br { bottom: 14px; right: 14px; border-bottom: 1px solid #0099FF; border-right: 1px solid #0099FF; }
+
+    /* ── Top-left HUD ── */
+    .hud-tl {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      z-index: 10;
+    }
+    .hud-eyebrow {
+      font-size: 9px;
+      letter-spacing: 0.35em;
+      color: rgba(0, 153, 255, 0.55);
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+    .hud-name {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      background: linear-gradient(135deg, #00AAFF 20%, #C9A84C 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+    }
+    .hud-sub {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: rgba(0, 153, 255, 0.5);
+      margin-top: 5px;
+    }
+
+    /* ── Top-right status ── */
+    .hud-tr {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 10;
+      text-align: right;
+    }
+    .sys-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-bottom: 6px;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      animation: blink 2s ease-in-out infinite;
+    }
+    .status-dot.nominal { background: #00FF88; box-shadow: 0 0 6px #00FF88; }
+    .status-dot.warning { background: #FFB800; box-shadow: 0 0 6px #FFB800; }
+    .sys-label {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: rgba(0, 255, 136, 0.75);
+    }
+    .sys-count {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      color: rgba(232, 244, 255, 0.35);
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    /* ── Agent labels ── */
+    .agent-label {
+      position: fixed;
+      z-index: 5;
+      pointer-events: none;
+      transform: translate(-50%, -100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transition: opacity 0.25s;
+    }
+    .lbl-name {
+      font-size: 8px;
+      letter-spacing: 0.18em;
+      font-weight: 600;
+      color: rgba(232, 244, 255, 0.75);
+      background: rgba(1, 2, 8, 0.7);
+      padding: 2px 7px;
+      border-radius: 2px;
+      white-space: nowrap;
+      backdrop-filter: blur(4px);
+    }
+    .lbl-dot {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+    }
+    .lbl-dot.active  { background: #00FF88; }
+    .lbl-dot.standby { background: #C9A84C; }
+    .lbl-dot.alert   { background: #FF3333; animation: blink 0.8s infinite; }
+
+    /* ── Agent info panel ── */
+    .agent-panel {
+      position: fixed;
+      right: 24px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 272px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      z-index: 20;
+      backdrop-filter: blur(24px);
+      transition: opacity 0.25s, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+    }
+    .agent-panel.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-50%) translateX(16px);
+    }
+    .panel-bar { height: 2px; width: 100%; }
+    .panel-head {
+      padding: 14px 16px 11px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(0, 153, 255, 0.1);
+    }
+    .panel-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .panel-agent-name {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+    }
+    .panel-badge {
+      font-size: 8px;
+      letter-spacing: 0.12em;
+      padding: 2px 7px;
+      border-radius: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .panel-badge.active  { background: rgba(0,255,136,0.12); color: #00FF88; border: 1px solid rgba(0,255,136,0.3); }
+    .panel-badge.standby { background: rgba(201,168,76,0.12); color: #C9A84C; border: 1px solid rgba(201,168,76,0.3); }
+    .panel-badge.alert   { background: rgba(255,51,51,0.12); color: #FF3333; border: 1px solid rgba(255,51,51,0.3); animation: blink 0.9s infinite; }
+    .panel-close {
+      width: 22px;
+      height: 22px;
+      border: 1px solid rgba(232,244,255,0.18);
+      border-radius: 4px;
+      background: transparent;
+      color: rgba(232,244,255,0.5);
+      cursor: pointer;
+      font-size: 11px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .panel-close:hover { background: rgba(232,244,255,0.08); color: #E8F4FF; }
+
+    .panel-body { padding: 14px 16px 16px; }
+    .panel-role {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: rgba(0,153,255,0.65);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .panel-desc {
+      font-size: 11px;
+      line-height: 1.65;
+      color: rgba(232,244,255,0.55);
+      margin-bottom: 14px;
+    }
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+    }
+    .metric {
+      background: rgba(0,85,255,0.07);
+      border: 1px solid rgba(0,153,255,0.12);
+      border-radius: 4px;
+      padding: 7px 6px;
+      text-align: center;
+    }
+    .m-val {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .m-lbl {
+      font-size: 8px;
+      color: rgba(232,244,255,0.38);
+      letter-spacing: 0.1em;
+      margin-top: 2px;
+    }
+    .m-bar {
+      height: 2px;
+      background: rgba(232,244,255,0.08);
+      border-radius: 1px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .m-fill { height: 100%; border-radius: 1px; }
+
+    /* ── Bottom agent nav ── */
+    .hud-bottom {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    .agent-nav {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .agent-nav:hover { opacity: 0.75; }
+    .nav-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      border: 1px solid rgba(232,244,255,0.2);
+    }
+    .nav-name {
+      font-size: 7px;
+      letter-spacing: 0.18em;
+      color: rgba(232,244,255,0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="scan-lines"></div>
+  <div class="corner c-tl"></div>
+  <div class="corner c-tr"></div>
+  <div class="corner c-bl"></div>
+  <div class="corner c-br"></div>
+
+  <div class="hud-tl">
+    <div class="hud-eyebrow">HADES OMEGA · NEAR AI</div>
+    <div class="hud-name">NEURAL COMMAND</div>
+    <div class="hud-sub">CORE INTELLIGENCE NETWORK</div>
+  </div>
+
+  <div class="hud-tr">
+    <div class="sys-status">
+      <div class="status-dot nominal"></div>
+      <div class="sys-label">SYSTEMS NOMINAL</div>
+    </div>
+    <div class="sys-count">5 / 6 AGENTS ACTIVE</div>
+  </div>
+
+  <div id="agent-labels"></div>
+
+  <div id="agent-panel" class="agent-panel hidden">
+    <div id="panel-bar" class="panel-bar"></div>
+    <div class="panel-head">
+      <div id="p-icon" class="panel-icon"></div>
+      <div id="p-name" class="panel-agent-name"></div>
+      <div id="p-badge" class="panel-badge active"></div>
+      <button class="panel-close" onclick="closePanel()">✕</button>
+    </div>
+    <div class="panel-body">
+      <div id="p-role" class="panel-role"></div>
+      <div id="p-desc" class="panel-desc"></div>
+      <div id="p-metrics" class="metrics-row"></div>
+    </div>
+  </div>
+
+  <div id="hud-bottom" class="hud-bottom"></div>
+  <div id="canvas-container"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // ─────────────────────────────────
+    //  AGENT DATA
+    // ─────────────────────────────────
+    const AGENTS = [
+      {
+        id: 'charon', name: 'CHARON', symbol: 'Χ',
+        role: 'Transition Protocol',
+        desc: 'Manages state transitions, session handoffs, and cross-boundary data transfers with zero-loss guarantee.',
+        status: 'active', glowColor: '#4A90D9', glowHex: 0x4A90D9, darkHex: 0x0D2344,
+        orbitR: 8.0, orbitSpd: 0.28, incDeg: 18, lngDeg: 0,
+        metrics: [
+          { lbl: 'LOAD', val: '72%', fill: 72, col: '#4A90D9' },
+          { lbl: 'LATENCY', val: '12ms', fill: 60, col: '#4A90D9' },
+          { lbl: 'OPS/S', val: '1.2K', fill: 72, col: '#4A90D9' }
+        ]
+      },
+      {
+        id: 'persephone', name: 'PERSEPHONE', symbol: 'Ψ',
+        role: 'Bridge Interface',
+        desc: 'Cross-domain communication and semantic translation between subsystems with adaptive context mapping.',
+        status: 'active', glowColor: '#00E5CC', glowHex: 0x00E5CC, darkHex: 0x003D35,
+        orbitR: 10.0, orbitSpd: 0.18, incDeg: 52, lngDeg: 60,
+        metrics: [
+          { lbl: 'LOAD', val: '45%', fill: 45, col: '#00E5CC' },
+          { lbl: 'LATENCY', val: '8ms', fill: 80, col: '#00E5CC' },
+          { lbl: 'BRIDGES', val: '856', fill: 56, col: '#00E5CC' }
+        ]
+      },
+      {
+        id: 'minos', name: 'MINOS', symbol: 'Μ',
+        role: 'Judgment Engine',
+        desc: 'Evaluates decision criteria, applies governance rules, and arbitrates conflicts via NEAR consensus layer.',
+        status: 'standby', glowColor: '#C9A84C', glowHex: 0xC9A84C, darkHex: 0x3D2800,
+        orbitR: 9.0, orbitSpd: 0.22, incDeg: 80, lngDeg: 130,
+        metrics: [
+          { lbl: 'LOAD', val: '18%', fill: 18, col: '#C9A84C' },
+          { lbl: 'DECISIONS', val: '340', fill: 34, col: '#C9A84C' },
+          { lbl: 'ACCURACY', val: '99.8%', fill: 99, col: '#C9A84C' }
+        ]
+      },
+      {
+        id: 'cerberus', name: 'CERBERUS', symbol: 'Κ',
+        role: 'Security Layer',
+        desc: 'Multi-layer threat detection, anomaly scanning, and access control enforcement across all system perimeters.',
+        status: 'active', glowColor: '#FF6B35', glowHex: 0xFF6B35, darkHex: 0x3D1000,
+        orbitR: 11.0, orbitSpd: 0.14, incDeg: 122, lngDeg: 200,
+        metrics: [
+          { lbl: 'THREATS', val: '0', fill: 0, col: '#FF6B35' },
+          { lbl: 'BLOCKS/H', val: '47', fill: 47, col: '#FF6B35' },
+          { lbl: 'INTEGRITY', val: '100%', fill: 100, col: '#FF6B35' }
+        ]
+      },
+      {
+        id: 'elysium', name: 'ELYSIUM', symbol: 'Ε',
+        role: 'Harmony Core',
+        desc: 'Orchestrates system-wide load balancing, resource allocation, and agent network synchronization.',
+        status: 'active', glowColor: '#A8C8FF', glowHex: 0xA8C8FF, darkHex: 0x10143D,
+        orbitR: 8.5, orbitSpd: 0.32, incDeg: 158, lngDeg: 290,
+        metrics: [
+          { lbl: 'BALANCE', val: '94%', fill: 94, col: '#A8C8FF' },
+          { lbl: 'EFFICIENCY', val: '98%', fill: 98, col: '#A8C8FF' },
+          { lbl: 'UPTIME', val: '99.9%', fill: 99, col: '#A8C8FF' }
+        ]
+      },
+      {
+        id: 'tartarus', name: 'TARTARUS', symbol: 'Τ',
+        role: 'Deep Process',
+        desc: 'Long-running computations, archival processing, and deep-state execution in isolated contexts. Queue overflow detected.',
+        status: 'alert', glowColor: '#9B59B6', glowHex: 0x9B59B6, darkHex: 0x1A0040,
+        orbitR: 12.0, orbitSpd: 0.10, incDeg: -28, lngDeg: 340,
+        metrics: [
+          { lbl: 'QUEUE', val: '1.8K', fill: 85, col: '#9B59B6' },
+          { lbl: 'DEPTH', val: 'L-7', fill: 70, col: '#9B59B6' },
+          { lbl: 'ETA', val: '14m', fill: 30, col: '#9B59B6' }
+        ]
+      }
+    ];
+
+    // ─────────────────────────────────
+    //  RENDERER / SCENE / CAMERA
+    // ─────────────────────────────────
+    const container = document.getElementById('canvas-container');
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.85;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x010208);
+    scene.fog = new THREE.FogExp2(0x010208, 0.010);
+
+    const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 300);
+    camera.position.set(0, 7, 24);
+    camera.lookAt(0, 0, 0);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.minDistance = 9;
+    controls.maxDistance = 45;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.25;
+
+    // Post-processing
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.4, 0.65, 0.15
+    );
+    composer.addPass(bloom);
+
+    // ─────────────────────────────────
+    //  LIGHTS
+    // ─────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x04071A, 1.2));
+    const coreLight = new THREE.PointLight(0x0044FF, 3.0, 22);
+    scene.add(coreLight);
+    const rimLight1 = new THREE.DirectionalLight(0x0066FF, 0.5);
+    rimLight1.position.set(-12, 10, -6);
+    scene.add(rimLight1);
+    const rimLight2 = new THREE.DirectionalLight(0xC9A84C, 0.15);
+    rimLight2.position.set(12, -5, 8);
+    scene.add(rimLight2);
+
+    // ─────────────────────────────────
+    //  STAR FIELD
+    // ─────────────────────────────────
+    {
+      const N = 2800;
+      const pos = new Float32Array(N * 3);
+      const col = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const r = 90 + Math.random() * 90;
+        const t = Math.random() * Math.PI * 2;
+        const p = Math.acos(2 * Math.random() - 1);
+        pos[i*3]   = r * Math.sin(p) * Math.cos(t);
+        pos[i*3+1] = r * Math.cos(p);
+        pos[i*3+2] = r * Math.sin(p) * Math.sin(t);
+        const k = 0.25 + Math.random() * 0.75;
+        col[i*3] = k * 0.55; col[i*3+1] = k * 0.65; col[i*3+2] = k;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+        size: 0.13, vertexColors: true, transparent: true, opacity: 0.85,
+        sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending
+      })));
+    }
+
+    // ─────────────────────────────────
+    //  NEURAL CORE
+    // ─────────────────────────────────
+    const coreGroup = new THREE.Group();
+    scene.add(coreGroup);
+
+    // Nucleus — icosahedron, dense electric blue
+    const nucleusGeo = new THREE.IcosahedronGeometry(0.55, 3);
+    const nucleusMat = new THREE.MeshStandardMaterial({
+      color: 0x003BCC,
+      emissive: 0x0055FF,
+      emissiveIntensity: 3.5,
+      metalness: 0.7,
+      roughness: 0.1
+    });
+    const nucleus = new THREE.Mesh(nucleusGeo, nucleusMat);
+    coreGroup.add(nucleus);
+
+    // Inner shell — transparent blue
+    const innerShellGeo = new THREE.SphereGeometry(1.1, 32, 32);
+    const innerShellMat = new THREE.MeshStandardMaterial({
+      color: 0x001166,
+      emissive: 0x002299,
+      emissiveIntensity: 0.8,
+      transparent: true, opacity: 0.55,
+      metalness: 0.9, roughness: 0.05,
+      side: THREE.FrontSide, depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    coreGroup.add(new THREE.Mesh(innerShellGeo, innerShellMat));
+
+    // Outer translucent shell
+    const outerShellGeo = new THREE.SphereGeometry(1.9, 32, 32);
+    const outerShellMat = new THREE.MeshBasicMaterial({
+      color: 0x002299,
+      transparent: true, opacity: 0.04,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false, side: THREE.BackSide
+    });
+    coreGroup.add(new THREE.Mesh(outerShellGeo, outerShellMat));
+
+    // Icosahedral cage — NOT a grid; just the structural edges (gold)
+    const cageGeo = new THREE.IcosahedronGeometry(2.1, 1);
+    const cageMat = new THREE.MeshBasicMaterial({
+      color: 0xC9A84C, wireframe: true,
+      transparent: true, opacity: 0.12,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const cage = new THREE.Mesh(cageGeo, cageMat);
+    coreGroup.add(cage);
+
+    // Neural filaments — organic curved tubes
+    const filamentData = [];
+    const FILAMENT_N = 24;
+    for (let i = 0; i < FILAMENT_N; i++) {
+      const phi = Math.random() * Math.PI * 2;
+      const theta = Math.acos(2 * Math.random() - 1);
+      const dir = new THREE.Vector3(
+        Math.sin(theta) * Math.cos(phi),
+        Math.cos(theta),
+        Math.sin(theta) * Math.sin(phi)
+      );
+      const len = 2.2 + Math.random() * 2.8;
+      const pts = [new THREE.Vector3(0, 0, 0)];
+      let cur = new THREE.Vector3(0, 0, 0);
+      for (let s = 1; s <= 5; s++) {
+        const t = s / 5;
+        const jitter = (1.0 - t * 0.6) * 0.35;
+        cur = cur.clone().add(
+          dir.clone().multiplyScalar(len * 0.2).add(
+            new THREE.Vector3(
+              (Math.random() - 0.5) * jitter,
+              (Math.random() - 0.5) * jitter,
+              (Math.random() - 0.5) * jitter
+            )
+          )
+        );
+        pts.push(cur.clone());
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const geo = new THREE.TubeGeometry(curve, 18, 0.012 + Math.random() * 0.022, 4, false);
+      const isGold = Math.random() < 0.18;
+      const baseOpacity = 0.28 + Math.random() * 0.5;
+      const mat = new THREE.MeshBasicMaterial({
+        color: isGold ? 0xC9A84C : (Math.random() < 0.7 ? 0x0099FF : 0x00CCFF),
+        transparent: true, opacity: baseOpacity,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      });
+      filamentData.push({ mat, baseOpacity, phase: Math.random() * Math.PI * 2, speed: 0.8 + Math.random() * 1.2 });
+      coreGroup.add(new THREE.Mesh(geo, mat));
+    }
+
+    // Core particle haze
+    {
+      const N = 300;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const r = 0.4 + Math.random() * 3.5;
+        const t = Math.random() * Math.PI * 2;
+        const p = Math.acos(2 * Math.random() - 1);
+        pos[i*3]   = r * Math.sin(p) * Math.cos(t);
+        pos[i*3+1] = r * Math.cos(p);
+        pos[i*3+2] = r * Math.sin(p) * Math.sin(t);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      coreGroup.add(new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0x0088FF, size: 0.04, transparent: true, opacity: 0.6,
+        blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+      })));
+    }
+
+    // ─────────────────────────────────
+    //  ORBITAL AGENTS
+    // ─────────────────────────────────
+    function makeAgentGeo(id) {
+      switch(id) {
+        case 'charon':     return new THREE.OctahedronGeometry(0.42, 0);
+        case 'persephone': return new THREE.TorusKnotGeometry(0.28, 0.09, 64, 8, 2, 3);
+        case 'minos':      return new THREE.TetrahedronGeometry(0.48, 0);
+        case 'cerberus':   return new THREE.DodecahedronGeometry(0.40, 0);
+        case 'elysium':    return new THREE.IcosahedronGeometry(0.38, 1);
+        case 'tartarus':   return new THREE.TorusKnotGeometry(0.26, 0.10, 80, 8, 3, 5);
+        default:           return new THREE.SphereGeometry(0.38, 12, 12);
+      }
+    }
+
+    const agentGroups = [];
+    const agentMeshes = [];
+
+    AGENTS.forEach((a) => {
+      const grp = new THREE.Group();
+      grp.userData.agent = a;
+      scene.add(grp);
+      agentGroups.push(grp);
+
+      // Main mesh
+      const mesh = new THREE.Mesh(
+        makeAgentGeo(a.id),
+        new THREE.MeshStandardMaterial({
+          color: new THREE.Color(a.darkHex),
+          emissive: new THREE.Color(a.glowHex),
+          emissiveIntensity: a.status === 'alert' ? 2.0 : 1.3,
+          metalness: 0.92, roughness: 0.08
+        })
+      );
+      mesh.userData.agent = a;
+      grp.add(mesh);
+      agentMeshes.push(mesh);
+
+      // Glow halo
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(a.glowHex),
+        transparent: true, opacity: 0.055,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide
+      });
+      grp.add(new THREE.Mesh(new THREE.SphereGeometry(0.75, 14, 14), haloMat));
+
+      // Status indicator
+      const statusColor = a.status === 'active' ? 0x00FF88 : a.status === 'standby' ? 0xC9A84C : 0xFF2222;
+      const ind = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 6, 6),
+        new THREE.MeshBasicMaterial({ color: statusColor, blending: THREE.AdditiveBlending })
+      );
+      ind.position.set(0.5, 0.5, 0);
+      grp.add(ind);
+    });
+
+    // ─────────────────────────────────
+    //  CONNECTIONS (Core → Agents)
+    // ─────────────────────────────────
+    const connLines = [];
+    const connFlows = [];
+    const CONN_SEGS = 24;
+
+    AGENTS.forEach((a, idx) => {
+      // Dashed arc line
+      const positions = new Float32Array((CONN_SEGS + 1) * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setDrawRange(0, CONN_SEGS + 1);
+      const mat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(a.glowHex),
+        transparent: true, opacity: 0.18,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      });
+      const line = new THREE.Line(geo, mat);
+      scene.add(line);
+      connLines.push({ line, geo, mat, agent: a });
+
+      // Flow particles along arc
+      const FLOW_N = 10;
+      const fPos = new Float32Array(FLOW_N * 3);
+      const fGeo = new THREE.BufferGeometry();
+      fGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3));
+      const fMat = new THREE.PointsMaterial({
+        color: new THREE.Color(a.glowHex),
+        size: 0.09, transparent: true, opacity: 0.75,
+        blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+      });
+      scene.add(new THREE.Points(fGeo, fMat));
+      connFlows.push({
+        geo: fGeo, agent: a, agentIdx: idx,
+        offsets: Array.from({ length: FLOW_N }, (_, i) => i / FLOW_N)
+      });
+    });
+
+    // ─────────────────────────────────
+    //  AGENT LABELS & BOTTOM NAV
+    // ─────────────────────────────────
+    const labelsEl = document.getElementById('agent-labels');
+    const labelDivs = [];
+    AGENTS.forEach((a) => {
+      const d = document.createElement('div');
+      d.className = 'agent-label';
+      d.innerHTML = `<div class="lbl-dot ${a.status}"></div><div class="lbl-name">${a.name}</div>`;
+      labelsEl.appendChild(d);
+      labelDivs.push(d);
+    });
+
+    const hudBottom = document.getElementById('hud-bottom');
+    AGENTS.forEach((a, i) => {
+      const d = document.createElement('div');
+      d.className = 'agent-nav';
+      d.innerHTML = `
+        <div class="nav-dot" style="background:${a.glowColor};box-shadow:0 0 5px ${a.glowColor};border-color:transparent;"></div>
+        <div class="nav-name">${a.name}</div>
+      `;
+      d.addEventListener('click', () => {
+        openPanel(a);
+        controls.autoRotate = false;
+        setTimeout(() => controls.autoRotate = true, 4500);
+      });
+      hudBottom.appendChild(d);
+    });
+
+    // ─────────────────────────────────
+    //  PANEL LOGIC
+    // ─────────────────────────────────
+    let activeAgent = null;
+
+    window.closePanel = () => {
+      document.getElementById('agent-panel').classList.add('hidden');
+      activeAgent = null;
+    };
+
+    window.openPanel = (a) => {
+      activeAgent = a;
+      document.getElementById('panel-bar').style.background = a.glowColor;
+      document.getElementById('p-icon').textContent = a.symbol;
+      document.getElementById('p-icon').style.cssText = `background:${a.glowColor}20; color:${a.glowColor}`;
+      document.getElementById('p-name').textContent = a.name;
+      const badge = document.getElementById('p-badge');
+      badge.textContent = a.status.toUpperCase();
+      badge.className = `panel-badge ${a.status}`;
+      document.getElementById('p-role').textContent = a.role;
+      document.getElementById('p-desc').textContent = a.desc;
+      document.getElementById('p-metrics').innerHTML = a.metrics.map(m => `
+        <div class="metric">
+          <div class="m-val" style="color:${m.col}">${m.val}</div>
+          <div class="m-lbl">${m.lbl}</div>
+          <div class="m-bar"><div class="m-fill" style="width:${m.fill}%;background:${m.col};"></div></div>
+        </div>`).join('');
+      document.getElementById('agent-panel').classList.remove('hidden');
+    };
+
+    // ─────────────────────────────────
+    //  RAYCASTER
+    // ─────────────────────────────────
+    const rc = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    rc.params.Points.threshold = 0.15;
+
+    renderer.domElement.addEventListener('click', (e) => {
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      rc.setFromCamera(mouse, camera);
+      const hits = rc.intersectObjects(agentMeshes, false);
+      if (hits.length) {
+        openPanel(hits[0].object.userData.agent);
+        controls.autoRotate = false;
+        setTimeout(() => controls.autoRotate = true, 5000);
+      }
+    });
+
+    renderer.domElement.addEventListener('mousemove', (e) => {
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      rc.setFromCamera(mouse, camera);
+      renderer.domElement.style.cursor = rc.intersectObjects(agentMeshes, false).length ? 'pointer' : 'default';
+    });
+
+    // ─────────────────────────────────
+    //  RESIZE
+    // ─────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+      bloom.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ─────────────────────────────────
+    //  ORBITAL MATH
+    // ─────────────────────────────────
+    function agentPosition(a, t) {
+      const inc = a.incDeg * Math.PI / 180;
+      const lng = a.lngDeg * Math.PI / 180;
+      const angle = t * a.orbitSpd;
+      const x0 = Math.cos(angle) * a.orbitR;
+      const z0 = Math.sin(angle) * a.orbitR;
+      return new THREE.Vector3(
+        x0 * Math.cos(lng) - z0 * Math.sin(inc) * Math.sin(lng),
+        z0 * Math.sin(inc),
+        x0 * Math.sin(lng) + z0 * Math.cos(inc) * Math.cos(lng)
+      );
+    }
+
+    function bezierPt(P0, P1, P2, t) {
+      const om = 1 - t;
+      return new THREE.Vector3(
+        om*om*P0.x + 2*om*t*P1.x + t*t*P2.x,
+        om*om*P0.y + 2*om*t*P1.y + t*t*P2.y,
+        om*om*P0.z + 2*om*t*P1.z + t*t*P2.z
+      );
+    }
+
+    // ─────────────────────────────────
+    //  ANIMATE
+    // ─────────────────────────────────
+    const clock = new THREE.Clock();
+    const ORIGIN = new THREE.Vector3(0, 0, 0);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const T = clock.getElapsedTime();
+      controls.update();
+
+      // Core
+      nucleus.scale.setScalar(0.94 + 0.06 * Math.sin(T * 3.2));
+      nucleusMat.emissiveIntensity = 2.8 + 1.0 * Math.sin(T * 2.8);
+      cage.rotation.set(T * 0.045, T * 0.07, T * 0.03);
+      coreGroup.rotation.y = T * 0.035;
+      coreLight.intensity = 2.5 + 1.2 * Math.sin(T * 2.5);
+      coreLight.color.setHSL(0.6 + 0.02 * Math.sin(T * 0.5), 1, 0.5);
+
+      filamentData.forEach(({ mat, baseOpacity, phase, speed }) => {
+        mat.opacity = baseOpacity * (0.65 + 0.35 * Math.sin(T * speed + phase));
+      });
+
+      // Agent orbits
+      agentGroups.forEach((grp, i) => {
+        const a = AGENTS[i];
+        const pos = agentPosition(a, T);
+        grp.position.copy(pos);
+
+        const mesh = grp.children[0];
+        const rotDir = i % 2 === 0 ? 1 : -1;
+        mesh.rotation.x = T * 0.4 * rotDir;
+        mesh.rotation.y = T * 0.65 * (i % 3 === 0 ? 1 : -1.1);
+
+        if (a.status === 'alert') {
+          const ap = 0.88 + 0.12 * Math.sin(T * 4.5);
+          mesh.scale.setScalar(ap);
+          mesh.material.emissiveIntensity = 1.5 + 0.7 * Math.sin(T * 4.5);
+        }
+      });
+
+      // Connection arcs
+      connLines.forEach(({ geo, mat, agent }, i) => {
+        const aPos = agentGroups[i].position;
+        const ctrl = aPos.clone().multiplyScalar(0.5);
+        ctrl.y += 2.2;
+        const arr = geo.attributes.position.array;
+        for (let s = 0; s <= CONN_SEGS; s++) {
+          const tval = s / CONN_SEGS;
+          const pt = bezierPt(ORIGIN, ctrl, aPos, tval);
+          arr[s*3] = pt.x; arr[s*3+1] = pt.y; arr[s*3+2] = pt.z;
+        }
+        geo.attributes.position.needsUpdate = true;
+        mat.opacity = (activeAgent && activeAgent.id === agent.id) ? 0.50 : 0.16;
+      });
+
+      // Flow particles
+      connFlows.forEach(({ geo, agent, agentIdx, offsets }) => {
+        const aPos = agentGroups[agentIdx].position;
+        const ctrl = aPos.clone().multiplyScalar(0.5);
+        ctrl.y += 2.2;
+        const arr = geo.attributes.position.array;
+        offsets.forEach((offset, j) => {
+          const tval = ((offset + T * 0.18 * agent.orbitSpd * 4) % 1.0);
+          const pt = bezierPt(ORIGIN, ctrl, aPos, tval);
+          arr[j*3] = pt.x; arr[j*3+1] = pt.y; arr[j*3+2] = pt.z;
+        });
+        geo.attributes.position.needsUpdate = true;
+      });
+
+      // HTML label positions
+      agentGroups.forEach((grp, i) => {
+        const world = grp.position.clone();
+        world.project(camera);
+        const x = (world.x + 1) / 2 * window.innerWidth;
+        const y = (-world.y + 1) / 2 * window.innerHeight;
+        const lbl = labelDivs[i];
+        lbl.style.opacity = world.z > 1 ? '0' : '1';
+        lbl.style.left = x + 'px';
+        lbl.style.top = (y - 22) + 'px';
+      });
+
+      composer.render();
+    }
+
+    animate();
+  </script>
+</body>
+</html>
