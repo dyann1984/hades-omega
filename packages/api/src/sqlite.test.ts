@@ -48,4 +48,25 @@ describe('SQLite migration and persistence', () => {
     try { const repo=new SqliteRepository(join(dir,'data.sqlite'),json); await expect(repo.init()).rejects.toThrow(); repo.close(); expect(await readFile(json,'utf8')).toBe('invalid') }
     finally { await rm(dir,{recursive:true,force:true}) }
   })
+  it('document results survive process restart (SQLite WAL persistence)', async () => {
+    const dir=await mkdtemp(join(tmpdir(),'hades-restart-')); const db=join(dir,'data.sqlite'), json=join(dir,'none.json')
+    try {
+      // Session 1: save document results
+      const s1=new SqliteRepository(db,json); await s1.init()
+      s1.saveDocumentResult('doc-001','owner-alice','informe.pdf','APPROVED',{resultId:'doc-001',filename:'informe.pdf',overallStatus:'APPROVED',extractionMethod:'pdf-parse'})
+      s1.saveDocumentResult('doc-002','owner-alice','contrato.docx','REJECTED',{resultId:'doc-002',filename:'contrato.docx',overallStatus:'REJECTED',extractionMethod:'mammoth'})
+      s1.close()
+      // Session 2: open the same DB (simulates a process restart)
+      const s2=new SqliteRepository(db,json); await s2.init()
+      const list=s2.listDocumentResults('owner-alice')
+      expect(list).toHaveLength(2)
+      expect(list.map(r=>r.filename).sort()).toEqual(['contrato.docx','informe.pdf'])
+      const single=s2.getDocumentResult('doc-001','owner-alice')
+      expect(single?.filename).toBe('informe.pdf')
+      expect((single?.data as Record<string, unknown>)?.['extractionMethod']).toBe('pdf-parse')
+      // Cross-owner isolation still enforced after restart
+      expect(s2.getDocumentResult('doc-001','owner-bob')).toBeUndefined()
+      s2.close()
+    } finally { await rm(dir,{recursive:true,force:true}) }
+  })
 })
