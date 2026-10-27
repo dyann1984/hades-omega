@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useHadesStore } from '../store/index.js'
 import { apiHeaders, apiPath } from '../lib/api.js'
 
@@ -30,13 +30,29 @@ interface ProcessResult {
   filename: string
   mimeType: string
   sizeBytes: number
+  extractionMethod?: string
   overallStatus: 'APPROVED' | 'REJECTED' | 'PARTIAL'
   errors: string[]
   intake: Record<string, unknown> | null
   validation: Record<string, unknown> | null
   summary: Record<string, unknown> | null
-  deliverable: Record<string, unknown> | null
+  deliverable: Record<string, unknown> & { reportText?: string } | null
   processedAt: number
+}
+
+const MIME_OPTIONS = [
+  { value: 'text/plain',       label: 'Texto (.txt)', ext: '.txt' },
+  { value: 'application/json', label: 'JSON (.json)', ext: '.json' },
+  { value: 'text/csv',         label: 'CSV (.csv)', ext: '.csv' },
+  { value: 'text/markdown',    label: 'Markdown (.md)', ext: '.md' },
+  { value: 'application/pdf',  label: 'PDF (.pdf)', ext: '.pdf' },
+  { value: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', label: 'Word (.docx)', ext: '.docx' },
+]
+
+const BINARY_EXTS = new Set(['.pdf', '.docx'])
+
+function mimeFromExt(ext: string): string {
+  return MIME_OPTIONS.find(o => o.ext === ext)?.value ?? 'text/plain'
 }
 
 function statusBadge(status: string): JSX.Element {
@@ -65,63 +81,97 @@ export default function DocumentsPanel(): JSX.Element {
   const [filename, setFilename] = useState('documento.txt')
   const [content, setContent]   = useState('')
   const [mimeType, setMimeType] = useState('text/plain')
+  const [isBinary, setIsBinary] = useState(false)
   const [loading, setLoading]   = useState(false)
+  const [activeStage, setActiveStage] = useState<string | null>(null)
   const [result, setResult]     = useState<ProcessResult | null>(null)
   const [error, setError]       = useState('')
   const [history, setHistory]   = useState<DocumentResult[]>([])
   const [histLoading, setHistLoading] = useState(false)
   const [histLoaded, setHistLoaded]   = useState(false)
   const [openStage, setOpenStage]     = useState<string | null>(null)
+  const [dragOver, setDragOver]       = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-
-  const MIME_OPTIONS = [
-    { value: 'text/plain',       label: 'Texto (.txt)' },
-    { value: 'application/json', label: 'JSON (.json)' },
-    { value: 'text/csv',         label: 'CSV (.csv)'   },
-    { value: 'text/markdown',    label: 'Markdown (.md)' },
-  ]
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (file) loadFile(file)
+  }
+
+  function loadFile(file: File): void {
     setFilename(file.name)
     const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-    if (ext === '.json') setMimeType('application/json')
-    else if (ext === '.csv') setMimeType('text/csv')
-    else if (ext === '.md') setMimeType('text/markdown')
-    else setMimeType('text/plain')
+    const mime = mimeFromExt(ext)
+    setMimeType(mime)
+    const binary = BINARY_EXTS.has(ext)
+    setIsBinary(binary)
     const reader = new FileReader()
-    reader.onload = ev => setContent((ev.target?.result as string) ?? '')
-    reader.readAsText(file, 'utf-8')
+    if (binary) {
+      reader.onload = ev => {
+        const base64 = (ev.target?.result as string)?.split(',')[1] ?? ''
+        setContent(base64)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      reader.onload = ev => setContent((ev.target?.result as string) ?? '')
+      reader.readAsText(file, 'utf-8')
+    }
   }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) loadFile(file)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback(() => setDragOver(false), [])
 
   async function processDocument(): Promise<void> {
     if (!content.trim()) { setError('El contenido no puede estar vacío.'); return }
-    setLoading(true); setError(''); setResult(null); setOpenStage(null)
+    setLoading(true); setError(''); setResult(null); setOpenStage(null); setActiveStage('CHARON')
+
+    const stageNames = ['CHARON', 'MINOS', 'PERSEPHONE', 'ELYSIUM', 'TARTARUS']
+    let stageIdx = 0
+    const stageTimer = setInterval(() => {
+      stageIdx = Math.min(stageIdx + 1, stageNames.length - 1)
+      setActiveStage(stageNames[stageIdx] ?? null)
+    }, 500)
+
     try {
+      const body: Record<string, unknown> = { filename, content, mimeType }
+      if (isBinary) body['encoding'] = 'base64'
+
       const res = await fetch(apiPath('/api/v1/documents/process'), {
         method: 'POST',
         headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, content, mimeType }),
+        body: JSON.stringify(body),
       })
-      const body = await res.json() as { success: boolean; data?: ProcessResult; error?: { code: string; message: string } }
-      if (!res.ok || !body.data) {
-        const msg = body.error?.message ?? `Error ${res.status}`
+      const data = await res.json() as { success: boolean; data?: ProcessResult; error?: { code: string; message: string } }
+      if (!res.ok || !data.data) {
+        const msg = data.error?.message ?? `Error ${res.status}`
         setError(msg)
         addNotification('error', `DOCUMENTOS: ${msg}`)
         return
       }
-      setResult(body.data)
-      setHistLoaded(false) // reset so history reloads on next open
+      setResult(data.data)
+      setHistLoaded(false)
       addNotification(
-        body.data.overallStatus === 'APPROVED' ? 'success' : body.data.overallStatus === 'REJECTED' ? 'error' : 'warning',
-        `DOCUMENTOS: ${filename} → ${body.data.overallStatus}`,
+        data.data.overallStatus === 'APPROVED' ? 'success' : data.data.overallStatus === 'REJECTED' ? 'error' : 'warning',
+        `DOCUMENTOS: ${filename} → ${data.data.overallStatus}`,
       )
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error de conexión'
       setError(msg)
       addNotification('error', `DOCUMENTOS: ${msg}`)
     } finally {
+      clearInterval(stageTimer)
+      setActiveStage(null)
       setLoading(false)
     }
   }
@@ -135,6 +185,17 @@ export default function DocumentsPanel(): JSX.Element {
       if (body.success && body.data) { setHistory(body.data); setHistLoaded(true) }
     } catch { /* network error — show nothing */ }
     finally { setHistLoading(false) }
+  }
+
+  function downloadReport(r: ProcessResult): void {
+    const text = r.deliverable?.reportText ?? JSON.stringify(r, null, 2)
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `INFORME_${r.filename.replace(/\.[^.]+$/, '')}_${r.resultId.slice(0, 8)}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const stageData: Record<string, unknown> = result
@@ -162,7 +223,8 @@ export default function DocumentsPanel(): JSX.Element {
         <span className="text-electric text-sm flex-shrink-0 mt-0.5">⬡</span>
         <p className="text-[11px] text-gray-500 leading-snug">
           Pipeline real (sin simulación): CHARON → MINOS → PERSEPHONE → ELYSIUM → TARTARUS → SQLite.
-          Formatos soportados: <span className="text-electric/70">.txt .json .csv .md</span> · Tamaño máximo: <span className="text-electric/70">5 MB</span>
+          Formatos: <span className="text-electric/70">.txt .json .csv .md .pdf .docx</span> · Máx: <span className="text-electric/70">5 MB</span>
+          · Análisis de negocio incluido · PDF: extracción textual (no OCR)
         </p>
       </div>
 
@@ -170,22 +232,30 @@ export default function DocumentsPanel(): JSX.Element {
       <div className="hades-card rounded-lg p-4 flex flex-col gap-3">
         <p className="font-mono text-[11px] text-gray-400 tracking-widest">NUEVO DOCUMENTO</p>
 
-        {/* File picker */}
-        <div className="flex items-center gap-2">
+        {/* Drag & drop zone */}
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={`relative border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer ${
+            dragOver ? 'border-electric/60 bg-electric/5' : 'border-obsidian-700 hover:border-electric/30'
+          }`}
+          onClick={() => fileRef.current?.click()}
+        >
           <input
             ref={fileRef}
             type="file"
-            accept=".txt,.json,.csv,.md"
+            accept=".txt,.json,.csv,.md,.pdf,.docx"
             className="hidden"
             onChange={handleFileSelect}
           />
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="font-mono text-[10px] text-electric border border-electric/30 px-3 py-1.5 rounded hover:bg-electric/10 transition-colors flex-shrink-0"
-          >
-            ⬆ Seleccionar archivo
-          </button>
-          <span className="text-[11px] text-gray-500 font-mono truncate flex-1">{filename || 'ningún archivo seleccionado'}</span>
+          <span className="text-electric/50 text-lg">⬆</span>
+          <p className="font-mono text-[10px] text-gray-500 mt-1">
+            {dragOver
+              ? 'Suelta para cargar'
+              : 'Arrastra un archivo aquí o haz clic para seleccionar'}
+          </p>
+          {filename && <p className="font-mono text-[10px] text-electric/70 mt-1 truncate">{filename}{isBinary ? ' (binario)' : ''}</p>}
         </div>
 
         {/* Filename + MIME row */}
@@ -207,14 +277,21 @@ export default function DocumentsPanel(): JSX.Element {
           </select>
         </div>
 
-        {/* Content area */}
-        <textarea
-          className="bg-[#0A0A0F] border border-obsidian-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-700 focus:outline-none focus:border-electric/40 resize-y font-mono"
-          placeholder="Pegar o escribir el contenido del documento aquí…"
-          rows={7}
-          value={content}
-          onChange={e => setContent(e.target.value)}
-        />
+        {/* Content area — hidden for binary files */}
+        {!isBinary && (
+          <textarea
+            className="bg-[#0A0A0F] border border-obsidian-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-700 focus:outline-none focus:border-electric/40 resize-y font-mono"
+            placeholder="Pegar o escribir el contenido del documento aquí…"
+            rows={7}
+            value={content}
+            onChange={e => setContent(e.target.value)}
+          />
+        )}
+        {isBinary && content && (
+          <p className="font-mono text-[11px] text-electric/60">
+            ✓ Archivo binario cargado ({Math.round(content.length * 0.75 / 1024)} KB) — extracción automática de texto
+          </p>
+        )}
 
         {error && (
           <p className="font-mono text-[11px] text-deny">{error}</p>
@@ -225,19 +302,58 @@ export default function DocumentsPanel(): JSX.Element {
           disabled={loading || !content.trim()}
           className="font-mono text-[11px] text-electric border border-electric/40 py-2 rounded hover:bg-electric/10 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
         >
-          {loading ? <span className="animate-pulse">⬡ Procesando…</span> : '⚡ Procesar documento'}
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <span className="animate-pulse">⬡</span>
+              <span className="animate-pulse">{activeStage ?? 'Procesando'}…</span>
+            </span>
+          ) : '⚡ Procesar documento'}
         </button>
+
+        {/* Per-agent progress bar */}
+        {loading && (
+          <div className="flex gap-1 mt-1">
+            {STAGES.map(s => {
+              const idx = STAGES.findIndex(st => st.label.includes(activeStage ?? ''))
+              const stageIdx = STAGES.indexOf(s)
+              const done = idx > stageIdx
+              const active = s.label.includes(activeStage ?? '')
+              return (
+                <div
+                  key={s.name}
+                  className={`flex-1 h-0.5 rounded-full transition-all duration-300 ${
+                    done ? 'bg-permit' : active ? 'bg-electric animate-pulse' : 'bg-obsidian-700'
+                  }`}
+                />
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Result */}
       {result && (
         <div className="hades-card rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/5 flex items-center gap-3">
+          <div className="px-4 py-3 border-b border-white/5 flex items-center gap-3 flex-wrap">
             <span className="font-mono text-[11px] text-gray-300 font-bold">{result.filename}</span>
             {statusBadge(result.overallStatus)}
-            <span className="font-mono text-[10px] text-gray-600 ml-auto">
-              {new Date(result.processedAt).toLocaleTimeString('es-MX')} · {(result.sizeBytes / 1024).toFixed(1)} KB
-            </span>
+            {result.extractionMethod && result.extractionMethod !== 'text' && (
+              <span className="font-mono text-[9px] text-electric/50 border border-electric/20 px-1.5 py-0.5 rounded">
+                {result.extractionMethod}
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="font-mono text-[10px] text-gray-600">
+                {new Date(result.processedAt).toLocaleTimeString('es-MX')} · {(result.sizeBytes / 1024).toFixed(1)} KB
+              </span>
+              <button
+                onClick={() => downloadReport(result)}
+                title="Descargar informe"
+                className="font-mono text-[10px] text-electric/70 border border-electric/20 px-2 py-0.5 rounded hover:bg-electric/10 transition-colors"
+              >
+                ⬇ Informe
+              </button>
+            </div>
           </div>
 
           {result.errors.length > 0 && (
@@ -305,6 +421,14 @@ export default function DocumentsPanel(): JSX.Element {
                   <span className="font-mono text-[9px] text-gray-600">
                     {new Date(item.createdAt).toLocaleDateString('es-MX', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
+                  {item.data?.deliverable?.reportText && (
+                    <button
+                      onClick={() => downloadReport(item.data)}
+                      className="font-mono text-[9px] text-electric/50 hover:text-electric transition-colors"
+                    >
+                      ⬇
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

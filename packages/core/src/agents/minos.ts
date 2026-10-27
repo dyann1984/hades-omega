@@ -53,7 +53,11 @@ export class MinosAgent extends AgentBase {
       rulesPassed.push('V-001: SIZE_LIMIT')
     }
 
-    const ALLOWED_TYPES = ['text/plain', 'application/json', 'text/csv', 'text/markdown', 'text/x-markdown']
+    const ALLOWED_TYPES = [
+      'text/plain', 'application/json', 'text/csv', 'text/markdown', 'text/x-markdown',
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]
     if (!ALLOWED_TYPES.includes(doc.mimeType)) {
       issues.push({ severity: 'HIGH', code: 'V-002', message: `Tipo MIME no permitido: ${doc.mimeType}` })
       rulesFailed.push('V-002: ALLOWED_TYPES')
@@ -80,6 +84,16 @@ export class MinosAgent extends AgentBase {
       rulesFailed.push('V-005: MIN_WORDS')
     } else {
       rulesPassed.push('V-005: MIN_WORDS')
+    }
+
+    if (intake.detectedFormat === 'pdf') {
+      const exMethod = intake.metadata['extractionMethod'] as string | undefined
+      if (exMethod === 'pdf-parse' && intake.wordCount < 10) {
+        issues.push({ severity: 'MEDIUM', code: 'V-006', message: 'PDF posiblemente escaneado (< 10 palabras extraídas) — OCR no disponible' })
+        rulesFailed.push('V-006: PDF_SCANNED_DETECTION')
+      } else {
+        rulesPassed.push('V-006: PDF_SCANNED_DETECTION')
+      }
     }
 
     const highCount = issues.filter(i => i.severity === 'HIGH').length

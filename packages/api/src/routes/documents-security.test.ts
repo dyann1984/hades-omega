@@ -102,7 +102,7 @@ describe('document security and isolation', () => {
     } finally { await app.close(); restore() }
   })
 
-  it('VIEWER role can process documents (no role restriction on this endpoint currently)', async () => {
+  it('VIEWER role is forbidden from processing documents (403)', async () => {
     const { app, restore } = await makeApp(repo)
     try {
       const res = await app.inject({
@@ -110,8 +110,27 @@ describe('document security and isolation', () => {
         headers: auth(app, 'user-viewer', ['VIEWER']),
         payload: { filename: 'test.txt', content: 'viewer document content here', mimeType: 'text/plain' },
       })
-      // Currently no role restriction → VIEWER can process (documented as future P1 to restrict)
-      expect(res.statusCode).toBe(200)
+      expect(res.statusCode).toBe(403)
+    } finally { await app.close(); restore() }
+  })
+
+  it('GET /documents/results/:resultId enforces ownership (user B cannot read user A result)', async () => {
+    const { app, restore } = await makeApp(repo)
+    try {
+      const processRes = await app.inject({
+        method: 'POST', url: '/api/v1/documents/process',
+        headers: auth(app, 'user-alice'),
+        payload: { filename: 'alice.txt', content: 'Contenido privado de Alice para verificar aislamiento de propiedad.', mimeType: 'text/plain' },
+      })
+      expect(processRes.statusCode).toBe(200)
+      const resultId = processRes.json().data.resultId as string
+
+      const aliceGet = await app.inject({ method: 'GET', url: `/api/v1/documents/results/${resultId}`, headers: auth(app, 'user-alice') })
+      expect(aliceGet.statusCode).toBe(200)
+      expect(aliceGet.json().data.data.resultId).toBe(resultId)
+
+      const bobGet = await app.inject({ method: 'GET', url: `/api/v1/documents/results/${resultId}`, headers: auth(app, 'user-bob') })
+      expect(bobGet.statusCode).toBe(404)
     } finally { await app.close(); restore() }
   })
 

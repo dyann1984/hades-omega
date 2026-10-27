@@ -257,6 +257,8 @@ export interface DocumentPayload {
   content: string
   sizeBytes: number
   uploadedBy?: string
+  extractionMethod?: 'text' | 'pdf-parse' | 'mammoth'
+  extractionMetadata?: Record<string, unknown>
 }
 
 export interface DocumentIntakeResult {
@@ -265,7 +267,7 @@ export interface DocumentIntakeResult {
   wordCount: number
   lineCount: number
   charCount: number
-  detectedFormat: 'txt' | 'json' | 'csv' | 'md' | 'unknown'
+  detectedFormat: 'txt' | 'json' | 'csv' | 'md' | 'pdf' | 'docx' | 'unknown'
   metadata: Record<string, unknown>
 }
 
@@ -283,6 +285,15 @@ export interface DocumentValidationResult {
   rulesFailed: string[]
 }
 
+export interface BusinessAnalysis {
+  executiveSummary: string
+  importantData: Array<{ type: string; value: string; context: string }>
+  inconsistencies: Array<{ description: string; severity: 'LOW' | 'MEDIUM' | 'HIGH' }>
+  riskFactors: Array<{ factor: string; level: 'LOW' | 'MEDIUM' | 'HIGH' }>
+  conclusions: string[]
+  analysisNote: string
+}
+
 export interface DocumentSummaryResult {
   title: string
   wordCount: number
@@ -291,6 +302,7 @@ export interface DocumentSummaryResult {
   keyTerms: string[]
   format: string
   details: Record<string, unknown>
+  businessAnalysis?: BusinessAnalysis
 }
 
 export interface DocumentDeliverable {
@@ -303,6 +315,7 @@ export interface DocumentDeliverable {
   summary: DocumentSummaryResult
   policyDecision: string
   overallStatus: 'APPROVED' | 'REJECTED' | 'ESCALATED'
+  reportText?: string
 }
 
 // ---- WebSocket events ----

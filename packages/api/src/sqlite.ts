@@ -204,6 +204,11 @@ export class SqliteRepository extends JsonRepository {
   saveDocumentResult(id: string, ownerId: string, filename: string, status: string, data: unknown): void {
     this.db.prepare('INSERT INTO document_results (id,owner_id,filename,status,created_at,data) VALUES (?,?,?,?,?,?)').run(id, ownerId, filename, status, Date.now(), JSON.stringify(data))
   }
+  getDocumentResult(id: string, ownerId: string): { id: string; filename: string; status: string; createdAt: number; data: unknown } | undefined {
+    const row = this.db.prepare('SELECT id,filename,status,created_at,data FROM document_results WHERE id=? AND owner_id=?').get(id, ownerId) as {id:string;filename:string;status:string;created_at:number;data:string} | undefined
+    if (!row) return undefined
+    return { id: row.id, filename: row.filename, status: row.status, createdAt: row.created_at, data: JSON.parse(row.data) }
+  }
   listDocumentResults(ownerId: string, limit = 50): Array<{ id: string; filename: string; status: string; createdAt: number; data: unknown }> {
     const rows = this.db.prepare('SELECT id,filename,status,created_at,data FROM document_results WHERE owner_id=? ORDER BY created_at DESC LIMIT ?').all(ownerId, limit) as Array<{id:string;filename:string;status:string;created_at:number;data:string}>
     return rows.map(r => ({ id: r.id, filename: r.filename, status: r.status, createdAt: r.created_at, data: JSON.parse(r.data) }))

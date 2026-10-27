@@ -71,8 +71,10 @@ export class CharonAgent extends AgentBase {
     else if (nameLower.endsWith('.csv') || doc.mimeType === 'text/csv') detectedFormat = 'csv'
     else if (nameLower.endsWith('.md')) detectedFormat = 'md'
     else if (nameLower.endsWith('.txt') || doc.mimeType === 'text/plain') detectedFormat = 'txt'
+    else if (nameLower.endsWith('.pdf') || doc.mimeType === 'application/pdf') detectedFormat = 'pdf'
+    else if (nameLower.endsWith('.docx') || doc.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') detectedFormat = 'docx'
 
-    const metadata: Record<string, unknown> = { filename: doc.filename, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes }
+    const metadata: Record<string, unknown> = { filename: doc.filename, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, extractionMethod: doc.extractionMethod ?? 'text' }
     if (detectedFormat === 'json') {
       try {
         const parsed = JSON.parse(doc.content) as unknown
@@ -85,6 +87,13 @@ export class CharonAgent extends AgentBase {
       const lines = doc.content.split('\n').filter(Boolean)
       metadata['rowCount'] = lines.length
       metadata['columns'] = lines[0]?.split(',').map(c => c.trim()) ?? []
+    }
+    if (detectedFormat === 'pdf' && doc.extractionMetadata) {
+      if (doc.extractionMetadata['pageCount']) metadata['pageCount'] = doc.extractionMetadata['pageCount']
+      if (doc.extractionMetadata['pdfTitle']) metadata['pdfTitle'] = doc.extractionMetadata['pdfTitle']
+    }
+    if (detectedFormat === 'docx' && doc.extractionMetadata) {
+      if (doc.extractionMetadata['warnings']) metadata['docxWarnings'] = doc.extractionMetadata['warnings']
     }
 
     const intakeResult: DocumentIntakeResult = { documentId, filename: doc.filename, wordCount, lineCount, charCount, detectedFormat, metadata }

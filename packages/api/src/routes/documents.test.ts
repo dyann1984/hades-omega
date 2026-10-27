@@ -83,11 +83,11 @@ describe('document processing flow', () => {
     expect(body.data.validation.valid).toBe(true)
   })
 
-  it('rejects unsupported file extension', async () => {
+  it('rejects unsupported file extension (.exe)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/documents/process',
-      payload: { filename: 'binary.pdf', content: '%PDF-1.4 fake content', mimeType: 'application/pdf' },
+      payload: { filename: 'script.exe', content: 'MZ binary content', mimeType: 'application/octet-stream' },
     })
     expect(res.statusCode).toBe(415)
     expect(res.json().error.code).toBe('UNSUPPORTED_FILE_TYPE')
@@ -142,6 +142,38 @@ describe('document processing flow', () => {
     expect(body.data.length).toBeGreaterThanOrEqual(1)
     expect(body.data[0].filename).toBe('persisted.md')
     expect(body.data[0].status).toBe('APPROVED')
+  })
+
+  it('business analysis is included in PERSEPHONE summary result', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/documents/process',
+      payload: { filename: 'analisis.txt', content: 'El proyecto tiene un riesgo crítico de vencimiento el 2026-12-31 con un presupuesto de $50,000 MXN y un 15% de contingencia.', mimeType: 'text/plain' },
+    })
+    expect(res.statusCode).toBe(200)
+    const { data } = res.json()
+    expect(data.summary.businessAnalysis).toBeTruthy()
+    expect(data.summary.businessAnalysis.executiveSummary).toBeTruthy()
+    expect(data.summary.businessAnalysis.analysisNote).toMatch(/API/)
+    expect(data.deliverable.reportText).toBeTruthy()
+    expect(data.deliverable.reportText).toContain('INFORME DE PROCESAMIENTO')
+  })
+
+  it('GET /documents/results/:resultId retrieves the stored result by ID', async () => {
+    const processRes = await app.inject({
+      method: 'POST',
+      url: '/documents/process',
+      payload: { filename: 'recovery.txt', content: 'Documento para prueba de recuperación directa por resultId.', mimeType: 'text/plain' },
+    })
+    expect(processRes.statusCode).toBe(200)
+    const resultId = processRes.json().data.resultId as string
+
+    const getRes = await app.inject({ method: 'GET', url: `/documents/results/${resultId}` })
+    expect(getRes.statusCode).toBe(200)
+    const body = getRes.json()
+    expect(body.success).toBe(true)
+    expect(body.data.data.resultId).toBe(resultId)
+    expect(body.data.filename).toBe('recovery.txt')
   })
 
   it('each document processing generates a unique resultId (idempotency check)', async () => {

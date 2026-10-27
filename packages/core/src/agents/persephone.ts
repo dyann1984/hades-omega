@@ -1,4 +1,4 @@
-import type { Task, TaskResult, DocumentIntakeResult, DocumentSummaryResult } from '../types/index.js'
+import type { Task, TaskResult, DocumentIntakeResult, DocumentSummaryResult, BusinessAnalysis } from '../types/index.js'
 import { AgentBase, type AgentDependencies } from './base.js'
 
 export class PersephoneAgent extends AgentBase {
@@ -81,6 +81,8 @@ export class PersephoneAgent extends AgentBase {
       details['headings'] = headings.slice(0, 10)
     }
 
+    const businessAnalysis = this.generateBusinessAnalysis(content, intake.detectedFormat)
+
     const summary: DocumentSummaryResult = {
       title: intake.filename.replace(/\.[^.]+$/, ''),
       wordCount: intake.wordCount,
@@ -89,6 +91,7 @@ export class PersephoneAgent extends AgentBase {
       keyTerms,
       format: intake.detectedFormat,
       details,
+      businessAnalysis,
     }
 
     const { decision, auditId } = await this.proposeOperation(
@@ -106,6 +109,53 @@ export class PersephoneAgent extends AgentBase {
       summary: `Resumen generado — ${keyTerms.length} términos clave, ${intake.wordCount} palabras`,
       data: { simulated: false, documentSummary: summary, decision },
       cerberusIds: [auditId],
+    }
+  }
+
+  private generateBusinessAnalysis(content: string, format: string): BusinessAnalysis {
+    const wordCount = content.split(/\s+/).filter(Boolean).length
+    const importantData: BusinessAnalysis['importantData'] = []
+
+    const dates = content.match(/\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b|\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b/g) ?? []
+    if (dates.length > 0) importantData.push({ type: 'FECHA', value: dates[0]!, context: 'Fecha detectada en el documento' })
+    const amounts = content.match(/\$[\d,]+(?:\.\d{2})?|\b[\d][\d,]+(?:\.\d{2})?\s*(?:MXN|USD|EUR)\b/g) ?? []
+    if (amounts.length > 0) importantData.push({ type: 'IMPORTE', value: amounts[0]!, context: 'Importe económico detectado' })
+    const pcts = content.match(/\b\d+(?:\.\d+)?%/g) ?? []
+    if (pcts.length > 0) importantData.push({ type: 'PORCENTAJE', value: pcts[0]!, context: 'Porcentaje detectado' })
+
+    const inconsistencies: BusinessAnalysis['inconsistencies'] = []
+    if (wordCount > 100 && dates.length === 0) {
+      inconsistencies.push({ description: 'Documento extenso sin fechas explícitas', severity: 'LOW' })
+    }
+
+    const riskKeywords = ['urgente', 'crítico', 'incumplimiento', 'sanción', 'penalización', 'vencimiento', 'mora', 'alerta', 'urgent', 'critical', 'penalty', 'deadline', 'risk', 'riesgo', 'peligro']
+    const riskFactors: BusinessAnalysis['riskFactors'] = []
+    if (riskKeywords.some(kw => content.toLowerCase().includes(kw))) {
+      riskFactors.push({ factor: 'Terminología de riesgo detectada en el contenido', level: 'MEDIUM' })
+    }
+    if (wordCount < 50) riskFactors.push({ factor: 'Documento muy breve para análisis exhaustivo', level: 'LOW' })
+
+    const conclusions: string[] = []
+    if (format === 'json') conclusions.push('Documento estructurado en JSON — apto para procesamiento automatizado')
+    if (format === 'csv') conclusions.push('Datos tabulares en CSV — verificar coherencia entre filas')
+    if (format === 'pdf') conclusions.push('Documento PDF con texto extraído — revisar si el resultado es completo')
+    if (format === 'docx') conclusions.push('Documento Word (DOCX) — estructura preservada en la extracción')
+    if (importantData.length > 0) conclusions.push(`${importantData.length} dato(s) relevante(s) identificado(s)`)
+    if (riskFactors.length === 0) conclusions.push('Sin factores de riesgo críticos detectados')
+    if (conclusions.length === 0) conclusions.push('Análisis completado sin hallazgos adicionales')
+
+    const executiveSummary = `Documento de ${wordCount} palabras en formato ${format.toUpperCase()}.` +
+      (importantData.length > 0 ? ` Contiene ${importantData.length} elemento(s) de datos relevantes.` : '') +
+      (riskFactors.length > 0 ? ` Se detectaron ${riskFactors.length} factor(es) de riesgo.` : ' Sin factores de riesgo detectados.') +
+      ' Análisis determinístico (sin API externa).'
+
+    return {
+      executiveSummary,
+      importantData,
+      inconsistencies,
+      riskFactors,
+      conclusions,
+      analysisNote: 'Análisis generado por reglas determinísticas locales. No se utilizó API de IA externa.',
     }
   }
 
