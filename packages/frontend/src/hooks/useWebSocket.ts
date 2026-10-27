@@ -22,14 +22,17 @@ export function useWebSocket(): void {
       useHadesStore.getState().setServerlessMode(true)
       return
     }
-    connect()
+    let stopped = false
+    connect(() => stopped)
     return () => {
+      stopped = true
       if (timerRef.current) clearTimeout(timerRef.current)
       wsRef.current?.close()
     }
   }, [])
 
-  function connect(): void {
+  function connect(isStopped: () => boolean): void {
+    if (isStopped()) return
     try {
       const target = new URL(WS_URL, window.location.href)
       const local = target.hostname === 'localhost' || target.hostname === '127.0.0.1' || target.hostname === '[::1]'
@@ -48,7 +51,7 @@ export function useWebSocket(): void {
 
       ws.onclose = () => {
         store.setWsConnected(false)
-        timerRef.current = setTimeout(connect, 3000)
+        if (!isStopped()) timerRef.current = setTimeout(() => connect(isStopped), 3000)
       }
 
       ws.onerror = () => {

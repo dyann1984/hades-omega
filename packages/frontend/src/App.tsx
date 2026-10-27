@@ -15,7 +15,9 @@ import ChronosPanel from './pages/ChronosPanel.js'
 import NotificationToast from './components/NotificationToast.js'
 import { useWebSocket } from './hooks/useWebSocket.js'
 import { useApiStatus } from './hooks/useApiStatus.js'
-import { useHadesStore } from './store/index.js'
+import { useHadesStore, clearPrivateState } from './store/index.js'
+import { apiHeaders, apiPath, setSessionToken } from './lib/api.js'
+import LoginPanel from './components/LoginPanel.js'
 
 // Visual preview labs — dev only, do NOT affect dashboard
 const NeuralLabPage   = lazy(() => import('./pages/NeuralLabPage.js'))
@@ -23,7 +25,7 @@ const SovereignLab    = lazy(() => import('./pages/SovereignLab.js'))
 const HadesCoreLab    = lazy(() => import('./pages/HadesCoreLab.js'))
 const PremiumCoreLab  = lazy(() => import('./pages/PremiumCoreLab.js'))
 
-function AppShell(): JSX.Element {
+function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   useWebSocket()
   useApiStatus()
@@ -46,6 +48,7 @@ function AppShell(): JSX.Element {
           <div className="ml-auto flex items-center gap-2">
             <span className="badge-demo">NEAR TESTNET</span>
             <span className="badge-demo">MODO DEMO</span>
+            <button onClick={onLogout} className="text-xs text-gray-300 border border-white/20 rounded px-2 py-1">Cerrar sesión</button>
           </div>
         </header>
 
@@ -73,6 +76,22 @@ function AppShell(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
+  const [role, setRole] = useState<string | null>(null)
+  const [logoutError, setLogoutError] = useState('')
+  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  useEffect(() => {
+    if (!expiresAt) return
+    const timer = setTimeout(() => { setSessionToken(undefined); clearPrivateState(); setRole(null); setExpiresAt(null) }, Math.max(0, expiresAt - Date.now()))
+    return () => clearTimeout(timer)
+  }, [expiresAt])
+  async function logout(): Promise<void> {
+    try {
+      const response = await fetch(apiPath('/api/v1/auth/logout'), { method:'POST', headers:apiHeaders() })
+      if (!response.ok) throw new Error('No se pudo revocar la sesión. Compruebe la conexión y vuelva a intentarlo.')
+      setSessionToken(undefined); clearPrivateState(); setRole(null); setExpiresAt(null); setLogoutError('')
+    } catch (error) { setLogoutError(error instanceof Error ? error.message : 'Error de conexión') }
+  }
+  if (!role) return <LoginPanel onLogin={(nextRole, expiry) => { setExpiresAt(expiry); setRole(nextRole) }} />
   return (
     <BrowserRouter>
       <Routes>
@@ -98,7 +117,7 @@ export default function App(): JSX.Element {
           </Suspense>
         } />
         {/* Main app shell */}
-        <Route path="/*" element={<AppShell />} />
+        <Route path="/*" element={<><AppShell onLogout={() => void logout()} />{logoutError && <div role="alert">{logoutError}</div>}</>} />
       </Routes>
     </BrowserRouter>
   )

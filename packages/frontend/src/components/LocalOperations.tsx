@@ -36,6 +36,13 @@ export default function LocalOperations(): JSX.Element {
       setNotice(status === 'APPROVED' ? 'Operación completada; consulte el resultado.' : 'Operación cancelada.'); await refresh()
     } catch(error){setNotice(error instanceof Error ? error.message : 'Error de conexión')} finally {setBusy(false)}
   }
+  async function cancel(id: string): Promise<void> {
+    const reason=window.prompt('Motivo de cancelación (mínimo tres caracteres):')?.trim()
+    if (!reason || reason.length < 3) return
+    setBusy(true); setNotice('')
+    try { const response=await fetch(apiPath(`/api/v1/local-missions/${encodeURIComponent(id)}/cancel`),{method:'POST',headers:apiHeaders({'Content-Type':'application/json'}),body:JSON.stringify({reason})}); if (!response.ok) throw new Error(`No se pudo cancelar (HTTP ${response.status})`); setNotice('Misión cancelada antes de ejecutar.'); await refresh() }
+    catch(error) {setNotice(error instanceof Error ? error.message : 'Error de conexión')} finally {setBusy(false)}
+  }
   return <section className="panel p-4 flex flex-col gap-3" aria-label="Operación local verificable">
     <h2 className="text-sm text-gold font-semibold">Operación local verificable · SHA-256</h2>
     <p className="text-xs text-gray-400">HADES calcula el hash de la entrada solo después de aprobación ADMIN. La entrada se guarda en la base local para la revisión.</p>
@@ -44,6 +51,6 @@ export default function LocalOperations(): JSX.Element {
     <div className="flex gap-2"><button className="border border-gold/40 rounded px-3 py-2 text-xs" disabled={busy || title.trim().length < 3} onClick={create}>Solicitar operación</button><button className="border border-white/20 rounded px-3 py-2 text-xs" disabled={busy} onClick={()=>void refresh().catch(()=>setNotice('No se pudieron consultar las misiones'))}>Actualizar</button></div>
     {notice && <p role="status" className="text-xs text-gray-300">{notice}</p>}
     {pending.map(item=><div key={item.id} className="border border-white/10 rounded p-2 text-xs"><p>Revisión pendiente · {item.ownerId}</p><pre className="whitespace-pre-wrap break-all text-gray-400">{item.input}</pre><div className="flex gap-3 mt-2"><button disabled={busy} onClick={()=>void decide(item.id,'APPROVED')}>Aprobar</button><button disabled={busy} onClick={()=>void decide(item.id,'REJECTED')}>Rechazar</button></div></div>)}
-    {missions.map(m=><div key={m.id} className="border border-white/10 rounded p-2 text-xs"><p>{m.title} · {m.status}</p>{m.tasks.map((t,i)=><p key={i} className="break-all text-gray-400">{t.result?.data?.sha256 ? `SHA-256: ${t.result.data.sha256}` : t.result?.summary}</p>)}</div>)}
+    {missions.map(m=><div key={m.id} className="border border-white/10 rounded p-2 text-xs"><p>{m.title} · {m.status}</p>{m.tasks.map((t,i)=><p key={i} className="break-all text-gray-400">{t.result?.data?.sha256 ? `SHA-256: ${t.result.data.sha256}` : t.result?.summary}</p>)}{m.tasks.some(t=>t.status==='CERBERUS_REVIEW') && <button disabled={busy} onClick={()=>void cancel(m.id)}>Cancelar misión</button>}</div>)}
   </section>
 }

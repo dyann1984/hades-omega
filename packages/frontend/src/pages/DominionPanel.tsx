@@ -10,6 +10,7 @@ const STATUS_LABEL: Record<MissionStatus, string> = {
   IN_PROGRESS:      'En progreso',
   COMPLETED:        'Completada',
   PARTIAL_COMPLETE: 'Parcial',
+  CANCELLED:        'Cancelada',
   FAILED:           'Fallida',
 }
 
@@ -20,6 +21,7 @@ const STATUS_COLOR: Record<MissionStatus, string> = {
   IN_PROGRESS:      'text-electric bg-electric/15',
   COMPLETED:        'text-permit bg-permit/10',
   PARTIAL_COMPLETE: 'text-escalate bg-escalate/10',
+  CANCELLED:        'text-gray-400 bg-gray-800',
   FAILED:           'text-deny bg-deny/10',
 }
 

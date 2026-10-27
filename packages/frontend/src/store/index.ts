@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export type AgentName = 'HADES' | 'CHARON' | 'PERSEPHONE' | 'MINOS' | 'CERBERUS' | 'ELYSIUM' | 'TARTARUS'
 export type AgentStatus = 'IDLE' | 'THINKING' | 'EXECUTING' | 'WAITING' | 'ERROR' | 'SUSPENDED'
 export type GUARDOutcome = 'PERMIT' | 'DENY' | 'ESCALATE'
-export type MissionStatus = 'RECEIVED' | 'ANALYZING' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'PARTIAL_COMPLETE' | 'FAILED'
+export type MissionStatus = 'RECEIVED' | 'ANALYZING' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'PARTIAL_COMPLETE' | 'CANCELLED' | 'FAILED'
 
 export interface AgentState {
   name:        AgentName
@@ -115,17 +115,9 @@ const defaultAgents: Record<AgentName, AgentState> = {
   TARTARUS:   { name: 'TARTARUS',   status: 'IDLE', currentTask: null },
 }
 
-function loadPersisted<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    if (raw) return JSON.parse(raw) as T
-  } catch {}
-  return fallback
-}
+function loadPersisted<T>(_key: string, fallback: T): T { return fallback }
 
-function persist(key: string, value: unknown): void {
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
-}
+function persist(_key: string, _value: unknown): void { /* Private records stay in memory. */ }
 
 export const useHadesStore = create<HadesStore>((set, get) => ({
   agents:         defaultAgents,
@@ -230,3 +222,8 @@ export const useHadesStore = create<HadesStore>((set, get) => ({
     set(s => ({ notifications: s.notifications.filter(n => n.id !== id) }))
   },
 }))
+
+export function clearPrivateState(): void {
+  useHadesStore.setState({ agents: defaultAgents, missions: [], activeMission: null, auditRecords: [], escalations: [], nearTxs: [], notifications: [], wsConnected: false })
+  for (const key of ['hades-missions','hades-audit','hades-escalations','hades-near-txs']) { try { localStorage.removeItem(key); sessionStorage.removeItem(key) } catch {} }
+}
