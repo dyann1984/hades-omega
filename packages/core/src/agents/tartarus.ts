@@ -13,6 +13,10 @@ export class TartarusAgent extends AgentBase {
 
   async receiveTask(task: Task): Promise<TaskResult> {
     this.currentTask = task
+    const errors = task.context?.['errors'] as string[] | undefined
+    const documentId = task.context?.['documentId'] as string | undefined
+    if (errors !== undefined) return this.logErrors(task, errors, documentId)
+
     this.setStatus('THINKING', 'Analizando anomalías')
     await delay(400)
 
@@ -53,6 +57,45 @@ export class TartarusAgent extends AgentBase {
         ? 'Sin anomalías detectadas en la sesión [DEMO]'
         : `${anomalies.length} anomalía(s) detectada(s) — monitoreo activo [DEMO]`,
       data:        { simulated: true, anomalies, auditStats, decision },
+      cerberusIds: [auditId],
+    }
+  }
+
+  private async logErrors(task: Task, errors: string[], documentId?: string): Promise<TaskResult> {
+    this.setStatus('EXECUTING', 'Registrando errores del flujo')
+
+    const anomalies: AnomalyReport[] = errors.map(msg => ({
+      id:                  uuidv4(),
+      detectedAt:          Date.now(),
+      agentInvolved:       null,
+      anomalyType:         'DOCUMENT_PROCESSING_ERROR',
+      description:         msg,
+      severity:            'MEDIUM' as const,
+      evidence:            documentId ? [{ type: 'SYSTEM_EVENT' as const, referenceId: documentId, description: msg }] : [],
+      recommendedResponse: 'WARN' as const,
+    }))
+
+    for (const a of anomalies) {
+      this.activeAnomalies.set(a.id, a)
+      bus.publish({ type: 'ANOMALY_DETECTED', payload: { anomaly: a } })
+    }
+
+    const { decision, auditId } = await this.proposeOperation(
+      'ANOMALY_REPORT',
+      { anomaliesFound: anomalies.length, source: 'DOCUMENT_PROCESSING', documentId },
+      task.missionId, task.id,
+    )
+
+    this.setStatus('IDLE')
+    this.currentTask = null
+
+    return {
+      taskId: task.id,
+      success: true,
+      summary: errors.length === 0
+        ? 'Sin errores en el flujo de procesamiento'
+        : `${errors.length} error(es) registrado(s)`,
+      data: { simulated: false, anomalies, decision },
       cerberusIds: [auditId],
     }
   }

@@ -124,6 +124,14 @@ export class CerberusGUARD {
     }
   }
 
+  updatePolicy(patch: { vendorAllowlist?: string[]; budgetCategories?: Record<string, number> }): void {
+    if (patch.vendorAllowlist) this.policy.vendorAllowlist = [...patch.vendorAllowlist]
+    if (patch.budgetCategories) this.policy.budgetCategories = { ...patch.budgetCategories }
+    this.policyHash = createHash('sha256').update(JSON.stringify(this.policy.rules)).digest('hex')
+    this.policy.hash = this.policyHash
+    this.policy.version = `${this.policy.version.split('.')[0]}.${this.policy.version.split('.')[1]}.${parseInt(this.policy.version.split('.')[2] ?? '0') + 1}`
+  }
+
   getPolicyVersion(): string { return this.policy.version }
   getPolicyHash(): string    { return this.policyHash }
   getEvaluationCount(): number { return this.evaluationCount }

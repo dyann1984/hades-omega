@@ -42,6 +42,12 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (3)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 4').get()) {
+      this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE document_results (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, filename TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL);`)
+        this.db.prepare('INSERT INTO schema_migrations VALUES (4)').run()
+      })()
+    }
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
     try { raw = await readFile(this.legacyPath, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
@@ -139,6 +145,24 @@ export class SqliteRepository extends JsonRepository {
       mission.updatedAt=Date.now(); this.putMission(mission); return mission
     })()
   }
+  hasUsers(): boolean { return !!(this.db.prepare('SELECT 1 FROM users LIMIT 1').get()) }
+  getMeta(key: string): string | undefined { const row = this.db.prepare('SELECT value FROM metadata WHERE key=?').get(key) as { value: string } | undefined; return row?.value }
+  setMeta(key: string, value: string): void { this.db.prepare('INSERT INTO metadata (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,value) }
+  setupFirstAdmin(username: string, hash: string, token: string): boolean {
+    return this.db.transaction(() => {
+      const raw = this.getMeta('setup_token')
+      if (!raw) return false
+      let stored: string
+      try { stored = (JSON.parse(raw) as {token:string}).token } catch { return false }
+      if (stored !== token) return false
+      if ((this.db.prepare('SELECT 1 FROM users LIMIT 1').get())) return false
+      const event = { id: randomUUID(), type: 'SETUP_ADMIN_CREATED', actor: 'bootstrap', timestamp: Date.now(), payload: { username } }
+      this.createUser(username, hash, 'ADMIN')
+      this.db.prepare('DELETE FROM metadata WHERE key=?').run('setup_token')
+      this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id, JSON.stringify(event))
+      return true
+    })()
+  }
   createUser(username: string, passwordHash: string, role: string): string {
     if (!/^[a-zA-Z0-9._-]{3,64}$/.test(username) || !['ADMIN','OPERATOR','AUDITOR','VIEWER'].includes(role)) throw new Error('INVALID_USER')
     const id=randomUUID(); this.db.prepare('INSERT INTO users (id,username,password_hash,role) VALUES (?,?,?,?)').run(id,username.toLowerCase(),passwordHash,role); return id
@@ -176,6 +200,13 @@ export class SqliteRepository extends JsonRepository {
       const event = {id:randomUUID(),type:'LOCAL_EXECUTION_STATE',actor,timestamp:now,payload:{missionId,state:'CANCELLED',reason}}
       this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); this.putMission(mission); return mission
     })()
+  }
+  saveDocumentResult(id: string, ownerId: string, filename: string, status: string, data: unknown): void {
+    this.db.prepare('INSERT INTO document_results (id,owner_id,filename,status,created_at,data) VALUES (?,?,?,?,?,?)').run(id, ownerId, filename, status, Date.now(), JSON.stringify(data))
+  }
+  listDocumentResults(ownerId: string, limit = 50): Array<{ id: string; filename: string; status: string; createdAt: number; data: unknown }> {
+    const rows = this.db.prepare('SELECT id,filename,status,created_at,data FROM document_results WHERE owner_id=? ORDER BY created_at DESC LIMIT ?').all(ownerId, limit) as Array<{id:string;filename:string;status:string;created_at:number;data:string}>
+    return rows.map(r => ({ id: r.id, filename: r.filename, status: r.status, createdAt: r.created_at, data: JSON.parse(r.data) }))
   }
   close(): void { this.db.close() }
 }

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import type { Task, TaskResult, VendorEvaluation, PurchaseOrderProposal } from '../types/index.js'
+import type { Task, TaskResult, VendorEvaluation, PurchaseOrderProposal, DocumentPayload, DocumentIntakeResult } from '../types/index.js'
 import { AgentBase, type AgentDependencies } from './base.js'
 
 const DEMO_VENDORS = [
@@ -17,8 +17,10 @@ export class CharonAgent extends AgentBase {
 
   async receiveTask(task: Task): Promise<TaskResult> {
     this.currentTask = task
-    this.setStatus('THINKING', task.title)
+    const doc = task.context?.['document'] as DocumentPayload | undefined
+    if (doc) return this.intakeDocument(task, doc)
 
+    this.setStatus('THINKING', task.title)
     await delay(800)
 
     const evaluations = await this.evaluateVendors(task)
@@ -51,6 +53,56 @@ export class CharonAgent extends AgentBase {
       success:     decision.outcome !== 'DENY',
       summary:     this.buildSummary(decision.outcome, bestVendor),
       data:        { simulated: true, evaluations, selectedVendor: bestVendor, decision },
+      cerberusIds: [auditId],
+    }
+  }
+
+  private async intakeDocument(task: Task, doc: DocumentPayload): Promise<TaskResult> {
+    this.setStatus('EXECUTING', `Procesando documento: ${doc.filename}`)
+
+    const documentId = uuidv4()
+    const wordCount = doc.content.split(/\s+/).filter(Boolean).length
+    const lineCount = doc.content.split('\n').length
+    const charCount = doc.content.length
+
+    let detectedFormat: DocumentIntakeResult['detectedFormat'] = 'unknown'
+    const nameLower = doc.filename.toLowerCase()
+    if (nameLower.endsWith('.json') || doc.mimeType === 'application/json') detectedFormat = 'json'
+    else if (nameLower.endsWith('.csv') || doc.mimeType === 'text/csv') detectedFormat = 'csv'
+    else if (nameLower.endsWith('.md')) detectedFormat = 'md'
+    else if (nameLower.endsWith('.txt') || doc.mimeType === 'text/plain') detectedFormat = 'txt'
+
+    const metadata: Record<string, unknown> = { filename: doc.filename, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes }
+    if (detectedFormat === 'json') {
+      try {
+        const parsed = JSON.parse(doc.content) as unknown
+        metadata['topKeys'] = Object.keys(typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as object) : {}).slice(0, 10)
+        metadata['isArray'] = Array.isArray(parsed)
+        if (Array.isArray(parsed)) metadata['arrayLength'] = parsed.length
+      } catch { metadata['jsonParseError'] = true }
+    }
+    if (detectedFormat === 'csv') {
+      const lines = doc.content.split('\n').filter(Boolean)
+      metadata['rowCount'] = lines.length
+      metadata['columns'] = lines[0]?.split(',').map(c => c.trim()) ?? []
+    }
+
+    const intakeResult: DocumentIntakeResult = { documentId, filename: doc.filename, wordCount, lineCount, charCount, detectedFormat, metadata }
+
+    const { decision, auditId } = await this.proposeOperation(
+      'DOCUMENT_INTAKE',
+      { documentId, filename: doc.filename, format: detectedFormat, sizeBytes: doc.sizeBytes },
+      task.missionId, task.id,
+    )
+
+    this.setStatus('IDLE')
+    this.currentTask = null
+
+    return {
+      taskId: task.id,
+      success: true,
+      summary: `Documento "${doc.filename}" procesado — ${wordCount} palabras, formato: ${detectedFormat}`,
+      data: { simulated: false, intakeResult, decision },
       cerberusIds: [auditId],
     }
   }

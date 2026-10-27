@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import type { Task, TaskResult } from '../types/index.js'
+import type { Task, TaskResult, DocumentIntakeResult, DocumentValidationResult, DocumentSummaryResult, DocumentDeliverable } from '../types/index.js'
 import { AgentBase, type AgentDependencies } from './base.js'
 
 export class ElysiumAgent extends AgentBase {
@@ -9,6 +9,13 @@ export class ElysiumAgent extends AgentBase {
 
   async receiveTask(task: Task): Promise<TaskResult> {
     this.currentTask = task
+    const docResults = task.context?.['documentResults'] as {
+      intake: DocumentIntakeResult
+      validation: DocumentValidationResult
+      summary: DocumentSummaryResult
+    } | undefined
+    if (docResults) return this.generateDeliverable(task, docResults)
+
     this.setStatus('THINKING', task.title)
     await delay(600)
 
@@ -39,6 +46,46 @@ export class ElysiumAgent extends AgentBase {
         confidence:    0.87,
         decision,
       },
+      cerberusIds: [auditId],
+    }
+  }
+
+  private async generateDeliverable(
+    task: Task,
+    results: { intake: DocumentIntakeResult; validation: DocumentValidationResult; summary: DocumentSummaryResult },
+  ): Promise<TaskResult> {
+    this.setStatus('EXECUTING', `Generando entregable: ${results.intake.filename}`)
+
+    const overallStatus: DocumentDeliverable['overallStatus'] = !results.validation.valid
+      ? 'REJECTED'
+      : results.validation.riskScore > 50 ? 'ESCALATED' : 'APPROVED'
+
+    const { decision, auditId } = await this.proposeOperation(
+      'DOCUMENT_DELIVERABLE',
+      { documentId: results.intake.documentId, overallStatus, riskScore: results.validation.riskScore },
+      task.missionId, task.id,
+    )
+
+    const deliverable: DocumentDeliverable = {
+      deliverableId: uuidv4(),
+      title: `Procesamiento: ${results.intake.filename}`,
+      generatedAt: Date.now(),
+      documentName: results.intake.filename,
+      intake: results.intake,
+      validation: results.validation,
+      summary: results.summary,
+      policyDecision: decision.outcome,
+      overallStatus,
+    }
+
+    this.setStatus('IDLE')
+    this.currentTask = null
+
+    return {
+      taskId: task.id,
+      success: overallStatus !== 'REJECTED',
+      summary: `Entregable generado — estado: ${overallStatus}, riesgo: ${results.validation.riskScore}/100`,
+      data: { simulated: false, deliverable, decision },
       cerberusIds: [auditId],
     }
   }

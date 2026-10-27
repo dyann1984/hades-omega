@@ -11,6 +11,8 @@ import { registerSecurity } from './security.js'
 import { approvalRoutes } from './routes/approvals.js'
 import { localMissionRoutes } from './routes/local-missions.js'
 import { authRoutes } from './auth.js'
+import { setupRoutes, generateSetupToken } from './setup.js'
+import { documentRoutes } from './routes/documents.js'
 
 const PORT = Number(process.env['PORT'] ?? 3001)
 const HOST = process.env['HOST'] ?? '0.0.0.0'
@@ -32,6 +34,7 @@ async function bootstrap(): Promise<void> {
   app.addHook('onClose', async () => { repository.close() })
   await registerSecurity(app, repository)
   await authRoutes(app, repository)
+  await setupRoutes(app, repository)
 
   const healthResponse = async () => ({
     status:    'ok',
@@ -50,6 +53,7 @@ async function bootstrap(): Promise<void> {
     await api.register(cerberusRoutes)
     await approvalRoutes(api, repository)
     await localMissionRoutes(api, repository)
+    await documentRoutes(api, repository)
   }, { prefix: '/api/v1' })
 
   // WebSocket
@@ -61,6 +65,15 @@ async function bootstrap(): Promise<void> {
   }, 30_000)
 
   await app.listen({ port: PORT, host: HOST })
+  const setupToken = generateSetupToken(repository)
+  if (setupToken) {
+    console.log(`\n⚠️  HADES OMEGA — FIRST RUN DETECTED`)
+    console.log(`   No users found. Create the first admin account:`)
+    console.log(`   POST /api/v1/setup/init`)
+    console.log(`   Header: X-Setup-Token: ${setupToken}`)
+    console.log(`   Body:   { "username": "<name>", "password": "<12+ chars>" }`)
+    console.log(`   Token expires in 1 hour. This message will not repeat.\n`)
+  }
   console.log(`\n🔱 HADES OMEGA API v0.3.0`)
   console.log(`   API:  http://localhost:${PORT}/api/v1`)
   console.log(`   WS:   ws://localhost:${PORT}/ws`)

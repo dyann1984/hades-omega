@@ -249,6 +249,62 @@ export interface AnomalyReport {
   recommendedResponse: ResponseLevel
 }
 
+// ---- Document processing ----
+
+export interface DocumentPayload {
+  filename: string
+  mimeType: string
+  content: string
+  sizeBytes: number
+  uploadedBy?: string
+}
+
+export interface DocumentIntakeResult {
+  documentId: string
+  filename: string
+  wordCount: number
+  lineCount: number
+  charCount: number
+  detectedFormat: 'txt' | 'json' | 'csv' | 'md' | 'unknown'
+  metadata: Record<string, unknown>
+}
+
+export interface ValidationIssue {
+  severity: 'LOW' | 'MEDIUM' | 'HIGH'
+  code: string
+  message: string
+}
+
+export interface DocumentValidationResult {
+  valid: boolean
+  riskScore: number
+  issues: ValidationIssue[]
+  rulesPassed: string[]
+  rulesFailed: string[]
+}
+
+export interface DocumentSummaryResult {
+  title: string
+  wordCount: number
+  charCount: number
+  lineCount: number
+  keyTerms: string[]
+  format: string
+  details: Record<string, unknown>
+}
+
+export interface DocumentDeliverable {
+  deliverableId: string
+  title: string
+  generatedAt: number
+  documentName: string
+  intake: DocumentIntakeResult
+  validation: DocumentValidationResult
+  summary: DocumentSummaryResult
+  policyDecision: string
+  overallStatus: 'APPROVED' | 'REJECTED' | 'ESCALATED'
+}
+
 // ---- WebSocket events ----
 
 export type ServerEvent =
