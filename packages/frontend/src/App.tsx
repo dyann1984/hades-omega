@@ -20,6 +20,7 @@ import { useHadesStore } from './store/index.js'
 // Visual preview labs — dev only, do NOT affect dashboard
 const NeuralLabPage   = lazy(() => import('./pages/NeuralLabPage.js'))
 const SovereignLab    = lazy(() => import('./pages/SovereignLab.js'))
+const HadesCoreLab    = lazy(() => import('./pages/HadesCoreLab.js'))
 
 function AppShell(): JSX.Element {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -83,6 +84,11 @@ export default function App(): JSX.Element {
         <Route path="/lab/sovereign" element={
           <Suspense fallback={<div style={{ background: '#05080F', height: '100vh' }} />}>
             <SovereignLab />
+          </Suspense>
+        } />
+        <Route path="/lab/hades-core" element={
+          <Suspense fallback={<div style={{ background: '#03050C', height: '100vh' }} />}>
+            <HadesCoreLab />
           </Suspense>
         } />
         {/* Main app shell */}
