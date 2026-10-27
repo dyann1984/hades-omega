@@ -31,7 +31,13 @@ export function useWebSocket(): void {
 
   function connect(): void {
     try {
-      const ws = new WebSocket(WS_URL)
+      const target = new URL(WS_URL, window.location.href)
+      const local = target.hostname === 'localhost' || target.hostname === '127.0.0.1' || target.hostname === '[::1]'
+      if (target.protocol !== 'wss:' && !(target.protocol === 'ws:' && local)) {
+        store.setWsConnected(false)
+        return
+      }
+      const ws = new WebSocket(target)
       wsRef.current = ws
 
       ws.onopen = () => {
