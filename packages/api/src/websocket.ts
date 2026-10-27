@@ -5,12 +5,12 @@ import type { ServerEvent } from '@hades/core'
 import type { WebSocket } from 'ws'
 import type { JsonRepository } from './persistence.js'
 
-interface Claims { sub?: unknown; roles?: unknown; exp?: unknown }
-interface WSClient { socket: WebSocket; token: string }
+interface Claims { sub?: unknown; roles?: unknown; exp?: unknown; sid?: unknown }
+interface WSClient { socket: WebSocket; token: string; sid?: string }
 const clients = new Map<string, WSClient>()
 const allowedRoles = new Set(['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'])
 
-export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository): void {
+export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository, resolveSession?: (sid: string) => {sub:string;roles:string[]} | undefined): void {
   app.get('/ws', { websocket: true }, (socket, request) => {
     const id = randomUUID()
     let token: string | undefined
@@ -23,6 +23,12 @@ export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository
       try {
         const claims = app.jwt.verify<Claims>(value)
         if (typeof claims.sub !== 'string' || !claims.sub.trim() || !Array.isArray(claims.roles) || !claims.roles.some(role => allowedRoles.has(role)) || typeof claims.exp !== 'number' || claims.exp <= Date.now() / 1000) return null
+        if (resolveSession) {
+          if (typeof claims.sid !== 'string') return null
+          const session = resolveSession(claims.sid)
+          if (!session || session.sub !== claims.sub) return null
+          return {...claims,...session}
+        }
         return claims
       } catch { return null }
     }
@@ -36,7 +42,7 @@ export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository
       if (!token) {
         if (data.type !== 'AUTH' || typeof data.token !== 'string' || Object.keys(data).length !== 2 || !claimsFor(data.token)) return reject('authentication_failed')
         token = data.token
-        clients.set(id, { socket, token })
+        clients.set(id, { socket, token, sid: claimsFor(token)?.sid as string | undefined })
         clearTimeout(timeout)
         unsubscribe = bus.subscribe((event: ServerEvent) => {
           const claims = token && claimsFor(token)
@@ -61,5 +67,6 @@ export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository
 
 // All broadcasts must pass through the per-client authorization in the bus subscriber.
 export function broadcastEvent(event: ServerEvent): void { bus.publish(event) }
+export function closeSessionSockets(sid: string): void { for (const client of clients.values()) if (client.sid === sid) client.socket.close(1008, 'Session revoked') }
 export function getConnectedClientsCount(): number { return clients.size }
 

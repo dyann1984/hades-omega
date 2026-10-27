@@ -36,6 +36,12 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (2)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 3').get()) {
+      this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1); CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL, revoked_at INTEGER);`)
+        this.db.prepare('INSERT INTO schema_migrations VALUES (3)').run()
+      })()
+    }
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
     try { raw = await readFile(this.legacyPath, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
@@ -131,6 +137,44 @@ export class SqliteRepository extends JsonRepository {
         this.workflowEvent(mission.id,actor,'CANCELLED')
       }
       mission.updatedAt=Date.now(); this.putMission(mission); return mission
+    })()
+  }
+  createUser(username: string, passwordHash: string, role: string): string {
+    if (!/^[a-zA-Z0-9._-]{3,64}$/.test(username) || !['ADMIN','OPERATOR','AUDITOR','VIEWER'].includes(role)) throw new Error('INVALID_USER')
+    const id=randomUUID(); this.db.prepare('INSERT INTO users (id,username,password_hash,role) VALUES (?,?,?,?)').run(id,username.toLowerCase(),passwordHash,role); return id
+  }
+  findUser(username: string): {id:string; password_hash:string; role:string; active:number} | undefined {
+    return this.db.prepare('SELECT id,password_hash,role,active FROM users WHERE username=?').get(username.toLowerCase()) as {id:string;password_hash:string;role:string;active:number} | undefined
+  }
+  resetPassword(username: string, passwordHash: string): boolean {
+    return this.db.transaction(() => {
+      const user=this.db.prepare('SELECT id FROM users WHERE username=?').get(username.toLowerCase()) as {id:string} | undefined
+      if (!user) return false
+      this.db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash,user.id)
+      this.db.prepare('UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL').run(Date.now(),user.id)
+      const event={id:randomUUID(),type:'LOCAL_PASSWORD_RESET',actor:'local-operator',timestamp:Date.now(),payload:{userId:user.id}}
+      this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); return true
+    })()
+  }
+  createSession(userId: string, expiresAt: number): string { const id=randomUUID(); this.db.prepare('INSERT INTO sessions (id,user_id,expires_at) VALUES (?,?,?)').run(id,userId,expiresAt); return id }
+  getActiveSession(id: string): {sub:string;roles:string[]} | undefined {
+    const row=this.db.prepare('SELECT u.id,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.active=1').get(id,Date.now()) as {id:string;role:string} | undefined
+    return row ? {sub:row.id,roles:[row.role]} : undefined
+  }
+  revokeSession(id: string): void { this.db.prepare('UPDATE sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(Date.now(),id) }
+  cancelLocalMission(missionId: string, actor: string, admin: boolean, reason: string): Mission {
+    return this.db.transaction(() => {
+      const mission = this.getMission(missionId)
+      if (!mission || (!admin && mission.ownerId !== actor)) throw new Error('MISSION_NOT_FOUND')
+      const op = this.db.prepare('SELECT id,state FROM local_operations WHERE mission_id=?').get(missionId) as {id:string;state:string} | undefined
+      if (!op) throw new Error('CANNOT_CANCEL')
+      if (op.state !== 'WAITING_APPROVAL') throw new Error('CANNOT_CANCEL')
+      const now=Date.now(), task=mission.tasks[0]!
+      task.status='CANCELLED'; task.completedAt=now; task.result={taskId:task.id,success:false,summary:'Cancelada antes de la ejecución',data:{cancelled:true},cerberusIds:[]}
+      mission.status='CANCELLED'; mission.updatedAt=now; mission.completedAt=now
+      this.db.prepare("UPDATE local_operations SET state='CANCELLED',decided_by=?,decided_at=? WHERE id=? AND state='WAITING_APPROVAL'").run(actor,now,op.id)
+      const event = {id:randomUUID(),type:'LOCAL_EXECUTION_STATE',actor,timestamp:now,payload:{missionId,state:'CANCELLED',reason}}
+      this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); this.putMission(mission); return mission
     })()
   }
   close(): void { this.db.close() }

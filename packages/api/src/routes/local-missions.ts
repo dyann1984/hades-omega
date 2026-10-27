@@ -20,6 +20,14 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
     publishMission(result.mission)
     return reply.code(201).send({success:true,data:result})
   })
+  app.post('/local-missions/:id/cancel', async (req, reply) => {
+    requireRole(req,['ADMIN','OPERATOR'])
+    const body=req.body as {reason?:unknown} | undefined
+    if (typeof body?.reason !== 'string' || body.reason.trim().length < 3 || body.reason.length > 2000) return reply.code(400).send({success:false,error:{code:'VALIDATION_ERROR'}})
+    const claims=req.user as {sub:string;roles:string[]}
+    try { const mission=repository.cancelLocalMission((req.params as {id:string}).id,claims.sub,claims.roles.includes('ADMIN'),body.reason.trim()); publishMission(mission); return {success:true,data:mission} }
+    catch(error) { const code=(error as Error).message; if(code==='MISSION_NOT_FOUND') return reply.code(404).send({success:false,error:{code}}); if(code==='CANNOT_CANCEL') return reply.code(409).send({success:false,error:{code,message:'No se puede detener esta operación en su estado actual.'}}); throw error }
+  })
   app.post('/local-approvals/:id/decision', async (req, reply) => {
     requireRole(req,['ADMIN'])
     const body = req.body as {status?: unknown; justification?: unknown} | undefined

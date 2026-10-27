@@ -11,6 +11,7 @@ export type MissionStatus =
   | 'IN_PROGRESS'
   | 'COMPLETED'
   | 'PARTIAL_COMPLETE'
+  | 'CANCELLED'
   | 'FAILED'
 export type TaskStatus =
   | 'ASSIGNED'
@@ -20,6 +21,7 @@ export type TaskStatus =
   | 'EXECUTED'
   | 'FAILED'
   | 'SUSPENDED'
+  | 'CANCELLED'
 export type GUARDOutcome = 'PERMIT' | 'DENY' | 'ESCALATE'
 export type ResponseLevel = 'WARN' | 'BLOCK' | 'QUARANTINE' | 'SHUTDOWN'
 export type ExecutionMode = 'simulation' | 'real'

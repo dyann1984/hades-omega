@@ -10,6 +10,7 @@ import { SqliteRepository } from './sqlite.js'
 import { registerSecurity } from './security.js'
 import { approvalRoutes } from './routes/approvals.js'
 import { localMissionRoutes } from './routes/local-missions.js'
+import { authRoutes } from './auth.js'
 
 const PORT = Number(process.env['PORT'] ?? 3001)
 const HOST = process.env['HOST'] ?? '0.0.0.0'
@@ -25,11 +26,12 @@ async function bootstrap(): Promise<void> {
   })
 
   await app.register(websocketPlugin)
-  await registerSecurity(app)
   const legacyPath = process.env['HADES_DATA_FILE'] ?? './data/hades.json'
   const repository = new SqliteRepository(process.env['HADES_DB_FILE'] ?? `${legacyPath}.sqlite`, legacyPath)
   await repository.init()
   app.addHook('onClose', async () => { repository.close() })
+  await registerSecurity(app, repository)
+  await authRoutes(app, repository)
 
   const healthResponse = async () => ({
     status:    'ok',
@@ -51,7 +53,7 @@ async function bootstrap(): Promise<void> {
   }, { prefix: '/api/v1' })
 
   // WebSocket
-  setupWebSocket(app, repository)
+  setupWebSocket(app, repository, sid => repository.getActiveSession(sid))
 
   // Heartbeat every 30s
   setInterval(() => {

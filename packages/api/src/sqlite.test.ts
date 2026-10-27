@@ -34,6 +34,15 @@ describe('SQLite migration and persistence', () => {
       second.close()
     } finally { await rm(dir,{recursive:true,force:true}) }
   })
+  it('cancels a pending mission once and never runs a cancelled operation', async () => {
+    const dir=await mkdtemp(join(tmpdir(),'hades-cancel-')); const repo=new SqliteRepository(join(dir,'data.sqlite'),join(dir,'none.json'))
+    try { await repo.init(); const {mission,approvalId}=await repo.createLocalMission('owner','Cancel test','sensitive input')
+      expect(() => repo.cancelLocalMission(mission.id,'other',false,'Not authorized')).toThrow('MISSION_NOT_FOUND')
+      expect(repo.cancelLocalMission(mission.id,'owner',false,'No longer needed').status).toBe('CANCELLED')
+      await expect(repo.decideLocalOperation(approvalId,'APPROVED','admin','Reviewed')).rejects.toThrow('APPROVAL_ALREADY_RESOLVED')
+      expect(repo.getMission(mission.id)?.tasks[0].status).toBe('CANCELLED')
+    } finally {repo.close(); await rm(dir,{recursive:true,force:true})}
+  })
   it('fails safely on malformed legacy JSON without deleting the original', async () => {
     const dir=await mkdtemp(join(tmpdir(),'hades-sqlite-')); const json=join(dir,'legacy.json'); await writeFile(json,'invalid')
     try { const repo=new SqliteRepository(join(dir,'data.sqlite'),json); await expect(repo.init()).rejects.toThrow(); repo.close(); expect(await readFile(json,'utf8')).toBe('invalid') }
