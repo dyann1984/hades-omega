@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import type { JsonRepository } from '../persistence.js'
+import { requireRole } from '../security.js'
 
 export async function approvalRoutes(app: FastifyInstance, repository: JsonRepository): Promise<void> {
   app.get('/approvals', async () => ({ success: true, data: repository.listApprovals() }))
   app.post('/approvals/:escalationId/decision', async (req, reply) => {
+    requireRole(req, ['ADMIN'])
     const body = req.body as { status?: string; justification?: string }
     if (!['APPROVED', 'REJECTED'].includes(body?.status ?? '') || typeof body.justification !== 'string' || body.justification.trim().length < 3) {
       return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: 'status y justificación (mínimo 3 caracteres) son requeridos' } })

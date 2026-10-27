@@ -2,7 +2,7 @@
 // HADES OMEGA — Core Types (from docs/06-api-contracts.md)
 // ============================================================
 
-export type AgentName = 'HADES' | 'CHARON' | 'PERSEPHONE' | 'MINOS' | 'ELYSIUM' | 'TARTARUS'
+export type AgentName = 'HADES' | 'CERBERUS' | 'CHARON' | 'PERSEPHONE' | 'MINOS' | 'ELYSIUM' | 'TARTARUS'
 export type AgentStatus = 'IDLE' | 'THINKING' | 'EXECUTING' | 'WAITING' | 'ERROR' | 'SUSPENDED'
 export type MissionStatus =
   | 'RECEIVED'
@@ -59,6 +59,11 @@ export interface Task {
   startedAt:   Timestamp | null
   completedAt: Timestamp | null
   result:      TaskResult | null
+  // Campos de trazabilidad para planificación dinámica
+  origin?: 'DEMO_STATIC' | 'DEMO_GENERATED' | 'LLM_GENERATED' | 'RULE_BASED'
+  justification?: string
+  estimatedDuration?: number // minutos
+  context?: Record<string, unknown>
 }
 
 export interface DecisionSummary {
