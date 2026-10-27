@@ -3,6 +3,8 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const devToken = (import.meta as any).env?.VITE_DEV_TOKEN as string | undefined
 
+export function websocketToken(): string | undefined { return devToken }
+
 export function apiPath(path: string): string { return path }
 
 export function apiHeaders(extra: Record<string, string> = {}): Record<string, string> {

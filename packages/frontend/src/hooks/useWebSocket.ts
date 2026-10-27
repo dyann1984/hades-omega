@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useHadesStore } from '../store/index.js'
+import { websocketToken } from '../lib/api.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const VITE_WS_URL = (import.meta as any).env?.VITE_WS_URL as string | undefined
@@ -34,8 +35,9 @@ export function useWebSocket(): void {
       wsRef.current = ws
 
       ws.onopen = () => {
-        store.setWsConnected(true)
-        pingInterval()
+        const token = websocketToken()
+        if (!token) { ws.close(); return }
+        ws.send(JSON.stringify({ type: 'AUTH', token }))
       }
 
       ws.onclose = () => {
@@ -67,6 +69,10 @@ export function useWebSocket(): void {
 
   function handleEvent(msg: Record<string, unknown>): void {
     switch (msg.type) {
+      case 'CONNECTED':
+        store.setWsConnected(true)
+        pingInterval()
+        break
       case 'AGENT_STATUS_CHANGED': {
         const p = msg.payload as any
         store.setAgentStatus(p.agent, p.status, p.currentTask)
