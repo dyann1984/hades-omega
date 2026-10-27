@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { path: '/cerberus',    icon: '⚔', label: 'Cerberus',    shortLabel: 'CRB'  },
   { path: '/observatory', icon: '◎', label: 'Observatory', shortLabel: 'OBS'  },
   { path: '/documents',   icon: '▤', label: 'Documentos',  shortLabel: 'DOC'  },
+  { path: '/command',     icon: '⌘', label: 'Command',      shortLabel: 'CMD'  },
 ]
 
 interface Props {

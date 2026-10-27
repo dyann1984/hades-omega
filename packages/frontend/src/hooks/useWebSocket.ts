@@ -9,7 +9,8 @@ const IS_LOCAL = typeof window !== 'undefined'
 
 // Only attempt WS if on localhost or an explicit WS URL is configured
 const SHOULD_CONNECT = IS_LOCAL || !!VITE_WS_URL
-const WS_URL = VITE_WS_URL ?? 'ws://localhost:3001/ws'
+// Use Vite's same-origin proxy so REST and WebSocket reach the same API.
+const WS_URL = VITE_WS_URL ?? (typeof window === 'undefined' ? '' : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`)
 
 export function useWebSocket(): void {
   const store     = useHadesStore()
@@ -88,6 +89,7 @@ export function useWebSocket(): void {
         break
       }
       case 'MISSION_PROGRESS': {
+        window.dispatchEvent(new Event('hades:mission-update'))
         const p = msg.payload as any
         store.updateMission(p.missionId, { status: p.status, progress: p.progress })
         break
@@ -108,6 +110,7 @@ export function useWebSocket(): void {
         break
       }
       case 'TASK_UPDATED': {
+        window.dispatchEvent(new Event('hades:mission-update'))
         const p = msg.payload as any
         if (p.task?.missionId) {
           const mission = useHadesStore.getState().missions.find(m => m.id === p.task.missionId)

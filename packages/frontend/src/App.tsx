@@ -13,6 +13,7 @@ import VaultPanel from './pages/VaultPanel.js'
 import OraclePanel from './pages/OraclePanel.js'
 import ChronosPanel from './pages/ChronosPanel.js'
 import DocumentsPanel from './pages/DocumentsPanel.js'
+import CommandCenter from './pages/CommandCenter.js'
 import NotificationToast from './components/NotificationToast.js'
 import { useWebSocket } from './hooks/useWebSocket.js'
 import { useApiStatus } from './hooks/useApiStatus.js'
@@ -68,6 +69,7 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
             <Route path="/cerberus"    element={<CerberusPanel />} />
             <Route path="/observatory" element={<ObservatoryPanel />} />
             <Route path="/documents"   element={<DocumentsPanel />} />
+            <Route path="/command"     element={<CommandCenter />} />
           </Routes>
         </div>
       </main>

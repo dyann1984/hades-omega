@@ -136,9 +136,18 @@ describe('PDF and DOCX processing via base64', () => {
     expect(body.data.deliverable.reportText).toContain('Formato:  DOCX')
   })
 
+  it('rejects extracted PDF text exceeding the processing limit', async () => {
+    const { default: pdfParseMock } = await import('pdf-parse')
+    ;(pdfParseMock as any).mockResolvedValueOnce({text: 'x'.repeat(5 * 1024 * 1024 + 1), numpages: 1, info: {}})
+    const res = await app.inject({method:'POST',url:'/documents/process',payload:{filename:'large.pdf',content:Buffer.from('pdf').toString('base64'),encoding:'base64',mimeType:'application/pdf'}})
+    expect(res.statusCode).toBe(413)
+    expect(res.json().error.code).toBe('EXTRACTED_TEXT_TOO_LARGE')
+    expect(repo.listDocumentResults('user-pdf-test')).toHaveLength(0)
+  })
+
   it('returns 422 when PDF extraction fails (corrupt or unsupported PDF)', async () => {
     const { default: pdfParseMock } = await import('pdf-parse')
-    ;(pdfParseMock as any).mockRejectedValueOnce(new Error('Invalid PDF structure'))
+    ;(pdfParseMock as any).mockRejectedValueOnce(new Error('private-parser-detail'))
 
     const corruptPdfBase64 = Buffer.from('NOT_A_VALID_PDF').toString('base64')
     const res = await app.inject({
@@ -153,6 +162,7 @@ describe('PDF and DOCX processing via base64', () => {
     })
     expect(res.statusCode).toBe(422)
     expect(res.json().error.code).toBe('PDF_EXTRACTION_FAILED')
+    expect(res.body).not.toContain('private-parser-detail')
   })
 
   it('returns 422 when DOCX extraction fails', async () => {

@@ -82,8 +82,8 @@ export async function documentRoutes(app: FastifyInstance, repo: SqliteRepositor
             pdfTitle: parsed.info?.['Title'] ?? undefined,
             pdfAuthor: parsed.info?.['Author'] ?? undefined,
           }
-        } catch (err) {
-          return reply.status(422).send({ error: { code: 'PDF_EXTRACTION_FAILED', message: `No se pudo extraer texto del PDF: ${(err as Error).message}` } })
+        } catch {
+          return reply.status(422).send({ error: { code: 'PDF_EXTRACTION_FAILED', message: 'No se pudo extraer texto del PDF.' } })
         }
       } else if (ext === '.docx' || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         try {
@@ -94,8 +94,8 @@ export async function documentRoutes(app: FastifyInstance, repo: SqliteRepositor
           extractionMetadata = {
             warnings: result.messages.filter(m => m.type === 'warning').map(m => m.message),
           }
-        } catch (err) {
-          return reply.status(422).send({ error: { code: 'DOCX_EXTRACTION_FAILED', message: `No se pudo extraer texto del DOCX: ${(err as Error).message}` } })
+        } catch {
+          return reply.status(422).send({ error: { code: 'DOCX_EXTRACTION_FAILED', message: 'No se pudo extraer texto del DOCX.' } })
         }
       } else {
         textContent = buffer.toString('utf8')
@@ -109,6 +109,7 @@ export async function documentRoutes(app: FastifyInstance, repo: SqliteRepositor
     }
 
     const sizeBytes = Buffer.byteLength(textContent, 'utf8')
+    if (sizeBytes > MAX_SIZE_BYTES) return reply.status(413).send({ error: { code: 'EXTRACTED_TEXT_TOO_LARGE', message: 'El texto extraído supera el límite permitido.' } })
     const ownerId = (req as any).user?.sub ?? 'anonymous'
     const missionId = randomUUID()
     const errors: string[] = []
