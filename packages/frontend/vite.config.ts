@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const proxyTarget = process.env.HADES_PROXY_TARGET ?? 'http://127.0.0.1:3001'
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -8,8 +10,8 @@ export default defineConfig({
     host: '127.0.0.1',
     strictPort: false,
     proxy: {
-      '/api':  { target: 'http://127.0.0.1:3001', changeOrigin: true },
-      '/ws':   { target: 'ws://127.0.0.1:3001',   changeOrigin: true, ws: true },
+      '/api':  { target: proxyTarget, changeOrigin: true },
+      '/ws':   { target: proxyTarget.replace(/^http/, 'ws'),   changeOrigin: true, ws: true },
     },
   },
   build: {

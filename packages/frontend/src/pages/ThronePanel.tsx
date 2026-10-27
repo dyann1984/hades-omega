@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName, Mission } from '../store/index.js'
 import { apiHeaders, apiPath } from '../lib/api.js'
+import LocalOperations from '../components/LocalOperations.js'
 
 const AGENT_META: Record<AgentName, { role: string; symbol: string }> = {
   HADES:      { role: 'Orquestador',      symbol: '⬡' },
@@ -132,6 +133,7 @@ export default function ThronePanel(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
+      <LocalOperations />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
