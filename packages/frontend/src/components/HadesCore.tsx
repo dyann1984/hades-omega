@@ -1,12 +1,15 @@
 /**
- * HadesCore — SOVEREIGN NEURAL INTELLIGENCE CORE v4
+ * HadesCore — SOVEREIGN NEURAL INTELLIGENCE CORE v5
  *
- * Performance fix: shared materials per crystal cluster (ONE useFrame per cluster, not per shard).
- * Visual focus: obsidian material, prominent gold edges, dominant core, tight composition.
- *
- * Removed:  CoreParticles, CoreHalo, per-shard useFrame, offset filament (were hurting FPS)
- * Added:    MeshStandardMaterial obsidian (no transmission), shared edge/body materials per cluster
- * Changed:  Core scale +32% (heightBase 0.90), tighter orbit (2.5-3.0), closer camera
+ * v5 visual fixes over v4:
+ * - Crystal bodies: metalness 0.94→0.72, color 0x040810→0x0A1830, emissive baseline 0.18→0.38
+ *   → surfaces now pick up colored point lights and show solid 3D faces, not wireframes
+ * - Platform rings: radii [1.4,2.6,4.0]→[0.9,1.7,2.6], opacity 0.28-0.46→0.06-0.14
+ *   → rings no longer dominate through Bloom
+ * - CoreParticles re-added: 3 rotation groups × 60 pts each; each group = ONE matrix update/frame
+ * - Hemisphere light added: gives crystal faces blue/deep ambient gradient
+ * - Agent cluster size +20%: heightBase 0.18→0.22, wScale 0.100→0.120
+ * - Bloom threshold 0.58→0.52: crystal body emissive now contributes to glow
  */
 
 import { useRef, useMemo, useState, useCallback, CSSProperties } from 'react'
@@ -158,12 +161,15 @@ function CrystalCluster({
   intensity, alertFactor, speed, paused, accentHex, emissiveHex,
 }: ClusterProps) {
   // Shared materials — one update drives all shards
+  // metalness 0.72 (was 0.94): allows diffuse from point lights → visible crystal faces
+  // color 0x0A1830: slightly lighter base picks up blue/gold lighting
+  // emissiveIntensity 0.38: self-glow visible in dark areas
   const bodyMat = useMemo(() => new THREE.MeshStandardMaterial({
-    color:              0x040810,
+    color:              0x0A1830,
     emissive:           emissiveHex,
-    emissiveIntensity:  0.18,
-    metalness:          0.94,
-    roughness:          0.07,
+    emissiveIntensity:  0.38,
+    metalness:          0.72,
+    roughness:          0.18,
   }), [emissiveHex])
 
   const edgeMat = useMemo(() => new THREE.LineBasicMaterial({
@@ -193,7 +199,7 @@ function CrystalCluster({
     }
     edgeMat.opacity = 0.62 + 0.28 * beat
 
-    bodyMat.emissiveIntensity = 0.15 + 0.14 * Math.sin(t * 0.75) * intensity
+    bodyMat.emissiveIntensity = 0.32 + 0.22 * Math.sin(t * 0.75) * intensity
 
     // Core sphere
     if (coreRef.current) {
@@ -270,11 +276,12 @@ function TechPlatform({ intensity, paused }: { intensity: number; paused: boolea
     ringRefs.current.forEach((m, i) => {
       if (!m) return
       ;(m.material as THREE.MeshBasicMaterial).opacity =
-        0.28 + 0.22 * Math.sin(t * 0.5 + i * 0.8) * intensity
+        0.06 + 0.08 * Math.sin(t * 0.5 + i * 0.8) * intensity
     })
   })
 
-  const RING_RADII = [1.4, 2.6, 4.0]   // 3 rings, tighter platform radius
+  // Reduced radii and opacity — rings were dominating through Bloom
+  const RING_RADII = [0.9, 1.7, 2.6]
 
   return (
     <group position-y={-0.11}>
@@ -288,8 +295,8 @@ function TechPlatform({ intensity, paused }: { intensity: number; paused: boolea
       </mesh>
       {RING_RADII.map((r, i) => (
         <mesh key={i} ref={el => { ringRefs.current[i] = el }} position-y={0.057} rotation-x={-Math.PI / 2}>
-          <torusGeometry args={[r, 0.020, 6, 80]} />
-          <meshBasicMaterial color="#C89020" transparent opacity={0.28 + i * 0.06} blending={THREE.AdditiveBlending} depthWrite={false} />
+          <torusGeometry args={[r, 0.016, 6, 72]} />
+          <meshBasicMaterial color="#C89020" transparent opacity={0.06 + i * 0.04} blending={THREE.AdditiveBlending} depthWrite={false} />
         </mesh>
       ))}
       {/* Inner disc glow */}
@@ -350,10 +357,10 @@ function OrbitalAgent({ agent, intensity, alertFactor, speed, paused, isSelected
     >
       <CrystalCluster
         shards={agent.shards}
-        heightBase={0.18}
-        wScale={0.100}
-        dScale={0.078}
-        coreRadius={0.066}
+        heightBase={0.22}
+        wScale={0.120}
+        dScale={0.092}
+        coreRadius={0.080}
         intensity={isAlert ? 0.9 : intensity}
         alertFactor={isAlert ? 1 : 0}
         speed={speed}
@@ -507,6 +514,81 @@ function NeuralFilaments({ agentGroupRefs, intensity, alertFactor, speed, paused
   )
 }
 
+// ─── Core Particles ───────────────────────────────────────────────────────────
+// 3 rotation groups × 60 particles each — each group = ONE matrix multiply/frame.
+// O(3) per frame (rotate group transforms), not O(180) per particle.
+
+const CP_INNER_R = 0.52   // tight blue-white ring
+const CP_MID_R   = 0.85   // mid cyan particles
+const CP_OUTER_R = 1.28   // sparse gold dust
+
+function makeSphereRingPositions(count: number, radius: number, spread: number): Float32Array {
+  const arr = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) {
+    const theta = (i / count) * Math.PI * 2 + Math.random() * 0.3
+    const phi   = (Math.random() - 0.5) * spread
+    arr[i*3]   = radius * Math.cos(phi) * Math.cos(theta)
+    arr[i*3+1] = radius * Math.sin(phi)
+    arr[i*3+2] = radius * Math.cos(phi) * Math.sin(theta)
+  }
+  return arr
+}
+
+interface CPProps { intensity: number; paused: boolean; speed: number }
+
+function CoreParticles({ intensity, paused, speed }: CPProps) {
+  const innerRef = useRef<THREE.Group>(null)
+  const midRef   = useRef<THREE.Group>(null)
+  const outerRef = useRef<THREE.Group>(null)
+
+  const { innerGeo, midGeo, outerGeo, innerMat, midMat, outerMat } = useMemo(() => {
+    const inner = new Float32Array(60 * 3)
+    const mid   = new Float32Array(60 * 3)
+    const outer = new Float32Array(60 * 3)
+
+    const ig = makeSphereRingPositions(60, CP_INNER_R, 0.55)
+    const mg = makeSphereRingPositions(60, CP_MID_R,   0.82)
+    const og = makeSphereRingPositions(60, CP_OUTER_R, 1.10)
+    ig.forEach((v, i) => inner[i] = v)
+    mg.forEach((v, i) => mid[i]   = v)
+    og.forEach((v, i) => outer[i] = v)
+
+    const mkGeo = (pos: Float32Array) => {
+      const g = new THREE.BufferGeometry()
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      return g
+    }
+    const innerGeo = mkGeo(inner)
+    const midGeo   = mkGeo(mid)
+    const outerGeo = mkGeo(outer)
+
+    const innerMat = new THREE.PointsMaterial({ color: 0x88CCFF, size: 0.020, transparent: true, opacity: 0.90, sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending })
+    const midMat   = new THREE.PointsMaterial({ color: 0x00BBCC, size: 0.016, transparent: true, opacity: 0.72, sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending })
+    const outerMat = new THREE.PointsMaterial({ color: 0xC89020, size: 0.012, transparent: true, opacity: 0.45, sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending })
+
+    return { innerGeo, midGeo, outerGeo, innerMat, midMat, outerMat }
+  }, [])
+
+  useFrame(({ clock }) => {
+    if (paused) return
+    const t = clock.getElapsedTime() * speed
+    if (innerRef.current) { innerRef.current.rotation.y = t * 0.28; innerRef.current.rotation.x = t * 0.09 }
+    if (midRef.current)   { midRef.current.rotation.y   = -t * 0.18; midRef.current.rotation.z = t * 0.07 }
+    if (outerRef.current) { outerRef.current.rotation.y = t * 0.11; outerRef.current.rotation.x = -t * 0.05 }
+    innerMat.opacity = 0.72 + 0.28 * Math.sin(t * 1.6) * intensity
+    midMat.opacity   = 0.55 + 0.20 * Math.sin(t * 1.2 + 1) * intensity
+    outerMat.opacity = 0.28 + 0.18 * Math.sin(t * 0.9 + 2) * intensity
+  })
+
+  return (
+    <>
+      <group ref={innerRef}><points geometry={innerGeo}><primitive object={innerMat} attach="material" /></points></group>
+      <group ref={midRef}  ><points geometry={midGeo}  ><primitive object={midMat}   attach="material" /></points></group>
+      <group ref={outerRef}><points geometry={outerGeo}><primitive object={outerMat} attach="material" /></points></group>
+    </>
+  )
+}
+
 // ─── Star Field ───────────────────────────────────────────────────────────────
 
 function StarField() {
@@ -619,12 +701,13 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
 
   return (
     <>
-      {/* Lighting: deep-space dark ambient, strong blue core, gold key, subtle fill */}
-      <ambientLight intensity={0.03} color="#010305" />
-      <pointLight position={[0, 0.5, 0]}  color="#0055FF" intensity={2.8 + p.intensity * 2.0} distance={9}  decay={2} />
-      <pointLight position={[4.5, 8, 2.5]} color="#C89020" intensity={1.4} distance={22} decay={2} />
-      <pointLight position={[-3, 2, -4]}   color="#001A44" intensity={0.8} decay={2} />
-      <pointLight position={[0, -1.5, 0]}  color="#000D33" intensity={0.4} decay={2} />
+      {/* Lighting: hemisphere gives crystal faces ambient gradient; point lights add color drama */}
+      <ambientLight intensity={0.04} color="#010508" />
+      <hemisphereLight args={['#0A1A44', '#020408', 0.55]} />
+      <pointLight position={[0, 0.5, 0]}  color="#0055FF" intensity={3.2 + p.intensity * 2.0} distance={9}  decay={2} />
+      <pointLight position={[4.5, 8, 2.5]} color="#C89020" intensity={1.8} distance={22} decay={2} />
+      <pointLight position={[-3, 2, -4]}   color="#003366" intensity={1.2} decay={2} />
+      <pointLight position={[0, -1.5, 0]}  color="#001644" intensity={0.6} decay={2} />
 
       <StarField />
       <TechPlatform intensity={p.intensity} paused={paused} />
@@ -643,6 +726,9 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
         accentHex={0xC89020}      // gold edges — core signature
         emissiveHex={0x001A66}
       />
+
+      {/* Fine blue-white / cyan / gold particles around the core */}
+      <CoreParticles intensity={p.intensity} paused={paused} speed={speed} />
 
       {/* Core identity label */}
       <Html center distanceFactor={8} position={[0, -0.28, 0]} style={{ pointerEvents:'none' }}>
@@ -685,9 +771,9 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
       <EffectComposer>
         <Bloom
           intensity={p.bloom}
-          luminanceThreshold={0.58}
-          luminanceSmoothing={0.05}
-          radius={0.68}
+          luminanceThreshold={0.48}
+          luminanceSmoothing={0.06}
+          radius={0.65}
           mipmapBlur
         />
         <Vignette eskil={false} offset={0.18} darkness={0.78} />
