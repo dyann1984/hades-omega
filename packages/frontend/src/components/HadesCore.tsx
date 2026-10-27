@@ -1,21 +1,21 @@
 /**
- * HadesCore v6 — "Network Executive Core"
+ * HadesCore v7 — "Layered Cognitive Engine"
  *
- * Complete visual rethink: corporate AI intelligence platform, not sci-fi/videogame.
+ * Refinement of v6 Network Executive Core.
+ * Balance between technological sophistication and enterprise design.
  *
- * Removed: CrystalShard, CrystalCluster, TechPlatform (arena), CoreParticles, StarField,
- *          orbital mechanics, platform rings, crystal shards — all "arena/game" language.
+ * ExecutiveCore: 5-layer concentric architecture — outer dark crystal shell →
+ *   structural cage → inner rotating octahedron → nucleus sphere → hot kernel.
+ *   Multiple dark crystal layers with controlled blue energy.
  *
- * Added:   ExecutiveCore (precision icosahedron), 6 static network nodes, fine data connections.
+ * AgentNode: Holographic executive module — angular octahedron body with accent
+ *   edge cage, inner glow nucleus. NO rings (removed — "planet" visual language).
+ *   Name, function, state visible inside compact inline label.
  *
- * Design language:
- *   - Core = cognitive engine / central processor (icosahedron = engineered precision)
- *   - Agents = executive modules / functional network nodes (not characters, not drones)
- *   - Lines = data mesh / operational connections (not filaments/tentacles)
- *   - Aesthetic: obsidian + electric-blue + discrete-gold — clean, precise, executive
+ * Composition: tighter camera, R=1.96 hexagonal positions, fills center panel.
  *
- * Priority: corporate readability → clarity → elegance → effects.
- * Effects are secondary. If something looks like a game, remove it.
+ * Kept intact: AGENTS config, DataConnections, AgentPanel, state system, all
+ *   selection / status / connection functionality.
  */
 
 import { useRef, useMemo, useState, useCallback, CSSProperties } from 'react'
@@ -42,8 +42,16 @@ const STATES: Record<HadesCoreState, SP> = {
 
 // ─── Shared geometry (module-level, never re-created) ─────────────────────────
 
-const ICO_GEO   = new THREE.IcosahedronGeometry(0.65, 0)
-const ICO_EDGES = new THREE.EdgesGeometry(ICO_GEO, 1)
+// Core layers
+const CORE_OUTER_GEO   = new THREE.IcosahedronGeometry(0.78, 1)   // subdivided outer shell
+const CORE_OUTER_EDGES = new THREE.EdgesGeometry(CORE_OUTER_GEO, 1)
+const CORE_CAGE_GEO    = new THREE.IcosahedronGeometry(0.65, 0)   // 20-face structural cage
+const CORE_CAGE_EDGES  = new THREE.EdgesGeometry(CORE_CAGE_GEO, 1)
+const CORE_INNER_GEO   = new THREE.OctahedronGeometry(0.42)       // inner rotating crystal
+
+// Agent node geometry — reused across all 6 modules
+const NODE_BODY_GEO  = new THREE.IcosahedronGeometry(0.155, 0)    // angular executive module
+const NODE_BODY_EDGE = new THREE.EdgesGeometry(NODE_BODY_GEO, 1)
 
 // ─── Agent Config ─────────────────────────────────────────────────────────────
 
@@ -56,15 +64,15 @@ interface AgentCfg {
   status:    'active' | 'standby' | 'alert'
 }
 
-// Hexagonal network topology: 6 nodes at R ≈ 2.1, slight Y-variation for 3D depth.
-// 60° apart, pairs visually balanced — reads as organized network, not solar system.
+// Hexagonal network topology: 6 nodes at R ≈ 1.96, slight Y-variation for 3D depth.
+// Tighter than v6 — reduces empty space, fills dashboard center panel better.
 export const AGENTS: AgentCfg[] = [
-  { id:'cerberus',   name:'CERBERUS',   role:'Seguridad & Políticas',      position:[ 0.00,  0.28,-2.12], accentHex:0xAA2A1C, status:'active'  },
-  { id:'minos',      name:'MINOS',      role:'Validación & Aprobaciones',  position:[ 1.84,  0.12,-1.06], accentHex:0xAA8C14, status:'active'  },
-  { id:'persephone', name:'PERSEPHONE', role:'Finanzas & Presupuesto',     position:[ 1.84, -0.12, 1.06], accentHex:0x009988, status:'active'  },
-  { id:'charon',     name:'CHARON',     role:'Compras & Proveedores',      position:[ 0.00, -0.28, 2.12], accentHex:0x1280A0, status:'active'  },
-  { id:'elysium',    name:'ELYSIUM',    role:'Planificación & Resultados', position:[-1.84, -0.12, 1.06], accentHex:0x6688BB, status:'active'  },
-  { id:'tartarus',   name:'TARTARUS',   role:'Anomalías & Contención',     position:[-1.84,  0.12,-1.06], accentHex:0x6622AA, status:'alert'   },
+  { id:'cerberus',   name:'CERBERUS',   role:'Seguridad & Políticas',      position:[ 0.00,  0.24,-1.96], accentHex:0xCC3318, status:'active'  },
+  { id:'minos',      name:'MINOS',      role:'Validación & Aprobaciones',  position:[ 1.70,  0.10,-0.98], accentHex:0xBB9A18, status:'active'  },
+  { id:'persephone', name:'PERSEPHONE', role:'Finanzas & Presupuesto',     position:[ 1.70, -0.10, 0.98], accentHex:0x00AA88, status:'active'  },
+  { id:'charon',     name:'CHARON',     role:'Compras & Proveedores',      position:[ 0.00, -0.24, 1.96], accentHex:0x1488BB, status:'active'  },
+  { id:'elysium',    name:'ELYSIUM',    role:'Planificación & Resultados', position:[-1.70, -0.10, 0.98], accentHex:0x5577CC, status:'active'  },
+  { id:'tartarus',   name:'TARTARUS',   role:'Anomalías & Contención',     position:[-1.70,  0.10,-0.98], accentHex:0x7722BB, status:'alert'   },
 ]
 
 // Deterministic per-agent phase offset so nodes pulse at different moments
@@ -85,87 +93,176 @@ interface CoreProps {
 }
 
 function ExecutiveCore({ intensity, alertFactor, speed, paused }: CoreProps) {
-  const groupRef    = useRef<THREE.Group>(null)
-  const innerMatRef = useRef<THREE.MeshStandardMaterial>(null)
-  const edgeMatRef  = useRef<THREE.LineBasicMaterial>(null)
-  const lightRef    = useRef<THREE.PointLight>(null)
+  const outerGroupRef  = useRef<THREE.Group>(null)
+  const innerGroupRef  = useRef<THREE.Group>(null)  // counter-rotates
+  const octRef         = useRef<THREE.Group>(null)   // inner crystal, faster rotation
+  const outerShellMat  = useRef<THREE.MeshStandardMaterial>(null)
+  const outerEdgeMat   = useRef<THREE.LineBasicMaterial>(null)
+  const cageMat        = useRef<THREE.LineBasicMaterial>(null)
+  const octMat         = useRef<THREE.MeshStandardMaterial>(null)
+  const nucleusMat     = useRef<THREE.MeshStandardMaterial>(null)
+  const lightRef       = useRef<THREE.PointLight>(null)
+  const rimLightRef    = useRef<THREE.PointLight>(null)
+
+  const isAlert = alertFactor > 0.5
 
   useFrame(({ clock }) => {
     if (paused) return
     const t = clock.getElapsedTime() * speed
 
-    // Dignified rotation — slow, intentional, not theatrical
-    if (groupRef.current) {
-      groupRef.current.rotation.y += 0.0014 * speed
-      groupRef.current.rotation.x = Math.sin(t * 0.11) * 0.036
+    // Outer shell — slow dignified rotation
+    if (outerGroupRef.current) {
+      outerGroupRef.current.rotation.y += 0.0010 * speed
+      outerGroupRef.current.rotation.x = Math.sin(t * 0.09) * 0.028
+    }
+    // Inner cage — slight counter-rotation for depth perception
+    if (innerGroupRef.current) {
+      innerGroupRef.current.rotation.y -= 0.0016 * speed
+      innerGroupRef.current.rotation.z = Math.sin(t * 0.13) * 0.018
+    }
+    // Inner octahedron — faster, different axis, creates activity feel
+    if (octRef.current) {
+      octRef.current.rotation.y += 0.0038 * speed
+      octRef.current.rotation.x += 0.0022 * speed
     }
 
-    if (innerMatRef.current) {
-      innerMatRef.current.emissiveIntensity = 0.48 + 0.26 * Math.sin(t * 1.3) * intensity
-      innerMatRef.current.emissive.setHex(alertFactor > 0.5 ? 0xFF1100 : 0x0044CC)
+    const glow = Math.sin(t * 1.4)
+
+    // Outer shell — dark obsidian with subtle emissive breath
+    if (outerShellMat.current) {
+      outerShellMat.current.emissiveIntensity = (isAlert ? 0.12 : 0.05) + 0.04 * glow * intensity
+      outerShellMat.current.emissive.setHex(isAlert ? 0xFF1100 : 0x001844)
     }
 
-    if (edgeMatRef.current) {
-      edgeMatRef.current.opacity = 0.36 + 0.14 * Math.sin(t * 0.85) * intensity
-      edgeMatRef.current.color.setHex(alertFactor > 0.5 ? 0xFF4422 : 0xC89020)
+    // Outer gold edge cage
+    if (outerEdgeMat.current) {
+      outerEdgeMat.current.opacity = 0.18 + 0.10 * Math.sin(t * 0.72) * intensity
+      outerEdgeMat.current.color.setHex(isAlert ? 0xFF5500 : 0xB07818)
+    }
+
+    // Inner structural cage — stronger gold
+    if (cageMat.current) {
+      cageMat.current.opacity = 0.55 + 0.18 * glow * intensity
+      cageMat.current.color.setHex(isAlert ? 0xFF4422 : 0xC89020)
+    }
+
+    // Inner rotating octahedron — blue crystal, primary energy indicator
+    if (octMat.current) {
+      octMat.current.emissiveIntensity = (0.55 + 0.30 * glow) * intensity
+      octMat.current.emissive.setHex(isAlert ? 0xFF2200 : 0x0055CC)
+    }
+
+    // Nucleus sphere — bright cognitive core
+    if (nucleusMat.current) {
+      nucleusMat.current.emissiveIntensity = (0.72 + 0.28 * Math.sin(t * 1.9)) * intensity
+      nucleusMat.current.emissive.setHex(isAlert ? 0xFF3300 : 0x0066EE)
     }
 
     if (lightRef.current) {
-      lightRef.current.intensity = (0.82 + 0.32 * Math.sin(t * 1.65)) * intensity
-      lightRef.current.color.setHex(alertFactor > 0.5 ? 0xFF2200 : 0x0033BB)
+      lightRef.current.intensity = (1.0 + 0.38 * glow) * intensity
+      lightRef.current.color.setHex(isAlert ? 0xFF2200 : 0x0044CC)
+    }
+    if (rimLightRef.current) {
+      rimLightRef.current.intensity = 0.45 * intensity
     }
   })
 
   return (
-    <group ref={groupRef}>
-      {/* Outer precision polyhedron — obsidian */}
-      <mesh geometry={ICO_GEO}>
+    <group>
+      {/* ── Layer 1: outer dark crystal shell (slow rotation) ────────── */}
+      <group ref={outerGroupRef}>
+        <mesh geometry={CORE_OUTER_GEO}>
+          <meshStandardMaterial
+            ref={outerShellMat}
+            color={0x040810}
+            emissive={0x001844}
+            emissiveIntensity={0.05}
+            metalness={0.92}
+            roughness={0.08}
+            transparent
+            opacity={0.72}
+            side={THREE.FrontSide}
+          />
+        </mesh>
+        <lineSegments geometry={CORE_OUTER_EDGES}>
+          <lineBasicMaterial
+            ref={outerEdgeMat}
+            color={0xB07818}
+            transparent
+            opacity={0.18}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </lineSegments>
+      </group>
+
+      {/* ── Layer 2: structural gold cage (counter-rotation) ─────────── */}
+      <group ref={innerGroupRef}>
+        <lineSegments geometry={CORE_CAGE_EDGES}>
+          <lineBasicMaterial
+            ref={cageMat}
+            color={0xC89020}
+            transparent
+            opacity={0.55}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </lineSegments>
+      </group>
+
+      {/* ── Layer 3: inner rotating octahedron crystal ────────────────── */}
+      <group ref={octRef}>
+        <mesh geometry={CORE_INNER_GEO}>
+          <meshStandardMaterial
+            ref={octMat}
+            color={0x020614}
+            emissive={0x0055CC}
+            emissiveIntensity={0.55}
+            metalness={0.85}
+            roughness={0.12}
+            transparent
+            opacity={0.90}
+          />
+        </mesh>
+        {/* Octahedron edge overlay */}
+        <lineSegments geometry={new THREE.EdgesGeometry(CORE_INNER_GEO)}>
+          <lineBasicMaterial
+            color={0x2266DD}
+            transparent
+            opacity={0.35}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </lineSegments>
+      </group>
+
+      {/* ── Layer 4: smooth nucleus sphere — cognitive core ───────────── */}
+      <mesh>
+        <sphereGeometry args={[0.26, 24, 18]} />
         <meshStandardMaterial
-          color={0x050A16}
-          emissive={alertFactor > 0.5 ? 0xFF1100 : 0xC89020}
-          emissiveIntensity={0.07}
-          metalness={0.90}
-          roughness={0.16}
+          ref={nucleusMat}
+          color={0x010510}
+          emissive={0x0066EE}
+          emissiveIntensity={0.72}
+          transparent
+          opacity={0.95}
         />
       </mesh>
 
-      {/* Edge structure — discrete gold cage */}
-      <lineSegments geometry={ICO_EDGES}>
-        <lineBasicMaterial
-          ref={edgeMatRef}
-          color={0xC89020}
-          transparent
-          opacity={0.36}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </lineSegments>
-
-      {/* Inner cognitive sphere */}
+      {/* ── Layer 5: hot kernel — central processing point ───────────── */}
       <mesh>
-        <sphereGeometry args={[0.30, 18, 14]} />
-        <meshStandardMaterial
-          ref={innerMatRef}
-          color={0x020810}
-          emissive={0x0044CC}
-          emissiveIntensity={0.48}
-          transparent
-          opacity={0.88}
-        />
-      </mesh>
-
-      {/* Central hot kernel */}
-      <mesh>
-        <sphereGeometry args={[0.10, 10, 8]} />
+        <sphereGeometry args={[0.085, 10, 8]} />
         <meshBasicMaterial
-          color={0x6688CC}
+          color={0x88AAFF}
           transparent
-          opacity={0.62}
+          opacity={0.85}
           blending={THREE.AdditiveBlending}
         />
       </mesh>
 
-      <pointLight ref={lightRef} color={0x0033BB} intensity={0.82} distance={5.5} decay={2} />
+      {/* Lights */}
+      <pointLight ref={lightRef}    color={0x0044CC} intensity={1.0} distance={5.5} decay={2} />
+      <pointLight ref={rimLightRef} color={0xC89020} intensity={0.45} distance={4.0} decay={2} position={[1.2, 1.8, 0.8]} />
     </group>
   )
 }
@@ -184,18 +281,32 @@ interface AgentNodeProps {
 }
 
 function AgentNode({ agent, intensity, speed, paused, isSelected, onSelect }: AgentNodeProps) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const isAlert = agent.status === 'alert'
-  const phase   = agentPhase(agent.id)
+  const groupRef   = useRef<THREE.Group>(null)
+  const bodyMatRef = useRef<THREE.MeshStandardMaterial>(null)
+  const edgeMatRef = useRef<THREE.LineBasicMaterial>(null)
+  const isAlert    = agent.status === 'alert'
+  const phase      = agentPhase(agent.id)
+  const accentStr  = '#' + agent.accentHex.toString(16).padStart(6, '0')
+  const statusColor = isAlert ? '#FF4422' : '#00CC66'
 
   useFrame(({ clock }) => {
-    if (!meshRef.current || paused) return
+    if (!groupRef.current || paused) return
     const t = clock.getElapsedTime() * speed
-    // Very subtle pulse — indicates activity, not drama
-    meshRef.current.scale.setScalar(1.0 + 0.028 * Math.sin(t * 1.85 + phase) * intensity)
-  })
+    // Subtle pulse — breathes, not bounces
+    const s = 1.0 + 0.022 * Math.sin(t * 1.8 + phase) * intensity
+    groupRef.current.scale.setScalar(s)
+    // Very slow self-rotation — executive module processing
+    groupRef.current.rotation.y += 0.0008 * speed
 
-  const statusColor = isAlert ? '#FF3322' : '#00BB55'
+    if (bodyMatRef.current) {
+      bodyMatRef.current.emissiveIntensity = (isSelected ? 0.55 : 0.18) + 0.12 * Math.sin(t * 2.1 + phase) * intensity
+    }
+    if (edgeMatRef.current) {
+      edgeMatRef.current.opacity = isSelected
+        ? 0.85
+        : 0.30 + 0.12 * Math.sin(t * 1.5 + phase) * intensity
+    }
+  })
 
   return (
     <group
@@ -204,68 +315,97 @@ function AgentNode({ agent, intensity, speed, paused, isSelected, onSelect }: Ag
       onPointerEnter={() => { document.body.style.cursor = 'pointer' }}
       onPointerLeave={() => { document.body.style.cursor = 'default' }}
     >
-      {/* Executive module sphere */}
-      <mesh ref={meshRef}>
-        <sphereGeometry args={[0.130, 14, 10]} />
-        <meshStandardMaterial
-          color={0x040810}
-          emissive={isAlert ? 0xFF2200 : agent.accentHex}
-          emissiveIntensity={isSelected ? 0.45 : 0.20}
-          metalness={0.82}
-          roughness={0.22}
-        />
-      </mesh>
+      <group ref={groupRef}>
+        {/* Holographic executive module — angular icosahedron body */}
+        <mesh geometry={NODE_BODY_GEO}>
+          <meshStandardMaterial
+            ref={bodyMatRef}
+            color={0x040810}
+            emissive={isAlert ? 0xFF2200 : agent.accentHex}
+            emissiveIntensity={isSelected ? 0.55 : 0.18}
+            metalness={0.88}
+            roughness={0.14}
+          />
+        </mesh>
 
-      {/* Module ring — status/selection indicator */}
-      <mesh rotation-x={Math.PI / 2}>
-        <torusGeometry args={[0.225, isSelected ? 0.011 : 0.006, 6, 40]} />
-        <meshBasicMaterial
-          color={isAlert ? 0xFF3300 : agent.accentHex}
-          transparent
-          opacity={isSelected ? 0.90 : 0.28}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
+        {/* Module edge cage — accent color structural overlay */}
+        <lineSegments geometry={NODE_BODY_EDGE}>
+          <lineBasicMaterial
+            ref={edgeMatRef}
+            color={isAlert ? 0xFF3300 : agent.accentHex}
+            transparent
+            opacity={isSelected ? 0.85 : 0.30}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </lineSegments>
 
-      {/* Inner nucleus dot */}
-      <mesh>
-        <sphereGeometry args={[0.048, 8, 6]} />
-        <meshBasicMaterial
-          color={agent.accentHex}
-          transparent
-          opacity={0.68}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
+        {/* Inner nucleus — bright hot point */}
+        <mesh>
+          <sphereGeometry args={[0.042, 8, 6]} />
+          <meshBasicMaterial
+            color={isAlert ? 0xFF4400 : agent.accentHex}
+            transparent
+            opacity={0.75}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
 
-      {/* Clean executive label */}
+        {/* Selection indicator — clean outer ring only when selected */}
+        {isSelected && (
+          <mesh rotation-x={Math.PI / 2}>
+            <torusGeometry args={[0.30, 0.006, 4, 48]} />
+            <meshBasicMaterial
+              color={agent.accentHex}
+              transparent
+              opacity={0.65}
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+        )}
+      </group>
+
+      {/* Holographic module label — compact, data-dense */}
       <Html
         center
-        distanceFactor={7.5}
+        distanceFactor={7.0}
         style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}
-        position={[0, 0.36, 0]}
+        position={[0, 0.42, 0]}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px',
+          background: 'rgba(2,4,14,0.82)', border: `1px solid ${accentStr}22`,
+          borderRadius: '3px', padding: '3px 8px', backdropFilter: 'blur(8px)',
+          boxShadow: isSelected ? `0 0 12px ${accentStr}28` : 'none',
+        }}>
+          {/* Module name */}
           <div style={{
-            fontSize: '8px', fontWeight: 700, letterSpacing: '0.18em',
-            color: '#C8DCF0', background: 'rgba(3,6,18,0.88)',
-            padding: '2px 7px', borderRadius: '2px', backdropFilter: 'blur(6px)',
+            fontSize: '8.5px', fontWeight: 700, letterSpacing: '0.20em',
+            color: isSelected ? accentStr : '#B8D4EE',
             fontFamily: '"Inter", system-ui, sans-serif',
           }}>
             {agent.name}
           </div>
+          {/* Function label */}
           <div style={{
-            fontSize: '6.5px', letterSpacing: '0.06em',
-            color: 'rgba(175,208,238,0.42)',
+            fontSize: '6px', letterSpacing: '0.06em',
+            color: 'rgba(160,200,235,0.38)',
             fontFamily: '"Inter", system-ui, sans-serif',
           }}>
             {agent.role}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <div style={{ width: '3px', height: '3px', borderRadius: '50%', background: statusColor }} />
-            <span style={{ fontSize: '6px', color: statusColor, letterSpacing: '0.10em', fontFamily: '"Inter", system-ui, sans-serif' }}>
-              {isAlert ? 'ALERTA' : 'ACTIVO'}
+          {/* Status row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '1px' }}>
+            <div style={{
+              width: '3px', height: '3px', borderRadius: '50%',
+              background: statusColor, boxShadow: `0 0 4px ${statusColor}`,
+            }} />
+            <span style={{
+              fontSize: '5.5px', color: statusColor, letterSpacing: '0.12em',
+              fontFamily: '"Inter", system-ui, sans-serif',
+            }}>
+              {isAlert ? 'ALERTA' : agent.status === 'standby' ? 'STANDBY' : 'ACTIVO'}
             </span>
           </div>
         </div>
@@ -294,7 +434,7 @@ function DataConnections({
 
   const { lineObjs, lineMats, flowObjs, flowGeos, flowMats, flowOffsets } = useMemo(() => {
     const lineMats = AGENTS.map(() => new THREE.LineBasicMaterial({
-      color: 0x0A4A77, transparent: true, opacity: 0.20,
+      color: 0x0D5A8A, transparent: true, opacity: 0.24,
       depthWrite: false, blending: THREE.AdditiveBlending,
     }))
 
@@ -463,12 +603,12 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
 
   return (
     <>
-      {/* Lighting: controlled executive environment — no dramatic game lighting */}
-      <ambientLight intensity={0.05} color="#020508" />
-      <hemisphereLight args={['#0A1A40', '#020408', 0.50]} />
-      <pointLight position={[ 3.5,  6.0,  2.0]} color="#C89020" intensity={1.4} distance={18} decay={2} />
-      <pointLight position={[-2.0,  2.0, -3.0]} color="#003366" intensity={0.9} distance={12} decay={2} />
-      <pointLight position={[ 0.0, -0.5,  0.0]} color="#000D22" intensity={0.3} decay={2} />
+      {/* Lighting: precise corporate environment — surfaces read clearly */}
+      <ambientLight intensity={0.06} color="#020608" />
+      <hemisphereLight args={['#0C1E48', '#020408', 0.62]} />
+      <pointLight position={[ 3.0,  5.0,  2.0]} color="#C89020" intensity={2.2} distance={20} decay={2} />
+      <pointLight position={[-2.2,  2.2, -3.0]} color="#0044AA" intensity={1.4} distance={14} decay={2} />
+      <pointLight position={[ 0.0,  3.5,  0.0]} color="#001840" intensity={0.6} distance={8}  decay={2} />
 
       {/* Central cognitive core */}
       <ExecutiveCore
@@ -521,9 +661,9 @@ function HadesCoreScene({ state, paused, showConnections, reducedMotion, onAgent
       <EffectComposer>
         <Bloom
           intensity={p.bloom}
-          luminanceThreshold={0.70}
-          luminanceSmoothing={0.04}
-          radius={0.55}
+          luminanceThreshold={0.62}
+          luminanceSmoothing={0.06}
+          radius={0.52}
           mipmapBlur
         />
         <Vignette eskil={false} offset={0.14} darkness={0.70} />
@@ -555,12 +695,12 @@ export default function HadesCore({
 }: HadesCoreProps): JSX.Element {
   return (
     <Canvas
-      camera={{ position: [0, 2.6, 5.4], fov: 44 }}
+      camera={{ position: [0, 2.0, 4.8], fov: 42 }}
       gl={{
         antialias:           true,
         alpha:               true,
         toneMapping:         THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 0.90,
+        toneMappingExposure: 0.95,
         powerPreference:     'high-performance',
       }}
       dpr={[1, 1.8]}
