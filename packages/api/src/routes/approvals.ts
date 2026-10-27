@@ -15,6 +15,7 @@ export async function approvalRoutes(app: FastifyInstance, repository: JsonRepos
       const data = await repository.decideApproval({ escalationId: (req.params as { escalationId: string }).escalationId, status: body.status as 'APPROVED' | 'REJECTED', justification: body.justification.trim(), decidedBy: actor })
       return { success: true, data, warning: 'La decisión registrada no autoriza ni ejecuta la operación.' }
     } catch (error) {
+      if ((error as Error).message === 'ESCALATION_NOT_FOUND') return reply.code(404).send({ success: false, error: { code: 'ESCALATION_NOT_FOUND' } })
       if ((error as Error).message === 'APPROVAL_ALREADY_RESOLVED') return reply.code(409).send({ success: false, error: { code: 'APPROVAL_ALREADY_RESOLVED' } })
       throw error
     }

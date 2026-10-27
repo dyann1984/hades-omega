@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useHadesStore } from '../store/index.js'
 import type { AuditRecord, Escalation } from '../store/index.js'
+import { apiHeaders, apiPath } from '../lib/api.js'
 
 function AuditRow({ record }: { record: AuditRecord }): JSX.Element {
   const [open, setOpen] = useState(false)
@@ -81,13 +82,21 @@ function AuditRow({ record }: { record: AuditRecord }): JSX.Element {
 function EscalationCard({ esc }: { esc: Escalation }): JSX.Element {
   const { resolveEscalation } = useHadesStore()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   async function decide(approve: boolean): Promise<void> {
-    setLoading(true)
-    // Simulate review delay
-    await new Promise(r => setTimeout(r, 600))
-    resolveEscalation(esc.id, approve ? 'APPROVED' : 'REJECTED')
-    setLoading(false)
+    const justification = window.prompt('Justificación de la decisión (mínimo 3 caracteres):')?.trim()
+    if (!justification || justification.length < 3) return
+    setLoading(true); setError('')
+    try {
+      const response = await fetch(apiPath(`/api/v1/approvals/${encodeURIComponent(esc.id)}/decision`), {
+        method: 'POST', headers: apiHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ status: approve ? 'APPROVED' : 'REJECTED', justification }),
+      })
+      if (!response.ok) throw new Error(`No se pudo registrar la decisión (HTTP ${response.status}).`)
+      resolveEscalation(esc.id, approve ? 'APPROVED' : 'REJECTED')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Error de conexión') }
+    finally { setLoading(false) }
   }
 
   const isPending = esc.status === 'PENDING'
@@ -124,6 +133,8 @@ function EscalationCard({ esc }: { esc: Escalation }): JSX.Element {
           {typeof esc.context === 'string' ? esc.context : (JSON.stringify(esc.context)?.slice(0, 120) ?? 'null') + '…'}
         </div>
       )}
+      {error && <p role="alert" className="text-deny text-xs">{error}</p>}
+      <p className="text-xs text-gray-500">La decisión se registra; la operación no se reanuda automáticamente.</p>
       {isPending && (
         <div className="flex gap-2 pt-1">
           <button

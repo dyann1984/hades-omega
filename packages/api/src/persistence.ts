@@ -45,9 +45,15 @@ export class JsonRepository {
     await this.flush()
   }
   listAudits(): AuditRecord[] { return structuredClone(this.state.audits) }
+  hasPendingEscalation(id: string): boolean {
+    return this.state.missions.some(mission => mission.tasks.some(task =>
+      task.status === 'CERBERUS_REVIEW' && (task.result?.data as { escalationId?: unknown } | undefined)?.escalationId === id
+    ))
+  }
   listApprovals(): StoredApproval[] { return structuredClone(this.state.approvals) }
   async decideApproval(input: Omit<StoredApproval, 'id' | 'decidedAt' | 'executionAuthorized'>): Promise<StoredApproval> {
     if (this.state.approvals.some(item => item.escalationId === input.escalationId)) throw new Error('APPROVAL_ALREADY_RESOLVED')
+    if (!this.hasPendingEscalation(input.escalationId)) throw new Error('ESCALATION_NOT_FOUND')
     const approval: StoredApproval = { ...input, id: crypto.randomUUID(), decidedAt: Date.now(), executionAuthorized: false }
     this.state.approvals.unshift(approval)
     this.state.events.unshift({ id: crypto.randomUUID(), type: 'HUMAN_APPROVAL_RECORDED', actor: input.decidedBy, timestamp: approval.decidedAt, payload: approval })

@@ -10,6 +10,8 @@ describe('JsonRepository', () => {
     try {
       const first = new JsonRepository(file)
       await first.init()
+      await first.saveMission({ id: 'mission', tasks: [{ id: 'task', status: 'CERBERUS_REVIEW', result: { data: { escalationId: 'esc-1' } } }] } as any)
+      await expect(first.decideApproval({ escalationId: 'unknown', status: 'APPROVED', justification: 'Reviewed', decidedBy: 'admin' })).rejects.toThrow('ESCALATION_NOT_FOUND')
       const results = await Promise.allSettled([
         first.decideApproval({ escalationId: 'esc-1', status: 'APPROVED', justification: 'Presupuesto verificado', decidedBy: 'operator-a' }),
         first.decideApproval({ escalationId: 'esc-1', status: 'REJECTED', justification: 'Decisión duplicada', decidedBy: 'operator-b' }),
