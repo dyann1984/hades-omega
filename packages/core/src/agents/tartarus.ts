@@ -52,7 +52,7 @@ export class TartarusAgent extends AgentBase {
       summary:     anomalies.length === 0
         ? 'Sin anomalías detectadas en la sesión [DEMO]'
         : `${anomalies.length} anomalía(s) detectada(s) — monitoreo activo [DEMO]`,
-      data:        { anomalies, auditStats, decision },
+      data:        { simulated: true, anomalies, auditStats, decision },
       cerberusIds: [auditId],
     }
   }

@@ -78,11 +78,13 @@ export abstract class AgentBase {
         decision:      decision.outcome,
         timestampMs:   record.timestamp,
       })
-      this.deps.audit.setNearTx(record.id, tx.txHash, tx.explorerUrl)
-      bus.publish({
-        type:    'NEAR_TX_CONFIRMED',
-        payload: { auditId: record.id, txHash: tx.txHash, explorerUrl: tx.explorerUrl },
-      })
+      if (tx.mode === 'real') {
+        this.deps.audit.setNearTx(record.id, tx.txHash, tx.explorerUrl)
+        bus.publish({
+          type: 'NEAR_TX_CONFIRMED',
+          payload: { auditId: record.id, txHash: tx.txHash, explorerUrl: tx.explorerUrl },
+        })
+      }
     }
 
     bus.publish({ type: 'CERBERUS_DECISION', payload: { auditRecord: record } })

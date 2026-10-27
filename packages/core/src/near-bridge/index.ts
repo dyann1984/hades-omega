@@ -26,7 +26,9 @@ export class NEARBridge {
   private contractId = 'audit.hades-omega.testnet'
 
   constructor() {
-    this.mode = (process.env['NEAR_EXECUTION_MODE'] as ExecutionMode) ?? 'simulation'
+    const configured = process.env['NEAR_EXECUTION_MODE'] ?? 'simulation'
+    if (!['simulation', 'demo', 'real', 'testnet', 'mainnet'].includes(configured.toLowerCase())) throw new Error('Invalid NEAR_EXECUTION_MODE')
+    this.mode = ['simulation', 'demo'].includes(configured.toLowerCase()) ? 'simulation' : 'real'
   }
 
   async storeAuditHash(params: {
@@ -50,13 +52,13 @@ export class NEARBridge {
   }): Promise<NEARTxRecord> {
     await new Promise(r => setTimeout(r, 200 + Math.random() * 300))
 
-    const txHash = this.generateSimulatedTxHash()
-    const blockHeight = Math.floor(142_000_000 + Math.random() * 1_000_000)
+    const txHash = `DEMO-${this.generateSimulatedTxHash()}`
+    const blockHeight = 0
 
     const record: NEARTxRecord = {
       auditId:     params.auditId,
       txHash,
-      explorerUrl: `https://testnet.nearblocks.io/txns/${txHash}`,
+      explorerUrl: '',
       blockHeight,
       timestamp:   Date.now(),
       mode:        'simulation',
@@ -78,7 +80,7 @@ export class NEARBridge {
 
   getStatus(): NEARBridgeStatus {
     return {
-      connected:  true,
+      connected:  false,
       networkId:  this.networkId,
       contractId: this.contractId,
       mode:       this.mode,

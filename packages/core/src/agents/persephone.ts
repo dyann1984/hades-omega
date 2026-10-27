@@ -49,7 +49,7 @@ export class PersephoneAgent extends AgentBase {
       summary:     sufficient
         ? `Presupuesto validado: $${requestedAmount.toLocaleString()} ${this.currency} disponible [DEMO]`
         : `Presupuesto insuficiente: se solicitaron $${requestedAmount.toLocaleString()} — disponibles $${this.availableBudget.toLocaleString()}`,
-      data: {
+      data: { simulated: true,
         requestedAmount,
         availableBefore: this.availableBudget + (decision.outcome === 'PERMIT' ? requestedAmount : 0),
         availableAfter:  this.availableBudget,

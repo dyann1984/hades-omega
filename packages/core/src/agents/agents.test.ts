@@ -108,7 +108,9 @@ describe('NEARBridge', () => {
       timestampMs:   Date.now(),
     })
     expect(tx.txHash).toBeDefined()
-    expect(tx.explorerUrl).toContain('testnet.nearblocks.io')
+    expect(tx.explorerUrl).toBe('')
+    expect(tx.txHash).toMatch(/^DEMO-/)
+    expect(bridge.getStatus().connected).toBe(false)
     expect(tx.mode).toBe('simulation')
   }, 5000)
 

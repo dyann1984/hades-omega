@@ -50,7 +50,7 @@ export class CharonAgent extends AgentBase {
       taskId:      task.id,
       success:     decision.outcome !== 'DENY',
       summary:     this.buildSummary(decision.outcome, bestVendor),
-      data:        { evaluations, selectedVendor: bestVendor, decision },
+      data:        { simulated: true, evaluations, selectedVendor: bestVendor, decision },
       cerberusIds: [auditId],
     }
   }

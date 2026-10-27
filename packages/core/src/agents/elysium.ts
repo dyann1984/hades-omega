@@ -29,7 +29,7 @@ export class ElysiumAgent extends AgentBase {
       taskId:   task.id,
       success:  true,
       summary:  'Plan de implementación calculado: 5 días, 3 fases [DEMO]',
-      data: {
+      data: { simulated: true,
         phases: [
           { id: uuidv4(), name: 'Preparación', days: 1, tasks: ['Configurar entorno', 'Asignar recursos'] },
           { id: uuidv4(), name: 'Migración',   days: 3, tasks: ['Migrar datos', 'Validar integridad', 'Pruebas'] },
