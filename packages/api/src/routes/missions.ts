@@ -3,6 +3,9 @@ import { hades, audit, near } from '../runtime.js'
 import type { JsonRepository } from '../persistence.js'
 import { requireRole } from '../security.js'
 import { createHash } from 'node:crypto'
+import { createRuleBasedPlanner } from '@hades/core'
+
+const missionPlanner = createRuleBasedPlanner()
 
 export async function missionRoutes(app: FastifyInstance, repository?: JsonRepository): Promise<void> {
   app.post('/missions', async (req, reply) => {
@@ -28,6 +31,27 @@ export async function missionRoutes(app: FastifyInstance, repository?: JsonRepos
     }
     const isAdmin = !repository || (req.user as { roles: string[] }).roles.includes('ADMIN')
     return { ...ok(mission), auditRecords: isAdmin ? auditRecords : [], nearTxs: isAdmin ? nearTxs : [] }
+  })
+
+  app.post('/missions/plan', async (req, reply) => {
+    if (repository) requireRole(req, ['ADMIN', 'OPERATOR'])
+    const { title, description, context } = (req.body ?? {}) as any
+    if (typeof title !== 'string' || title.trim().length < 3 || typeof description !== 'string' || description.trim().length < 3) {
+      return reply.code(400).send(err('VALIDATION_ERROR', 'title y description son requeridos para la planificación'))
+    }
+    const planResult = await missionPlanner.plan({
+      title: title.trim(),
+      description: description.trim(),
+      context: (typeof context === 'object' && context !== null ? context : {
+        organizationId: 'default',
+        budgetLimit: 100000,
+        currency: 'MXN',
+        deadline: null,
+        priority: 'MEDIUM',
+        tags: [],
+      }) as any,
+    })
+    return ok(planResult)
   })
 
   app.get('/missions', async (req) => {

@@ -142,4 +142,44 @@ describe('RuleBasedPlanner', () => {
     const budgetAgents = budgetResult.tasks.map(t => t.assignedTo)
     expect(procurementAgents).not.toEqual(budgetAgents)
   })
+
+  it('debe planificar una misión de comparación documental multiagente con capacidades verificables', async () => {
+    const result = await planner.plan({
+      title: 'Comparar contratos de proveedores',
+      description: 'Auditoría comparativa de tres documentos de proveedores cloud',
+      context: {
+        organizationId: 'techcore',
+        budgetLimit: 150000,
+        currency: 'MXN',
+        deadline: null,
+        priority: 'HIGH',
+        tags: ['multi-doc'],
+        documents: [
+          { filename: 'doc-a.txt', content: 'Contrato A' },
+          { filename: 'doc-b.txt', content: 'Contrato B' },
+          { filename: 'doc-c.txt', content: 'Contrato C' },
+        ],
+      } as any,
+    })
+
+    expect(result.tasks.length).toBe(6)
+    expect(result.simulated).toBe(false) // Datos reales provistos
+    const agents = result.tasks.map(t => t.assignedTo)
+    expect(agents).toEqual(['CHARON', 'MINOS', 'PERSEPHONE', 'HADES', 'ELYSIUM', 'TARTARUS'])
+
+    // Cada tarea debe declarar una capacidad válida
+    for (const task of result.tasks) {
+      expect(task.capabilityId).toBeTruthy()
+      expect(task.capabilityId).toMatch(/^cap:[a-z0-9:-]+@\d+\.\d+\.\d+$/)
+    }
+
+    // La tarea de aprobación ejecutiva debe exigir autorización humana
+    const approvalTask = result.tasks.find(t => t.assignedTo === 'HADES')
+    expect(approvalTask?.requiresApproval).toBe(true)
+
+    // Sin ciclos de dependencia
+    const validation = planner.validateDependencies(result.tasks)
+    expect(validation.valid).toBe(true)
+    expect(validation.cycles).toHaveLength(0)
+  })
 })

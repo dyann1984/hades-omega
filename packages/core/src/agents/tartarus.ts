@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { createHash } from 'node:crypto'
 import type { Task, TaskResult, AnomalyReport } from '../types/index.js'
 import { AgentBase, type AgentDependencies } from './base.js'
 import { bus } from '../mission-bus/index.js'
@@ -13,6 +14,9 @@ export class TartarusAgent extends AgentBase {
 
   async receiveTask(task: Task): Promise<TaskResult> {
     this.currentTask = task
+    const cryptoInput = (task.context?.['cryptoPayload'] ?? task.context?.['sha256Input'] ?? (task.context?.['cryptographicHash'] ? `${task.title}:${task.missionId}` : undefined)) as string | undefined
+    if (cryptoInput !== undefined) return this.computeSha256(task, cryptoInput)
+
     const errors = task.context?.['errors'] as string[] | undefined
     const documentId = task.context?.['documentId'] as string | undefined
     if (errors !== undefined) return this.logErrors(task, errors, documentId)
@@ -94,8 +98,35 @@ export class TartarusAgent extends AgentBase {
       success: true,
       summary: errors.length === 0
         ? 'Sin errores en el flujo de procesamiento'
-        : `${errors.length} error(es) registrado(s)`,
+        : `${errors.length} error(s) registrado(s)`,
       data: { simulated: false, anomalies, decision },
+      cerberusIds: [auditId],
+    }
+  }
+
+  private async computeSha256(task: Task, input: string): Promise<TaskResult> {
+    this.setStatus('EXECUTING', 'Calculando hash criptográfico SHA-256')
+    const sha256 = createHash('sha256').update(input, 'utf8').digest('hex')
+    const { decision, auditId } = await this.proposeOperation(
+      'CRYPTO_HASH',
+      { algorithm: 'sha256', inputBytes: Buffer.byteLength(input, 'utf8'), digest: sha256 },
+      task.missionId,
+      task.id,
+    )
+    this.setStatus('IDLE')
+    this.currentTask = null
+    return {
+      taskId: task.id,
+      success: decision.outcome !== 'DENY',
+      summary: `Hash SHA-256 calculado determinísticamente por TARTARUS: ${sha256}`,
+      data: {
+        algorithm: 'sha256',
+        encoding: 'utf8',
+        sha256,
+        inputBytes: Buffer.byteLength(input, 'utf8'),
+        executor: 'TARTARUS',
+        simulated: false,
+      },
       cerberusIds: [auditId],
     }
   }

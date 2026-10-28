@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { SqliteRepository } from '../sqlite.js'
 import { bus } from '@hades/core'
-import type { Mission } from '@hades/core'
+import type { Mission, AgentName } from '@hades/core'
 import { requireRole } from '../security.js'
 
 export async function localMissionRoutes(app: FastifyInstance, repository: SqliteRepository): Promise<void> {
@@ -20,6 +20,50 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
     publishMission(result.mission)
     return reply.code(201).send({success:true,data:result})
   })
+  app.post('/local-missions/multi-document', async (req, reply) => {
+    requireRole(req, ['ADMIN', 'OPERATOR'])
+    const body = req.body as { title?: unknown; documents?: unknown; budgetLimit?: unknown } | undefined
+    if (typeof body?.title !== 'string' || body.title.trim().length < 3 || !Array.isArray(body.documents) || body.documents.length < 2) {
+      return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Se requiere título y al menos dos documentos para comparación.' } })
+    }
+    const cleanDocs: Array<{ filename: string; content: string; mimeType?: string }> = []
+    for (const d of body.documents) {
+      if (typeof d?.filename !== 'string' || typeof d?.content !== 'string') {
+        return reply.code(400).send({ success: false, error: { code: 'INVALID_DOCUMENT', message: 'Cada documento debe incluir filename y content' } })
+      }
+      cleanDocs.push({ filename: d.filename, content: d.content, mimeType: d.mimeType })
+    }
+    const owner = (req.user as { sub: string }).sub
+    const budgetLimit = typeof body.budgetLimit === 'number' && body.budgetLimit > 0 ? body.budgetLimit : 150000
+    const result = await repository.createMultiDocumentMission(owner, body.title.trim(), cleanDocs, budgetLimit)
+    publishMission(result.mission)
+    return reply.code(201).send({ success: true, data: result })
+  })
+  const handleReassign = async (req: any, reply: any) => {
+    requireRole(req, ['ADMIN'])
+    const { id: missionId, taskId } = req.params as { id: string; taskId: string }
+    const body = req.body as { newAssignee?: unknown; justification?: unknown } | undefined
+    if (typeof body?.newAssignee !== 'string' || typeof body?.justification !== 'string' || body.justification.trim().length < 3) {
+      return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: 'newAssignee y justification son requeridos.' } })
+    }
+    const actor = (req.user as { sub: string }).sub
+    try {
+      const res = repository.reassignTask(missionId, taskId, body.newAssignee as AgentName, actor, body.justification.trim())
+      bus.publish({ type: 'TASK_UPDATED', payload: { task: res.task } })
+      return { success: true, data: res }
+    } catch (err) {
+      const msg = (err as Error).message
+      if (msg.includes('BLOCKED_BY_DESIGN')) {
+        return reply.code(409).send({ success: false, error: { code: 'REASSIGNMENT_BLOCKED_BY_DESIGN', message: msg } })
+      }
+      if (msg === 'MISSION_NOT_FOUND') return reply.code(404).send({ success: false, error: { code: 'MISSION_NOT_FOUND' } })
+      if (msg === 'TASK_NOT_FOUND') return reply.code(404).send({ success: false, error: { code: 'TASK_NOT_FOUND' } })
+      return reply.code(400).send({ success: false, error: { code: 'REASSIGNMENT_FAILED', message: msg } })
+    }
+  }
+
+  app.post('/local-missions/:id/tasks/:taskId/reassign', handleReassign)
+  app.post('/missions/:id/tasks/:taskId/reassign', handleReassign)
   app.post('/local-missions/:id/cancel', async (req, reply) => {
     requireRole(req,['ADMIN','OPERATOR'])
     const body=req.body as {reason?:unknown} | undefined

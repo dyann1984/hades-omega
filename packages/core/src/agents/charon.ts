@@ -17,6 +17,11 @@ export class CharonAgent extends AgentBase {
 
   async receiveTask(task: Task): Promise<TaskResult> {
     this.currentTask = task
+    const batchDocs = task.context?.['documents'] as DocumentPayload[] | undefined
+    if (batchDocs && Array.isArray(batchDocs) && batchDocs.length > 0) {
+      return this.intakeBatchDocuments(task, batchDocs)
+    }
+
     const doc = task.context?.['document'] as DocumentPayload | undefined
     if (doc) return this.intakeDocument(task, doc)
 
@@ -113,6 +118,62 @@ export class CharonAgent extends AgentBase {
       summary: `Documento "${doc.filename}" procesado — ${wordCount} palabras, formato: ${detectedFormat}`,
       data: { simulated: false, intakeResult, decision },
       cerberusIds: [auditId],
+    }
+  }
+
+  private async intakeBatchDocuments(task: Task, docs: DocumentPayload[]): Promise<TaskResult> {
+    this.setStatus('EXECUTING', `Procesando lote de ${docs.length} documentos`)
+    const intakeResults: DocumentIntakeResult[] = []
+    const auditIds: string[] = []
+    let totalWords = 0
+
+    for (const doc of docs) {
+      const documentId = uuidv4()
+      const wordCount = doc.content.split(/\s+/).filter(Boolean).length
+      const lineCount = doc.content.split('\n').length
+      const charCount = doc.content.length
+      totalWords += wordCount
+
+      let detectedFormat: DocumentIntakeResult['detectedFormat'] = 'txt'
+      const nameLower = doc.filename.toLowerCase()
+      if (nameLower.endsWith('.json') || doc.mimeType === 'application/json') detectedFormat = 'json'
+      else if (nameLower.endsWith('.pdf') || doc.mimeType === 'application/pdf') detectedFormat = 'pdf'
+      else if (nameLower.endsWith('.docx') || doc.mimeType?.includes('word')) detectedFormat = 'docx'
+
+      const intakeResult: DocumentIntakeResult = {
+        documentId,
+        filename: doc.filename,
+        wordCount,
+        lineCount,
+        charCount,
+        detectedFormat,
+        metadata: { filename: doc.filename, sizeBytes: doc.sizeBytes ?? doc.content.length },
+      }
+      intakeResults.push(intakeResult)
+
+      const { auditId } = await this.proposeOperation(
+        'BATCH_DOCUMENT_INTAKE',
+        { documentId, filename: doc.filename, format: detectedFormat },
+        task.missionId,
+        task.id,
+      )
+      auditIds.push(auditId)
+    }
+
+    this.setStatus('IDLE')
+    this.currentTask = null
+
+    return {
+      taskId: task.id,
+      success: true,
+      summary: `Lote de ${docs.length} documentos procesado exitosamente por CHARON (${totalWords} palabras totales)`,
+      data: {
+        simulated: false,
+        totalDocuments: docs.length,
+        totalWords,
+        intakeResults,
+      },
+      cerberusIds: auditIds,
     }
   }
 

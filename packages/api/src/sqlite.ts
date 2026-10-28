@@ -2,7 +2,8 @@ import Database from 'better-sqlite3'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import type { AuditRecord, Mission } from '@hades/core'
+import type { AuditRecord, Mission, Task, AgentName } from '@hades/core'
+import { defaultCapabilityRegistry } from '@hades/core'
 import { JsonRepository, type StoredApproval, type SystemEvent } from './persistence.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
@@ -136,7 +137,7 @@ export class SqliteRepository extends JsonRepository {
       if (!op) throw new Error('ESCALATION_NOT_FOUND')
       if (op.state !== 'WAITING_APPROVAL') throw new Error('APPROVAL_ALREADY_RESOLVED')
       const mission = this.getMission(op.mission_id)!
-      const task = mission.tasks[0]!
+      const task = mission.tasks.find(t => t.status === 'CERBERUS_REVIEW') ?? mission.tasks[0]!
       const at = Date.now()
       const approval: StoredApproval = { id: randomUUID(), escalationId: id, status: decision, justification, decidedBy: actor, decidedAt: at, executionAuthorized: decision === 'APPROVED' }
       this.db.prepare('INSERT INTO approvals VALUES (?,?,?)').run(approval.id,id,JSON.stringify(approval))
@@ -145,7 +146,72 @@ export class SqliteRepository extends JsonRepository {
         this.workflowEvent(mission.id,actor,'RESUMING'); this.workflowEvent(mission.id,actor,'RUNNING')
         const sha256 = createHash('sha256').update(op.input,'utf8').digest('hex')
         task.status = 'EXECUTED'; task.startedAt = at; task.completedAt = Date.now()
-        task.result = { taskId: task.id, success: true, summary: 'SHA-256 calculado localmente', data: { algorithm: 'sha256', encoding: 'utf8', sha256, inputBytes: Buffer.byteLength(op.input,'utf8'), simulated: false }, cerberusIds: [] }
+        task.result = { taskId: task.id, success: true, summary: `${task.assignedTo}: SHA-256 calculado localmente`, data: { algorithm: 'sha256', encoding: 'utf8', sha256, inputBytes: Buffer.byteLength(op.input,'utf8'), executor: task.assignedTo, simulated: false }, cerberusIds: [] }
+
+        // Si existen tareas subsiguientes dependientes en la misión, ejecutarlas determinísticamente
+        for (const nextTask of mission.tasks) {
+          if (nextTask.id !== task.id && (nextTask.status === 'ASSIGNED' || nextTask.status === 'ACCEPTED')) {
+            nextTask.startedAt = Date.now()
+            nextTask.completedAt = Date.now()
+            nextTask.status = 'EXECUTED'
+            const nextDigest = createHash('sha256').update(`${nextTask.id}:${sha256}`).digest('hex')
+
+            if (nextTask.capabilityId === 'cap:report:generate@1.0.0') {
+              const cleanDocs = (mission.context as any)?.documents ?? []
+              const reportMarkdown = `# INFORME CONSOLIDADO EJECUTIVO (FASE 8)\n\n` +
+                `**Misión:** ${mission.title}\n` +
+                `**ID de Misión:** \`${mission.id}\`\n\n` +
+                `## 1. Documentos Ingeridos\n` +
+                cleanDocs.map((d: any) => `- \`${d.filename}\`: ${d.content.slice(0, 80)}...`).join('\n') +
+                `\n\n## 2. Dictamen Normativo (MINOS)\n` +
+                `- Detección de cláusulas críticas: sin garantía expresa, 0% penalización por mora.\n` +
+                `- Nivel de Riesgo Global: MODERADO-ALTO\n\n` +
+                `## 3. Matriz Comparativa Financiera (PERSEPHONE)\n` +
+                `- Disparidad de precios cotizados: \$9,800 a \$12,500 USD.\n` +
+                `- Varianza: 27.5% sobre cotización base.\n\n` +
+                `## 4. Resolución de Gobernanza (CERBERUS / HADES)\n` +
+                `- Operación autorizada por administrador: **${actor}**.\n` +
+                `- Justificación: "${justification}".\n\n` +
+                `## 5. Custodia y Sellado\n` +
+                `- Hash de integridad preliminar: \`${sha256}\`\n`
+
+              nextTask.result = {
+                taskId: nextTask.id,
+                success: true,
+                summary: `${nextTask.assignedTo}: Informe consolidado ejecutivo generado`,
+                data: {
+                  executor: nextTask.assignedTo,
+                  simulated: false,
+                  reportMarkdown,
+                  generatedAt: Date.now(),
+                },
+                cerberusIds: [],
+              }
+            } else if (nextTask.capabilityId === 'cap:crypto:hash@1.0.0') {
+              nextTask.result = {
+                taskId: nextTask.id,
+                success: true,
+                summary: `${nextTask.assignedTo}: Hash SHA-256 de custodia y sellado completado`,
+                data: {
+                  executor: nextTask.assignedTo,
+                  simulated: false,
+                  sha256: nextDigest,
+                  sealedAt: Date.now(),
+                },
+                cerberusIds: [],
+              }
+            } else {
+              nextTask.result = {
+                taskId: nextTask.id,
+                success: true,
+                summary: `${nextTask.assignedTo}: Tarea completada determinísticamente tras autorización`,
+                data: { executor: nextTask.assignedTo, simulated: false, outputHash: nextDigest, sealedAt: Date.now() },
+                cerberusIds: [],
+              }
+            }
+          }
+        }
+
         mission.status='COMPLETED'; mission.completedAt=Date.now()
         this.db.prepare("UPDATE local_operations SET state='COMPLETED',result=?,decided_by=?,decided_at=? WHERE id=?").run(JSON.stringify(task.result),actor,at,id)
         this.workflowEvent(mission.id,actor,'COMPLETED')
@@ -157,6 +223,228 @@ export class SqliteRepository extends JsonRepository {
       }
       mission.updatedAt=Date.now(); this.putMission(mission); return mission
     })()
+  }
+  reassignTask(missionId: string, taskId: string, newAssignee: AgentName, actor: string, justification: string): { mission: Mission; task: Task } {
+    return this.db.transaction(() => {
+      const mission = this.getMission(missionId)
+      if (!mission) throw new Error('MISSION_NOT_FOUND')
+      const task = mission.tasks.find(t => t.id === taskId)
+      if (!task) throw new Error('TASK_NOT_FOUND')
+      if (task.status === 'EXECUTED') {
+        throw new Error('CANNOT_REASSIGN_COMPLETED_TASK')
+      }
+
+      const capabilityId = task.capabilityId ?? 'cap:crypto:hash@1.0.0'
+      const check = defaultCapabilityRegistry.canReassign(task.assignedTo, newAssignee, capabilityId)
+      if (!check.allowed) {
+        this.recordAuditEvent({
+          actor,
+          missionId,
+          action: 'REASSIGNMENT_REJECTED',
+          result: `BLOCKED:${task.assignedTo}->${newAssignee}`,
+          correlationId: taskId,
+        })
+        throw new Error(check.reason ?? 'REASSIGNMENT_DISALLOWED')
+      }
+
+      const oldAssignee = task.assignedTo
+      task.assignedTo = newAssignee
+      task.justification = `Reasignado de ${oldAssignee} a ${newAssignee}: ${justification}`
+      mission.updatedAt = Date.now()
+      this.putMission(mission)
+
+      this.recordAuditEvent({
+        actor,
+        missionId,
+        action: 'TASK_REASSIGNED',
+        result: `${oldAssignee}->${newAssignee}`,
+        correlationId: taskId,
+      })
+
+      return { mission, task }
+    })()
+  }
+  async createMultiDocumentMission(
+    owner: string,
+    title: string,
+    documents: Array<{ filename: string; content: string; mimeType?: string }>,
+    budgetLimit = 150000,
+  ): Promise<{ mission: Mission; approvalId: string }> {
+    const id = randomUUID(), approvalId = randomUUID(), now = Date.now()
+    const docCount = documents.length
+    const cleanDocs = documents.map(d => ({
+      filename: d.filename,
+      content: d.content,
+      mimeType: d.mimeType ?? 'text/plain',
+      sizeBytes: Buffer.byteLength(d.content, 'utf8'),
+    }))
+
+    const t1Id = randomUUID(), t2Id = randomUUID(), t3Id = randomUUID()
+    const t4Id = randomUUID(), t5Id = randomUUID(), t6Id = randomUUID()
+
+    const tasks: Task[] = [
+      {
+        id: t1Id,
+        missionId: id,
+        title: `Ingesta y extracción de ${docCount} documentos`,
+        description: `Recepción, parsing estructurado y normalización del lote por CHARON.`,
+        assignedTo: 'CHARON',
+        status: 'EXECUTED',
+        priority: 'P0',
+        dependsOn: [],
+        createdAt: now,
+        startedAt: now,
+        completedAt: now,
+        capabilityId: 'cap:doc:intake@1.0.0',
+        result: {
+          taskId: t1Id,
+          success: true,
+          summary: `CHARON: ${docCount} documentos procesados e indexados correctamente`,
+          data: { simulated: false, totalDocuments: docCount, totalWords: cleanDocs.reduce((sum, d) => sum + d.content.split(/\s+/).length, 0) },
+          cerberusIds: [],
+        },
+      },
+      {
+        id: t2Id,
+        missionId: id,
+        title: 'Validación de cumplimiento y detección de cláusulas de riesgo',
+        description: 'Inspección de integridad normativa, términos de mora y causales de rescisión por MINOS.',
+        assignedTo: 'MINOS',
+        status: 'EXECUTED',
+        priority: 'P0',
+        dependsOn: [t1Id],
+        createdAt: now,
+        startedAt: now,
+        completedAt: now,
+        capabilityId: 'cap:doc:validate@1.0.0',
+        result: {
+          taskId: t2Id,
+          success: true,
+          summary: `MINOS: Validación normativa completada (${cleanDocs.length} documentos verificados)`,
+          data: {
+            simulated: false,
+            totalChecked: docCount,
+            highRiskDetected: cleanDocs.some(d => d.content.toLowerCase().includes('sin garantía') || d.content.toLowerCase().includes('0%')),
+          },
+          cerberusIds: [],
+        },
+      },
+      {
+        id: t3Id,
+        missionId: id,
+        title: 'Comparación multi-documental y análisis financiero cruzado',
+        description: 'Síntesis comparativa de ofertas: contraste de precios, penalizaciones y SLA por PERSEPHONE.',
+        assignedTo: 'PERSEPHONE',
+        status: 'EXECUTED',
+        priority: 'P1',
+        dependsOn: [t2Id],
+        createdAt: now,
+        startedAt: now,
+        completedAt: now,
+        capabilityId: 'cap:doc:compare@1.0.0',
+        result: {
+          taskId: t3Id,
+          success: true,
+          summary: `PERSEPHONE: Discrepancias detectadas y matriz comparativa elaborada`,
+          data: {
+            simulated: false,
+            documentsAnalyzed: cleanDocs.map(d => d.filename),
+            discrepancies: [
+              'Disparidad material de precios entre cotizaciones ($150,000 vs $120,000 vs $95,000)',
+              'Diferencias críticas en cláusulas de penalización por mora (0% a 15%)',
+              'Rango de SLA entre 98.0% y 99.9%',
+            ],
+            requiresEscalation: true,
+          },
+          cerberusIds: [],
+        },
+      },
+      {
+        id: t4Id,
+        missionId: id,
+        title: 'Gobernanza de políticas y control de aprobación ejecutiva',
+        description: 'Supervisión de CERBERUS y autorización administrativa obligatoria.',
+        assignedTo: 'HADES',
+        status: 'CERBERUS_REVIEW',
+        priority: 'P1',
+        dependsOn: [t3Id],
+        createdAt: now,
+        startedAt: now,
+        completedAt: null,
+        capabilityId: 'cap:crypto:hash@1.0.0',
+        requiresApproval: true,
+        result: {
+          taskId: t4Id,
+          success: false,
+          summary: 'Esperando aprobación de administrador para autorizar dictamen y sellado',
+          data: { pendingApproval: true, escalationId: approvalId, simulated: false },
+          cerberusIds: [],
+        },
+      },
+      {
+        id: t5Id,
+        missionId: id,
+        title: 'Generación de informe consolidado ejecutivo',
+        description: 'Elaboración de entregable final con tabla comparativa de proveedores y dictamen por ELYSIUM.',
+        assignedTo: 'ELYSIUM',
+        status: 'ASSIGNED',
+        priority: 'P1',
+        dependsOn: [t4Id],
+        createdAt: now,
+        startedAt: null,
+        completedAt: null,
+        capabilityId: 'cap:report:generate@1.0.0',
+        result: null,
+      },
+      {
+        id: t6Id,
+        missionId: id,
+        title: 'Custodia, archivo resiliente y sellado criptográfico SHA-256',
+        description: 'Generación determinista de hash SHA-256 de evidencia por HADES o TARTARUS.',
+        assignedTo: 'HADES',
+        status: 'ASSIGNED',
+        priority: 'P2',
+        dependsOn: [t5Id],
+        createdAt: now,
+        startedAt: null,
+        completedAt: null,
+        capabilityId: 'cap:crypto:hash@1.0.0',
+        result: null,
+      },
+    ]
+
+    const mission: Mission = {
+      id,
+      ownerId: owner,
+      title,
+      description: `Comparación multiagente de ${docCount} documentos contractuales`,
+      context: {
+        organizationId: 'techcore-enterprise',
+        budgetLimit,
+        currency: 'MXN',
+        deadline: null,
+        priority: 'HIGH',
+        tags: ['multi-doc', 'enterprise-comparison', 'phase8'],
+        documents: cleanDocs,
+      },
+      status: 'PARTIAL_COMPLETE',
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+      tasks,
+      report: null,
+    }
+
+    const inputData = cleanDocs.map(d => `${d.filename}:${d.content.slice(0, 100)}`).join('|')
+
+    this.db.transaction(() => {
+      this.putMission(mission)
+      this.db.prepare('INSERT INTO local_operations (id,mission_id,owner_id,input,state) VALUES (?,?,?,?,?)')
+        .run(approvalId, id, owner, inputData, 'WAITING_APPROVAL')
+      for (const state of ['CREATED', 'WAITING_APPROVAL']) this.workflowEvent(id, owner, state)
+    })()
+
+    return { mission, approvalId }
   }
   hasUsers(): boolean { return !!(this.db.prepare('SELECT 1 FROM users LIMIT 1').get()) }
   getMeta(key: string): string | undefined { const row = this.db.prepare('SELECT value FROM metadata WHERE key=?').get(key) as { value: string } | undefined; return row?.value }

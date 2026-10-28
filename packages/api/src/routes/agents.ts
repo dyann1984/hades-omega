@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../security.js'
 import { hades, charon, persephone, minos, elysium, tartarus, guard, audit } from '../runtime.js'
-
+import { defaultCapabilityRegistry, type AgentName } from '@hades/core'
 
 const agentMap = {
   HADES:      hades,
@@ -20,6 +20,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       id:          agent.id,
       status:      agent.getStatus(),
       currentTask: agent.getCurrentTask(),
+      capabilities: defaultCapabilityRegistry.getCapabilitiesByAgent(name as AgentName).map(c => c.id),
     }))
     return ok([...agents, cerberusService()])
   })
@@ -35,7 +36,23 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       id:          agent.id,
       status:      agent.getStatus(),
       currentTask: agent.getCurrentTask(),
+      capabilities: defaultCapabilityRegistry.getCapabilitiesByAgent(agent.name).map(c => c.id),
     })
+  })
+
+  app.get('/capabilities', async req => {
+    requireRole(req, ['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'])
+    return ok(defaultCapabilityRegistry.getAllCapabilities())
+  })
+
+  app.get('/capabilities/agents/:name', async (req, reply) => {
+    requireRole(req, ['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'])
+    const { name } = req.params as { name: string }
+    const caps = defaultCapabilityRegistry.getCapabilitiesByAgent(name.toUpperCase() as AgentName)
+    if (caps.length === 0) {
+      return reply.code(404).send(err('NOT_FOUND', `No hay capacidades registradas para el agente ${name}`))
+    }
+    return ok(caps)
   })
 }
 

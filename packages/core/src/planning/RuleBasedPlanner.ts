@@ -23,7 +23,7 @@ import type {
   MissionIntent,
 } from './PlannerProvider.js'
 
-type CaseType = 'PROCUREMENT' | 'BUDGET' | 'SECURITY' | 'PLANNING' | 'AUDIT' | 'UNKNOWN'
+type CaseType = 'PROCUREMENT' | 'BUDGET' | 'SECURITY' | 'PLANNING' | 'AUDIT' | 'DOCUMENT_COMPARISON' | 'UNKNOWN'
 
 class RuleBasedPlanner implements PlannerProvider {
   getProviderName(): string {
@@ -39,7 +39,10 @@ class RuleBasedPlanner implements PlannerProvider {
     if (!validation.valid) {
       warnings.push(`Ciclos de dependencias detectados: ${validation.cycles.length}`)
     }
-    warnings.push('Plan generado por RuleBasedPlanner (DEMO) - Requiere datos reales para producción')
+    const isRealComparison = caseType === 'DOCUMENT_COMPARISON' && Array.isArray(intent.context['documents']) && intent.context['documents'].length > 0
+    if (!isRealComparison) {
+      warnings.push('Plan generado por RuleBasedPlanner (DEMO) - Requiere datos reales para producción')
+    }
 
     const estimatedDuration = tasks.reduce((sum, t) => sum + t.estimatedDuration, 0)
 
@@ -47,7 +50,7 @@ class RuleBasedPlanner implements PlannerProvider {
       tasks,
       estimatedTotalDuration: estimatedDuration,
       warnings,
-      simulated: true,
+      simulated: !isRealComparison,
     }
   }
 
@@ -91,6 +94,9 @@ class RuleBasedPlanner implements PlannerProvider {
   private detectCaseType(intent: MissionIntent): CaseType {
     const text = (intent.title + ' ' + intent.description).toLowerCase()
 
+    if (text.includes('comparar') || text.includes('comparación') || text.includes('comparativa') || text.includes('cotejar') || Array.isArray(intent.context['documents'])) {
+      return 'DOCUMENT_COMPARISON'
+    }
     if (text.includes('proveedor') || text.includes('compra') || text.includes('adquirir') || text.includes('cotizar')) {
       return 'PROCUREMENT'
     }
@@ -113,6 +119,8 @@ class RuleBasedPlanner implements PlannerProvider {
     const missionId = uuidv4()
 
     switch (caseType) {
+      case 'DOCUMENT_COMPARISON':
+        return this.generateDocumentComparisonTasks(intent, missionId)
       case 'PROCUREMENT':
         return this.generateProcurementTasks(intent, missionId)
       case 'BUDGET':
@@ -126,6 +134,106 @@ class RuleBasedPlanner implements PlannerProvider {
       default:
         return this.generateGenericTasks(intent, missionId)
     }
+  }
+
+  private generateDocumentComparisonTasks(intent: MissionIntent, missionId: string): PlannedTask[] {
+    const documents = (intent.context['documents'] as Array<{ filename: string; content?: string }>) ?? []
+    const docCount = documents.length > 0 ? documents.length : 3
+    const budget = intent.context.budgetLimit ?? 100000
+
+    const t1: PlannedTask = {
+      id: uuidv4(),
+      missionId,
+      title: `Ingesta y extracción estructurada de ${docCount} documentos`,
+      description: `Recepción, parsing y normalización para ${docCount} documentos por CHARON.`,
+      assignedTo: 'CHARON',
+      priority: 'P0',
+      dependsOn: [],
+      estimatedDuration: 15,
+      origin: 'RULE_BASED',
+      justification: 'Fase inicial: normalización y extracción del lote documental.',
+      capabilityId: 'cap:doc:intake@1.0.0',
+      context: { documents },
+    }
+
+    const t2: PlannedTask = {
+      id: uuidv4(),
+      missionId,
+      title: 'Validación de cumplimiento y detección de cláusulas de riesgo',
+      description: 'Inspección de integridad normativa, términos de mora, sanciones y causales de rescisión en cada documento por MINOS.',
+      assignedTo: 'MINOS',
+      priority: 'P0',
+      dependsOn: [t1.id],
+      estimatedDuration: 20,
+      origin: 'RULE_BASED',
+      justification: 'Verificación legal y de directrices corporativas por MINOS.',
+      capabilityId: 'cap:doc:validate@1.0.0',
+      context: { documents },
+    }
+
+    const t3: PlannedTask = {
+      id: uuidv4(),
+      missionId,
+      title: 'Comparación multi-documental y análisis financiero cruzado',
+      description: 'Síntesis comparativa de ofertas: contraste de precios, penalizaciones, plazos de entrega y niveles de servicio por PERSEPHONE.',
+      assignedTo: 'PERSEPHONE',
+      priority: 'P1',
+      dependsOn: [t2.id],
+      estimatedDuration: 30,
+      origin: 'RULE_BASED',
+      justification: 'Detección de discrepancias financieras y comerciales entre propuestas.',
+      capabilityId: 'cap:doc:compare@1.0.0',
+      context: { documents, budgetLimit: budget },
+    }
+
+    const t4: PlannedTask = {
+      id: uuidv4(),
+      missionId,
+      title: 'Gobernanza de políticas y control de aprobación ejecutiva',
+      description: 'Supervisión de políticas por CERBERUS y autorización administrativa obligatoria ante discrepancias presupuestarias.',
+      assignedTo: 'HADES',
+      priority: 'P1',
+      dependsOn: [t3.id],
+      estimatedDuration: 10,
+      origin: 'RULE_BASED',
+      justification: 'Control humano mediante Approval Gate según políticas de CERBERUS.',
+      capabilityId: 'cap:crypto:hash@1.0.0',
+      requiresApproval: true,
+      context: { requiresApproval: true, escalationThreshold: budget },
+    }
+
+    const t5: PlannedTask = {
+      id: uuidv4(),
+      missionId,
+      title: 'Generación de informe consolidado ejecutivo',
+      description: 'Elaboración de entregable final con tabla comparativa de proveedores, matriz de riesgos y dictamen por ELYSIUM.',
+      assignedTo: 'ELYSIUM',
+      priority: 'P1',
+      dependsOn: [t4.id],
+      estimatedDuration: 20,
+      origin: 'RULE_BASED',
+      justification: 'Empaquetado del entregable para toma de decisiones directivas.',
+      capabilityId: 'cap:report:generate@1.0.0',
+      context: { deliverableFormat: 'markdown', documents },
+    }
+
+    const t6: PlannedTask = {
+      id: uuidv4(),
+      missionId,
+      title: 'Custodia, archivo resiliente y sellado criptográfico SHA-256',
+      description: 'Generación determinista de hash SHA-256 de evidencia, auditoría inmutable y aseguramiento de resiliencia por TARTARUS.',
+      assignedTo: 'TARTARUS',
+      priority: 'P2',
+      dependsOn: [t5.id],
+      estimatedDuration: 15,
+      origin: 'RULE_BASED',
+      justification: 'Custodia segura y sellado de integridad por TARTARUS.',
+      capabilityId: 'cap:crypto:hash@1.0.0',
+      requiresApproval: false,
+      context: { cryptographicHash: true, documents },
+    }
+
+    return [t1, t2, t3, t4, t5, t6]
   }
 
   private generateProcurementTasks(intent: MissionIntent, missionId: string): PlannedTask[] {

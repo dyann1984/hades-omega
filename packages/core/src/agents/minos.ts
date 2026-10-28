@@ -13,6 +13,11 @@ export class MinosAgent extends AgentBase {
 
   async receiveTask(task: Task): Promise<TaskResult> {
     this.currentTask = task
+    const batchDocs = task.context?.['documents'] as DocumentPayload[] | undefined
+    if (batchDocs && Array.isArray(batchDocs) && batchDocs.length > 0) {
+      return this.validateBatchDocuments(task, batchDocs)
+    }
+
     const doc = task.context?.['document'] as DocumentPayload | undefined
     const intake = task.context?.['intakeResult'] as DocumentIntakeResult | undefined
     if (doc && intake) return this.validateDocument(task, doc, intake)
@@ -120,6 +125,62 @@ export class MinosAgent extends AgentBase {
         : `Validación fallida — ${highCount} error(es) crítico(s)`,
       data: { simulated: false, validationResult, decision },
       cerberusIds: [auditId],
+    }
+  }
+
+  private async validateBatchDocuments(task: Task, docs: DocumentPayload[]): Promise<TaskResult> {
+    this.setStatus('EXECUTING', `Validando lote de ${docs.length} documentos`)
+    const results: Array<{ filename: string; valid: boolean; riskLevel: string; issues: string[] }> = []
+    const auditIds: string[] = []
+    let highRiskCount = 0
+
+    for (const doc of docs) {
+      const issues: string[] = []
+      const lower = doc.content.toLowerCase()
+
+      if (doc.content.length < 50) issues.push('Contenido excesivamente breve para contrato formal')
+      if (lower.includes('sin garantía') || lower.includes('sin garantia')) {
+        issues.push('ALTO RIESGO: Cláusula explícita de exclusión de garantía o indemnización')
+        highRiskCount++
+      }
+      if (lower.includes('sin penalización') || lower.includes('sin penalizacion') || lower.includes('0%')) {
+        issues.push('ADVERTENCIA: Falta de esquema efectivo de penalización ante incumplimiento')
+      }
+      if (lower.includes('ambigua') || lower.includes('unilateral')) {
+        issues.push('RIESGO MEDIO: Cláusula ambigua o terminación unilateral detectada')
+      }
+
+      const riskLevel = issues.some(i => i.includes('ALTO RIESGO')) ? 'HIGH' : issues.length > 0 ? 'MEDIUM' : 'LOW'
+      results.push({
+        filename: doc.filename,
+        valid: riskLevel !== 'HIGH',
+        riskLevel,
+        issues,
+      })
+
+      const { auditId } = await this.proposeOperation(
+        'BATCH_DOCUMENT_VALIDATION',
+        { filename: doc.filename, riskLevel, issuesCount: issues.length },
+        task.missionId,
+        task.id,
+      )
+      auditIds.push(auditId)
+    }
+
+    this.setStatus('IDLE')
+    this.currentTask = null
+
+    return {
+      taskId: task.id,
+      success: true,
+      summary: `Validación normativa completada por MINOS: ${docs.length} documentos analizados (${highRiskCount} con riesgo crítico detectado)`,
+      data: {
+        simulated: false,
+        totalChecked: docs.length,
+        highRiskCount,
+        results,
+      },
+      cerberusIds: auditIds,
     }
   }
 

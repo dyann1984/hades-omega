@@ -26,6 +26,8 @@ export interface PlannedTask {
   estimatedDuration: number // minutos estimados
   origin: 'DEMO_STATIC' | 'DEMO_GENERATED' | 'LLM_GENERATED' | 'RULE_BASED'
   justification: string // Por qué se generó esta tarea
+  capabilityId?: string
+  requiresApproval?: boolean
   context?: Record<string, unknown> // Datos específicos del caso
 }
 

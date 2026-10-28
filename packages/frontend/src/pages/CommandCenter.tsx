@@ -50,6 +50,7 @@ interface ApiAgent {
   status: string
   currentTask: unknown
   service?: { available:boolean; policyVersion:string; evaluations:number; permitted:number; denied:number; escalated:number; latest: {timestamp:number;decision:string;operation:string} | null; scope:string }
+  capabilities?: { id: string; name: string; version: string; description: string; requiresApproval: boolean }[]
 }
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
@@ -188,6 +189,15 @@ function AgentMonitorPanel({ agents, apiAgents }: {
                   </span>
                 </div>
                 <p className="text-[9px] text-gray-700 leading-tight">{meta.role}</p>
+                {apiData?.capabilities && apiData.capabilities.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {apiData.capabilities.map(c => (
+                      <span key={c.id} className="font-mono text-[8px] bg-electric/10 text-electric border border-electric/20 px-1 py-0.2 rounded" title={`${c.name} (${c.version}) - ${c.description}`}>
+                        {c.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {apiData?.service && <p className="text-[9px] text-gray-500">Política {apiData.service.policyVersion} · Permitidas {apiData.service.permitted} · Rechazadas {apiData.service.denied} · Escaladas {apiData.service.escalated} · Última: {apiData.service.latest ? `${apiData.service.latest.decision} ${new Date(apiData.service.latest.timestamp).toLocaleString('es-MX')}` : 'sin evaluaciones en este proceso'}</p>}
                 {isActive && task && (
                   <p className="mt-0.5 text-[9px] text-electric/70 truncate">{task}</p>
@@ -209,34 +219,71 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
   busy: boolean
 }): JSX.Element {
   const [creating, setCreating] = useState(false)
+  const [missionMode, setMissionMode] = useState<'single' | 'multidoc'>('single')
   const [title, setTitle]       = useState('')
   const [input, setInput]       = useState('')
+  const [docA, setDocA]         = useState('')
+  const [docB, setDocB]         = useState('')
+  const [docC, setDocC]         = useState('')
   const [notice, setNotice]     = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   async function createMission(): Promise<void> {
-    if (!title.trim() || !input.trim()) return
-    setSubmitting(true)
-    setNotice('')
-    try {
-      const res = await fetch(apiPath('/api/v1/local-missions'), {
-        method: 'POST',
-        headers: apiHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ title: title.trim(), input: input.trim() }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
+    if (missionMode === 'single') {
+      if (!title.trim() || !input.trim()) return
+      setSubmitting(true)
+      setNotice('')
+      try {
+        const res = await fetch(apiPath('/api/v1/local-missions'), {
+          method: 'POST',
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ title: title.trim(), input: input.trim() }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
+        }
+        setTitle('')
+        setInput('')
+        setCreating(false)
+        setNotice('Misión creada — esperando aprobación ADMIN')
+        onRefresh()
+      } catch (e: unknown) {
+        setNotice(e instanceof Error ? e.message : 'Error al crear misión')
+      } finally {
+        setSubmitting(false)
       }
-      setTitle('')
-      setInput('')
-      setCreating(false)
-      setNotice('Misión creada — esperando aprobación ADMIN')
-      onRefresh()
-    } catch (e: unknown) {
-      setNotice(e instanceof Error ? e.message : 'Error al crear misión')
-    } finally {
-      setSubmitting(false)
+    } else {
+      if (!title.trim()) return
+      setSubmitting(true)
+      setNotice('')
+      try {
+        const documents = [
+          { filename: 'doc-a.txt', content: docA.trim() || 'Contrato Base A: Precio $10,000 USD, Garantía 12 meses.' },
+          { filename: 'doc-b.txt', content: docB.trim() || 'Contrato Revisado B: Precio $12,500 USD, sin garantía expresa.' },
+          { filename: 'doc-c.txt', content: docC.trim() || 'Contrato Final C: Precio $9,800 USD, Garantía 24 meses, Penalización 0%.' },
+        ]
+        const res = await fetch(apiPath('/api/v1/local-missions/multi-document'), {
+          method: 'POST',
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ title: title.trim(), documents }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
+        }
+        setTitle('')
+        setDocA('')
+        setDocB('')
+        setDocC('')
+        setCreating(false)
+        setNotice('Misión multi-documental creada — esperando aprobación ADMIN')
+        onRefresh()
+      } catch (e: unknown) {
+        setNotice(e instanceof Error ? e.message : 'Error al crear misión multi-documental')
+      } finally {
+        setSubmitting(false)
+      }
     }
   }
 
@@ -288,27 +335,69 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
               className="overflow-hidden"
             >
               <div className="border border-electric/20 rounded-lg p-3 flex flex-col gap-2 mb-2 bg-electric/5">
-                <span className="font-mono text-[10px] text-electric">NUEVA MISIÓN LOCAL</span>
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] text-electric">NUEVA MISIÓN LOCAL</span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMissionMode('single')}
+                      className={`font-mono text-[9px] px-1.5 py-0.5 rounded ${missionMode === 'single' ? 'bg-electric text-black font-bold' : 'text-gray-400 border border-white/10'}`}
+                    >
+                      ESTÁNDAR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMissionMode('multidoc')}
+                      className={`font-mono text-[9px] px-1.5 py-0.5 rounded ${missionMode === 'multidoc' ? 'bg-gold text-black font-bold' : 'text-gray-400 border border-white/10'}`}
+                    >
+                      MULTI-DOCUMENTAL
+                    </button>
+                  </div>
+                </div>
                 <input
                   className="bg-obsidian border border-obsidian-700 rounded px-2 py-1.5 text-[11px] text-gray-200 placeholder-gray-700 focus:outline-none focus:border-electric/50"
-                  placeholder="Título de la operación"
+                  placeholder={missionMode === 'single' ? "Título de la operación" : "Título de la comparación multi-documental"}
                   value={title}
                   onChange={e => setTitle(e.target.value)}
                   maxLength={200}
                 />
-                <textarea
-                  className="bg-obsidian border border-obsidian-700 rounded px-2 py-1.5 text-[11px] text-gray-200 placeholder-gray-700 focus:outline-none focus:border-electric/50 resize-none"
-                  placeholder="Datos de entrada para la operación"
-                  rows={3}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                />
+                {missionMode === 'single' ? (
+                  <textarea
+                    className="bg-obsidian border border-obsidian-700 rounded px-2 py-1.5 text-[11px] text-gray-200 placeholder-gray-700 focus:outline-none focus:border-electric/50 resize-none"
+                    placeholder="Datos de entrada para la operación"
+                    rows={3}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                  />
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-mono text-[9px] text-gold">3 Documentos Contrastantes:</span>
+                    <input
+                      className="bg-obsidian border border-obsidian-700 rounded px-2 py-1 text-[10px] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gold/50"
+                      placeholder="Doc A (Base): Precio $10,000 USD, Garantía 12 meses..."
+                      value={docA}
+                      onChange={e => setDocA(e.target.value)}
+                    />
+                    <input
+                      className="bg-obsidian border border-obsidian-700 rounded px-2 py-1 text-[10px] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gold/50"
+                      placeholder="Doc B (Riesgo): Precio $12,500 USD, sin garantía expresa..."
+                      value={docB}
+                      onChange={e => setDocB(e.target.value)}
+                    />
+                    <input
+                      className="bg-obsidian border border-obsidian-700 rounded px-2 py-1 text-[10px] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gold/50"
+                      placeholder="Doc C (Dispar): Precio $9,800 USD, Penalización 0%..."
+                      value={docC}
+                      onChange={e => setDocC(e.target.value)}
+                    />
+                  </div>
+                )}
                 <button
                   onClick={() => void createMission()}
-                  disabled={submitting || !title.trim() || !input.trim()}
+                  disabled={submitting || !title.trim() || (missionMode === 'single' && !input.trim())}
                   className="font-mono text-[10px] text-gold border border-gold/30 px-3 py-1.5 rounded hover:bg-gold/10 transition-colors disabled:opacity-40"
                 >
-                  {submitting ? '⏳ ENVIANDO…' : '▶ SOLICITAR OPERACIÓN'}
+                  {submitting ? '⏳ ENVIANDO…' : missionMode === 'single' ? '▶ SOLICITAR OPERACIÓN' : '⚡ PLANIFICAR Y COMPARAR (FASE 8)'}
                 </button>
                 <p className="font-mono text-[9px] text-gray-700">
                   La operación requerirá aprobación ADMIN antes de ejecutarse
@@ -371,10 +460,11 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
 
 // ─── APPROVALS KANBAN PANEL (Etapa 5) ────────────────────────────────────────
 
-function ApprovalsKanban({ missions, pendingApprovals, onDecide, onRefresh, busy }: {
+function ApprovalsKanban({ missions, pendingApprovals, onDecide, onReassign, onRefresh, busy }: {
   missions: LocalMission[]
   pendingApprovals: PendingApproval[]
   onDecide: (id: string, status: 'APPROVED' | 'REJECTED') => Promise<void>
+  onReassign: (missionId: string, taskId: string, newAgent: string) => Promise<void>
   onRefresh: () => void
   busy: boolean
 }): JSX.Element {
@@ -437,9 +527,25 @@ function ApprovalsKanban({ missions, pendingApprovals, onDecide, onRefresh, busy
                 </div>
                 <div className="flex flex-col gap-1">
                   {tasks.map((t, i) => (
-                    <div key={i} className="bg-white/5 border border-white/5 rounded p-1.5">
+                    <div key={i} className="bg-white/5 border border-white/5 rounded p-1.5 flex flex-col gap-1">
                       <p className="font-mono text-[8px] text-gray-500 truncate">{t.missionTitle} · {t.title ?? t.id}</p>
-                      <p className="font-mono text-[8px] text-gray-600">{t.assignedTo ?? '—'} · {t.status}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[8px] text-gray-300 font-semibold">{t.assignedTo ?? '—'}</span>
+                        <span className="font-mono text-[8px] text-gray-500">{t.status}</span>
+                      </div>
+                      {/* Reassignment trigger for tasks waiting approval or queued */}
+                      {['WAITING_APPROVAL', 'CERBERUS_REVIEW', 'ASSIGNED', 'QUEUED'].includes(t.status) && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => void onReassign(t.missionId, t.id, t.assignedTo === 'HADES' ? 'TARTARUS' : 'HADES')}
+                            className="font-mono text-[7px] text-gold border border-gold/30 px-1 py-0.5 rounded hover:bg-gold/10"
+                            title="Reasignar ejecutor compatible (cap:crypto:hash@1.0.0)"
+                          >
+                            ⇄ Reasignar
+                          </button>
+                        </div>
+                      )}
                       {!!t.dependsOn?.length && <p className="font-mono text-[8px] text-gray-600">Dependencias: {t.dependsOn.length}</p>}
                       {t.result?.summary && (
                         <p className="font-mono text-[8px] text-gray-600 truncate mt-0.5">{t.result.summary}</p>
@@ -780,6 +886,28 @@ export default function CommandCenter(): JSX.Element {
     }
   }
 
+  async function handleReassign(missionId: string, taskId: string, newAgent: string): Promise<void> {
+    const justification = window.prompt(`Justificación de reasignación a ${newAgent} (mínimo 3 caracteres):`, 'Reasignación operativa de balanceo de carga')?.trim()
+    if (!justification || justification.length < 3) return
+    try {
+      const res = await fetch(apiPath(`/api/v1/local-missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}/reassign`), {
+        method: 'POST',
+        headers: apiHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ newAgent, justification }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}: Reasignación no permitida`)
+      }
+      window.alert(`Reasignación exitosa a ${newAgent}`)
+      await refreshAll()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo reasignar la tarea.'
+      window.alert(msg)
+      setRequestIssue(msg)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {requestIssue && <p role="alert" className="text-xs text-deny">{requestIssue}</p>}
@@ -847,6 +975,7 @@ export default function CommandCenter(): JSX.Element {
           missions={missions}
           pendingApprovals={pendingApprovals}
           onDecide={handleDecide}
+          onReassign={handleReassign}
           onRefresh={() => void refreshAll()}
           busy={loadingData}
         />

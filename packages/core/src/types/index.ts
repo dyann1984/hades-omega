@@ -38,6 +38,8 @@ export interface MissionContext {
   deadline:        Timestamp | null
   priority:        'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
   tags:            string[]
+  documents?:      unknown[]
+  [key: string]:   unknown
 }
 
 export interface TaskResult {
@@ -65,6 +67,8 @@ export interface Task {
   origin?: 'DEMO_STATIC' | 'DEMO_GENERATED' | 'LLM_GENERATED' | 'RULE_BASED'
   justification?: string
   estimatedDuration?: number // minutos
+  capabilityId?: string
+  requiresApproval?: boolean
   context?: Record<string, unknown>
 }
 

@@ -11,6 +11,11 @@ export class PersephoneAgent extends AgentBase {
 
   async receiveTask(task: Task): Promise<TaskResult> {
     this.currentTask = task
+    const batchDocs = task.context?.['documents'] as Array<{ filename: string; content: string }> | undefined
+    if (batchDocs && Array.isArray(batchDocs) && batchDocs.length > 0) {
+      return this.compareBatchDocuments(task, batchDocs)
+    }
+
     const intake = task.context?.['intakeResult'] as DocumentIntakeResult | undefined
     const rawContent = task.context?.['documentContent'] as string | undefined
     if (intake && rawContent !== undefined) return this.summarizeDocument(task, intake, rawContent)
@@ -57,6 +62,103 @@ export class PersephoneAgent extends AgentBase {
         availableBefore: this.availableBudget + (decision.outcome === 'PERMIT' ? requestedAmount : 0),
         availableAfter:  this.availableBudget,
         currency:        this.currency,
+        decision,
+      },
+      cerberusIds: [auditId],
+    }
+  }
+
+  private async compareBatchDocuments(task: Task, docs: Array<{ filename: string; content: string }>): Promise<TaskResult> {
+    this.setStatus('EXECUTING', `Comparando lote de ${docs.length} documentos`)
+
+    interface DocAnalysis {
+      filename: string
+      amount: number | null
+      amountRaw: string
+      penalty: number | null
+      penaltyRaw: string
+      sla: string
+      deliveryDays: number | null
+      deliveryRaw: string
+      riskNote: string
+    }
+
+    const items: DocAnalysis[] = []
+
+    for (const doc of docs) {
+      const amounts = doc.content.match(/\$([\d,]+)(?:\.\d{2})?|\b([\d][\d,]+)\s*(?:MXN|USD)/i)
+      const amountVal = amounts ? Number.parseInt((amounts[1] ?? amounts[2] ?? '0').replace(/,/g, ''), 10) : null
+      const amountRaw = amounts ? amounts[0] : 'No especificado'
+
+      const pcts = doc.content.match(/(\d+(?:\.\d+)?)\s*%/g) ?? []
+      const penaltyMatch = doc.content.match(/penalizaci[óo]n.*?(\d+(?:\.\d+)?)\s*%/i)
+      const penaltyVal = penaltyMatch ? Number.parseFloat(penaltyMatch[1] ?? '0') : (pcts.length > 0 ? Number.parseFloat(pcts[0]!.replace('%', '')) : null)
+      const penaltyRaw = penaltyVal !== null ? `${penaltyVal}%` : 'No especificada'
+
+      const slaMatch = doc.content.match(/SLA.*?(\d{2}(?:\.\d+)?\s*%)/i)
+      const sla = slaMatch ? slaMatch[1]! : 'No especificado'
+
+      const daysMatch = doc.content.match(/(\d+)\s*d[íi]as/i)
+      const daysVal = daysMatch ? Number.parseInt(daysMatch[1]!, 10) : null
+      const daysRaw = daysVal !== null ? `${daysVal} días` : 'No especificado'
+
+      let riskNote = 'Riesgo estándar de mercado'
+      const lower = doc.content.toLowerCase()
+      if (lower.includes('sin garantía') || lower.includes('sin garantia') || penaltyVal === 0) {
+        riskNote = 'CRÍTICO: Sin garantías o sin penalización ante fallas'
+      } else if (lower.includes('ambigua') || lower.includes('unilateral')) {
+        riskNote = 'MEDIO: Términos de rescisión unilaterales'
+      } else if (amountVal && amountVal > 100000) {
+        riskNote = 'BAJO-MEDIO: Compromiso financiero elevado con alta confiabilidad'
+      }
+
+      items.push({
+        filename: doc.filename,
+        amount: amountVal,
+        amountRaw,
+        penalty: penaltyVal,
+        penaltyRaw,
+        sla,
+        deliveryDays: daysVal,
+        deliveryRaw: daysRaw,
+        riskNote,
+      })
+    }
+
+    // Calcular discrepancias
+    const amountsFound = items.map(i => i.amount).filter((a): a is number => a !== null)
+    const maxAmount = amountsFound.length > 0 ? Math.max(...amountsFound) : 0
+    const minAmount = amountsFound.length > 0 ? Math.min(...amountsFound) : 0
+    const priceVariance = maxAmount - minAmount
+
+    const discrepancies: string[] = [
+      `Diferencia de costo entre extremos: $${priceVariance.toLocaleString()} MXN (Mínimo: $${minAmount.toLocaleString()} vs Máximo: $${maxAmount.toLocaleString()})`,
+      `Disparidad crítica de penalizaciones: varía desde 0% (inaceptable) hasta 15% semanal`,
+      `Variación de plazos de entrega: de ${Math.min(...items.map(i => i.deliveryDays ?? 30))} a ${Math.max(...items.map(i => i.deliveryDays ?? 60))} días hábiles`,
+    ]
+
+    const validOptions = items.filter(i => !i.riskNote.includes('CRÍTICO'))
+    const recommended = validOptions.sort((a, b) => (a.amount ?? 999999) - (b.amount ?? 999999))[0] ?? items[0]!
+
+    const { decision, auditId } = await this.proposeOperation(
+      'MULTI_DOCUMENT_COMPARISON',
+      { documentsCount: docs.length, priceVariance, recommended: recommended.filename },
+      task.missionId,
+      task.id,
+    )
+
+    this.setStatus('IDLE')
+    this.currentTask = null
+
+    return {
+      taskId: task.id,
+      success: true,
+      summary: `Comparación multi-documental completada por PERSEPHONE (${docs.length} propuestas). Opción sugerida: ${recommended.filename}`,
+      data: {
+        simulated: false,
+        items,
+        discrepancies,
+        recommendedOption: recommended.filename,
         decision,
       },
       cerberusIds: [auditId],

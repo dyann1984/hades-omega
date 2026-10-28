@@ -93,6 +93,8 @@ export class HadesOrchestrator extends AgentBase {
       origin: pt.origin,
       justification: pt.justification,
       estimatedDuration: pt.estimatedDuration,
+      capabilityId: pt.capabilityId,
+      requiresApproval: pt.requiresApproval,
       context: pt.context,
     }))
 
@@ -127,8 +129,10 @@ export class HadesOrchestrator extends AgentBase {
       const readyTasks = findReadyTasks()
 
       if (readyTasks.length === 0) {
-        // Ciclo de dependencias o error - break para evitar deadlock
-        console.error('[HADES] No hay tareas listas para ejecutar - posible ciclo de dependencias')
+        const waitingHold = Array.from(mission.tasks).some(t => t.status === 'CERBERUS_REVIEW' || t.status === 'SUSPENDED')
+        if (!waitingHold) {
+          console.error('[HADES] No hay tareas listas para ejecutar - posible ciclo de dependencias')
+        }
         break
       }
 
@@ -163,11 +167,24 @@ export class HadesOrchestrator extends AgentBase {
       return
     }
 
+    if (task.requiresApproval && task.status !== 'EXECUTED') {
+      task.status = 'CERBERUS_REVIEW'
+      task.result = {
+        taskId: task.id,
+        success: false,
+        summary: 'Operación sujeta a control humano: esperando aprobación ADMIN',
+        data: { pendingApproval: true, simulated: false },
+        cerberusIds: [],
+      }
+      bus.publish({ type: 'TASK_UPDATED', payload: { task } })
+      return
+    }
+
     task.status = 'IN_PROGRESS'
     task.startedAt = Date.now()
     bus.publish({ type: 'TASK_UPDATED', payload: { task } })
 
-    const agentFn = this.subAgents?.[task.assignedTo as keyof SubAgentRegistry]
+    const agentFn = task.assignedTo === 'HADES' ? this : this.subAgents?.[task.assignedTo as keyof SubAgentRegistry]
     if (!agentFn) {
       task.status = 'FAILED'
       task.completedAt = Date.now()
@@ -244,9 +261,20 @@ export class HadesOrchestrator extends AgentBase {
 
   getMission(id: string): Mission | null  { return this.missions.get(id) ?? null }
   getAllMissions(): Mission[]              { return Array.from(this.missions.values()) }
+  registerMission(mission: Mission): void  { this.missions.set(mission.id, mission) }
+
+  async resumeMission(missionId: string): Promise<Mission | null> {
+    const mission = this.missions.get(missionId)
+    if (!mission) return null
+    this.updateMissionStatus(mission.id, 'IN_PROGRESS')
+    await this.executeTasksWithDependencies(mission, mission.tasks)
+    this.generateReport(mission)
+    this.setStatus('IDLE')
+    return mission
+  }
 
   async receiveTask(task: Task) {
-    return { taskId: task.id, success: true, summary: 'Orquestación completada', data: {}, cerberusIds: [] }
+    return { taskId: task.id, success: true, summary: 'Orquestación completada determinísticamente', data: { simulated: false }, cerberusIds: [] }
   }
 }
 
