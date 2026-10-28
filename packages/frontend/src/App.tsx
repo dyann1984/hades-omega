@@ -45,7 +45,7 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
         {/* Top bar */}
         <header className="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-obsidian-700 flex-shrink-0">
           <h1 className="font-display font-semibold text-sm text-gray-300">
-            HADES OMEGA — Centro de Comando IA
+            HADES — Centro de Comando IA
           </h1>
           <div className="ml-auto flex items-center gap-2">
             <span className="badge-demo">NEAR TESTNET</span>

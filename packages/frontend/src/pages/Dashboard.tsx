@@ -44,7 +44,7 @@ const STAGE_TIMELINE: { agent: AgentName; task: string; progressTarget: number; 
 
 function downloadReport(mission: Mission, records: AuditRecord[], txs: NEARTx[]): void {
   const data = {
-    meta: { platform: 'HADES OMEGA v0.3.0', mode: 'DEMO — NEAR TESTNET SIMULACIÓN', generatedAt: new Date().toISOString() },
+    meta: { platform: 'HADES v0.3.0', mode: 'DEMO — NEAR TESTNET SIMULACIÓN', generatedAt: new Date().toISOString() },
     mission: { ...mission, createdAt: new Date(mission.createdAt).toISOString() },
     cerberusAuditRecords: records,
     nearTransactions: txs.map(tx => ({

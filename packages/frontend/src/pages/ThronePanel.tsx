@@ -138,7 +138,7 @@ export default function ThronePanel(): JSX.Element {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-mono text-sm font-bold text-gray-200 tracking-[0.15em]">THRONE</h2>
-          <p className="text-[11px] text-gray-600 font-mono">Consola central de instrucciones · HADES OMEGA</p>
+          <p className="text-[11px] text-gray-600 font-mono">Consola central de instrucciones · HADES</p>
         </div>
         <div className="flex items-center gap-2">
           <span className={`font-mono text-[10px] px-2 py-1 rounded border ${anyActive ? 'text-electric border-electric/30 bg-electric/5 animate-pulse' : 'text-gray-600 border-gray-800'}`}>
@@ -174,7 +174,7 @@ export default function ThronePanel(): JSX.Element {
             <p className="font-mono text-[11px] text-gray-400 tracking-widest">NUEVA INSTRUCCIÓN</p>
             <input
               className="bg-[#0A0A0F] border border-obsidian-700 rounded px-3 py-2.5 text-sm text-gray-200 placeholder-gray-700 focus:outline-none focus:border-electric/50 transition-colors"
-              placeholder="Instrucción para HADES OMEGA…"
+              placeholder="Instrucción para HADES…"
               value={title}
               onChange={e => setTitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && executeInstruction()}

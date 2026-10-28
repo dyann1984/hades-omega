@@ -407,7 +407,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
           )}
         </AnimatePresence>
 
-        {notice && (
+        {notice && (!notice.includes("esperando aprobación ADMIN") || missions.length === 0 || missions.some(m => isPendingReview(m.status, m.tasks.map(t => t.status)))) && (
           <p role="status" className="font-mono text-[10px] text-escalate">{notice}</p>
         )}
 
@@ -421,7 +421,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
               return (
                 <div key={m.id} className="border border-white/5 rounded p-2 flex flex-col gap-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-mono text-[10px] text-gray-300 truncate flex-1">{m.title}</p>
+                    <p className="font-mono text-[10px] text-gray-300 mission-title flex-1">{m.title}</p>
                     <span className={`font-mono text-[9px] flex-shrink-0 ${statusColor}`}>{m.status}</span>
                   </div>
                   <p className="font-mono text-[9px] text-gray-600">
@@ -439,7 +439,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
                       ))}
                     </div>
                   )}
-                  {m.tasks.map(t => t.result?.data?.sha256 ? <p key={t.id} className="font-mono text-[9px] text-electric break-all">SHA-256: {t.result.data.sha256}</p> : null)}
+                  {m.tasks.some(t => t.result) && <details className="mission-results"><summary>Resultados y detalles</summary><div className="mission-results-list">{m.tasks.map(t => t.result && <div key={t.id} className="mission-result"><p className="mission-result-title">{t.title ?? 'Resultado de tarea'}</p>{t.result.summary && <p>{t.result.summary}</p>}{t.result.data?.sha256 && <HashValue value={t.result.data.sha256} />}</div>)}</div></details>}
                   {canCancel && (
                     <button
                       onClick={() => void cancelMission(m.id)}
@@ -456,6 +456,15 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
       </div>
     </div>
   )
+}
+
+function HashValue({ value }: { value: string }): JSX.Element {
+  const [message, setMessage] = useState('')
+  async function copyHash(): Promise<void> {
+    try { await navigator.clipboard.writeText(value); setMessage('Copiado') }
+    catch { setMessage('No se pudo copiar; selecciona el hash completo') }
+  }
+  return <div className="mission-hash"><span>SHA-256: <code title={value}>{value.slice(0, 12)}…{value.slice(-8)}</code></span><button type="button" onClick={() => void copyHash()} aria-label="Copiar hash SHA-256">Copiar</button>{message && <span role="status">{message}</span>}{message.startsWith('No se pudo') && <code className="hash-full">{value}</code>}</div>
 }
 
 // ─── APPROVALS KANBAN PANEL (Etapa 5) ────────────────────────────────────────
@@ -632,8 +641,9 @@ function DocumentsAuditPanel({ docResults }: {
 
 // ─── HOLOGRAPHIC NUCLEUS PANEL (Etapa 4) ─────────────────────────────────────
 
-function HolographicNucleus({ anyActive, pendingCount, telemetryAvailable, paused, onTogglePaused, selectedAgent, onAgentSelect, auditRecords }: {
+function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryAvailable, paused, onTogglePaused, selectedAgent, onAgentSelect, auditRecords }: {
   anyActive: boolean
+  missionActive: boolean
   telemetryAvailable: boolean
   pendingCount: number
   paused: boolean
@@ -642,6 +652,7 @@ function HolographicNucleus({ anyActive, pendingCount, telemetryAvailable, pause
   onAgentSelect: (name: SubAgent) => void
   auditRecords: AuditRecord[]
 }): JSX.Element {
+  const [lowPower, setLowPower] = useState(false)
   const systemState  = !telemetryAvailable ? 'SIN TELEMETRÍA' : pendingCount > 0 ? 'BAJO REVISIÓN'
     : anyActive ? 'MISIÓN ACTIVA'
     : 'OPERATIVO'
@@ -658,6 +669,7 @@ function HolographicNucleus({ anyActive, pendingCount, telemetryAvailable, pause
           <span className={`font-mono text-[10px] ${systemColor}`}>{systemState}</span>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setLowPower(value => !value)} aria-pressed={lowPower} className="font-mono text-[10px] text-gray-400 border border-white/10 px-2 py-1 rounded">{lowPower ? 'Ahorro activo' : 'Ahorro de energía'}</button>
           <button
             onClick={onTogglePaused}
             className="font-mono text-[9px] text-gray-500 hover:text-electric border border-white/10 px-2 py-1 rounded transition-colors"
@@ -669,12 +681,12 @@ function HolographicNucleus({ anyActive, pendingCount, telemetryAvailable, pause
       </div>
 
       <div
-        className="relative flex-1 min-h-[320px]"
+        className="relative flex-1 min-h-[360px]"
         style={{
           background: 'radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0,212,255,0.04) 0%, rgba(255,215,0,0.02) 35%, transparent 70%)',
         }}
       >
-        {telemetryAvailable ? <HolographicCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} /> : <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-500">Telemetría de agentes no disponible</div>}
+        {telemetryAvailable ? <HolographicCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} missionActive={missionActive} lowPower={lowPower} /> : <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-500">Telemetría de agentes no disponible</div>}
 
         {/* Grid overlay */}
         <div
@@ -909,7 +921,8 @@ export default function CommandCenter(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="command-center flex flex-col gap-4">
+      <div className="command-heading"><div><p>INTELIGENCIA OPERATIVA</p><h2>Command Center</h2><span>Una visión unificada de tu sistema de agentes</span></div><div className="command-heading-mark" aria-hidden="true">✦</div></div>
       {requestIssue && <p role="alert" className="text-xs text-deny">{requestIssue}</p>}
       {/* ── TOP STATUS BAR ── */}
       <div className="flex items-center gap-2 flex-wrap py-1">
@@ -930,6 +943,7 @@ export default function CommandCenter(): JSX.Element {
           <StatusChip color="escalate" dot="animate-pulse" label={`${escalations.filter(e => e.status === 'PENDING').length} APROBACIONES PENDIENTES`} />
         )}
         <div className="ml-auto flex items-center gap-2">
+          <a href="#aprobaciones" className="approval-shortcut">Aprobaciones y Kanban ↓</a>
           <button
             onClick={() => void refreshAll()}
             disabled={loadingData}
@@ -945,13 +959,14 @@ export default function CommandCenter(): JSX.Element {
       <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_280px] gap-4">
         {/* Left: Agent Monitor + System Health */}
         <div className="flex flex-col gap-4">
-          <AgentMonitorPanel agents={agents} apiAgents={apiAgents} />
-          <SystemHealthPanel health={health} wsConnected={wsConnected} activeMissions={activeMissionCount} />
+          <ExpandablePanel title="Monitor de agentes"><AgentMonitorPanel agents={agents} apiAgents={apiAgents} /></ExpandablePanel>
+          <ExpandablePanel title="Salud del sistema"><SystemHealthPanel health={health} wsConnected={wsConnected} activeMissions={activeMissionCount} /></ExpandablePanel>
         </div>
 
         {/* Center: Holographic Nucleus */}
-        <HolographicNucleus
-          anyActive={anyActive}
+        <ExpandablePanel title="HADES Core"><HolographicNucleus
+          anyActive={anyActive || activeMissionCount > 0}
+          missionActive={activeMissionCount > 0}
           pendingCount={pendingApprovals.length}
           telemetryAvailable={wsConnected && !!apiAgents}
           paused={orbitalPaused}
@@ -959,30 +974,38 @@ export default function CommandCenter(): JSX.Element {
           selectedAgent={selectedAgent}
           onAgentSelect={name => setSelectedAgent(prev => prev === name ? null : name)}
           auditRecords={auditRecords}
-        />
+        /></ExpandablePanel>
 
         {/* Right: Mission Control */}
-        <MissionControlPanel
+        <ExpandablePanel title="Mission Control"><MissionControlPanel
           missions={missions}
           onRefresh={() => void refreshAll()}
           busy={loadingData}
-        />
+        /></ExpandablePanel>
       </div>
 
       {/* ── BOTTOM ROW ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ApprovalsKanban
+      <div id="aprobaciones" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ExpandablePanel title="Aprobaciones y tareas"><ApprovalsKanban
           missions={missions}
           pendingApprovals={pendingApprovals}
           onDecide={handleDecide}
           onReassign={handleReassign}
           onRefresh={() => void refreshAll()}
           busy={loadingData}
-        />
-        <DocumentsAuditPanel docResults={docResults} />
+        /></ExpandablePanel>
+        <ExpandablePanel title="Documentos y auditoría"><DocumentsAuditPanel docResults={docResults} /></ExpandablePanel>
       </div>
     </div>
   )
+}
+
+function ExpandablePanel({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  return <div className={`expandable-panel ${expanded ? 'is-expanded' : ''}`}>
+    <button className="expand-panel-button" aria-label={`${expanded ? 'Reducir' : 'Ampliar'} ${title}`} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '↙' : '↗'}</button>
+    {children}
+  </div>
 }
 
 // ─── STATUS CHIP ─────────────────────────────────────────────────────────────

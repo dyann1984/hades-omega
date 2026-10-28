@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Component, Suspense, lazy } from 'react'
 import { useHadesStore } from '../store/index.js'
 import type { SubAgent } from './HolographicCore3D.js'
 
@@ -16,7 +16,7 @@ function FallbackCore(): JSX.Element {
       <svg
         viewBox="0 0 400 400"
         className="w-full h-full max-w-sm"
-        aria-label="HADES OMEGA - Red de agentes"
+        aria-label="HADES - Red de agentes"
       >
         {/* Outer ring */}
         <circle cx="200" cy="200" r="180" fill="none" stroke="#1E1E30" strokeWidth="1" />
@@ -70,13 +70,21 @@ function FallbackCore(): JSX.Element {
   )
 }
 
+class CoreErrorBoundary extends Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() { return this.state.failed ? <FallbackCore /> : this.props.children }
+}
+
 interface Props {
   selectedAgent?: SubAgent | null
   onAgentSelect?: (name: SubAgent) => void
   paused?: boolean
+  missionActive?: boolean
+  lowPower?: boolean
 }
 
-export default function HolographicCore({ selectedAgent, onAgentSelect, paused }: Props = {}): JSX.Element {
+export default function HolographicCore({ selectedAgent, onAgentSelect, paused, missionActive, lowPower }: Props = {}): JSX.Element {
   const prefersReducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -84,8 +92,8 @@ export default function HolographicCore({ selectedAgent, onAgentSelect, paused }
   if (prefersReducedMotion) return <FallbackCore />
 
   return (
-    <Suspense fallback={<FallbackCore />}>
-      <ThreeDCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} />
-    </Suspense>
+    <CoreErrorBoundary><Suspense fallback={<FallbackCore />}>
+      <ThreeDCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} missionActive={missionActive} lowPower={lowPower} />
+    </Suspense></CoreErrorBoundary>
   )
 }

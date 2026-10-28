@@ -34,7 +34,7 @@ export default function NeuralLabPage(): JSX.Element {
       }}>
         <div>
           <div style={{ color: '#3366aa', fontSize: 10, letterSpacing: '0.2em', marginBottom: 2 }}>
-            HADES OMEGA — LABORATORIO VISUAL
+            HADES — LABORATORIO VISUAL
           </div>
           <div style={{ color: '#cce8ff', fontSize: 13, fontWeight: 600, letterSpacing: '0.08em' }}>
             NEURAL CORE — PREVIEW

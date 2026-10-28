@@ -51,7 +51,7 @@ export default function HadesCoreLab(): JSX.Element {
       <header style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px', height:'46px', borderBottom:'1px solid rgba(8,124,255,0.10)', background:'rgba(3,5,12,0.96)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
           <div style={{ width:'7px', height:'7px', borderRadius:'50%', background:STATE_COLOR[state], boxShadow:`0 0 8px ${STATE_COLOR[state]}` }} />
-          <span style={{ fontSize:'11px', fontWeight:700, letterSpacing:'0.22em', color:'#D7EEFF' }}>HADES OMEGA</span>
+          <span style={{ fontSize:'11px', fontWeight:700, letterSpacing:'0.22em', color:'#D7EEFF' }}>HADES</span>
           <span style={{ color:'rgba(92,207,255,0.35)', fontSize:'9px' }}>/</span>
           <span style={{ fontSize:'9px', fontWeight:500, letterSpacing:'0.18em', color:'rgba(92,207,255,0.55)' }}>SOVEREIGN CORE — LAB</span>
         </div>

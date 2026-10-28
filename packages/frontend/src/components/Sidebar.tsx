@@ -33,15 +33,8 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
     )}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-3 py-4 border-b border-obsidian-700">
-        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gold/10 border border-gold/30 flex items-center justify-center">
-          <span className="text-gold text-sm">✦</span>
-        </div>
-        {!collapsed && (
-          <div>
-            <p className="font-display font-bold text-sm text-gray-100 leading-none">HADES</p>
-            <p className="font-mono text-[10px] text-gray-500">OMEGA v0.3</p>
-          </div>
-        )}
+        {!collapsed && <img src="/hades-logo.png" alt="HADES — Agent Orchestration System" className="sidebar-logo" />}
+        {collapsed && <span className="text-gold text-xs font-bold" aria-label="HADES">H</span>}
         <button
           onClick={onToggle}
           className="ml-auto text-gray-600 hover:text-gray-400 text-xs"
@@ -52,11 +45,13 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-3 flex flex-col gap-1 px-2">
+      <nav className="flex-1 py-3 flex flex-col gap-1 px-2 overflow-y-auto">
         {NAV_ITEMS.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
+            aria-label={item.label}
+            title={item.label}
             end={item.path === '/'}
             className={({ isActive }) => clsx(
               'flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors font-mono text-xs',

@@ -130,7 +130,7 @@ function SacredGeometry({ active, speed }: { active: boolean; speed: number }) {
   })
 
   return (
-    <group>
+    <group scale={1.38}>
       <mesh ref={icosaRef}>
         <icosahedronGeometry args={[0.64, 1]} />
         <meshBasicMaterial color="#FFD700" wireframe transparent opacity={active ? 0.55 : 0.26} depthWrite={false} />
@@ -386,7 +386,7 @@ function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
         onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer' }}
         onPointerOut={e => { e.stopPropagation(); document.body.style.cursor = 'default' }}
       >
-        <sphereGeometry args={[active ? 0.155 : 0.11, 10, 10]} />
+        <octahedronGeometry args={[active ? 0.12 : 0.085, 0]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
@@ -396,10 +396,10 @@ function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
         />
       </mesh>
       {/* Selection ring */}
-      <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
+      {selected && <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[selected ? 0.34 : 0.26, 0.014, 4, 32]} />
         <meshBasicMaterial color={hex} transparent opacity={0.14} depthWrite={false} />
-      </mesh>
+      </mesh>}
       {/* Active glow */}
       {(active || selected) && (
         <>
@@ -494,14 +494,16 @@ interface Props {
   selectedAgent?: SubAgent | null
   onAgentSelect?: (name: SubAgent) => void
   paused?: boolean
+  missionActive?: boolean
+  lowPower?: boolean
 }
 
-export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {}, paused = false }: Props) {
+export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {}, paused = false, missionActive = false, lowPower = false }: Props) {
   const agents       = useHadesStore(s => s.agents)
   const nearTxs      = useHadesStore(s => s.nearTxs)
   const auditRecords = useHadesStore(s => s.auditRecords)
 
-  const anyActive   = Object.values(agents).some(a => a.status !== 'IDLE')
+  const anyActive   = missionActive || Object.values(agents).some(a => a.status !== 'IDLE')
   const hasAlert    = Object.values(agents).some(a => a.status === 'ERROR')
                     || auditRecords.some(r => r.guardDecision === 'DENY')
   const speedMult   = paused ? 0 : anyActive ? 2.4 : 1.0
@@ -509,7 +511,9 @@ export default function HolographicCore3D({ selectedAgent = null, onAgentSelect 
 
   return (
     <Canvas
-      camera={{ position: [0, 0, 6.2], fov: 47 }}
+      camera={{ position: [0, 0, 5.8], fov: 47 }}
+      dpr={lowPower ? 1 : [1, 1.5]}
+      frameloop={paused ? 'demand' : 'always'}
       gl={{
         antialias:           true,
         alpha:               true,
@@ -529,7 +533,7 @@ export default function HolographicCore3D({ selectedAgent = null, onAgentSelect 
 
       <HaloRing />
       <EnergyField active={anyActive} alert={hasAlert} />
-      <ParticleCloud />
+      {!lowPower && <ParticleCloud />}
       <ScanLine active={anyActive} />
 
       {RINGS.map((cfg, i) => (

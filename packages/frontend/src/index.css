@@ -84,3 +84,83 @@ body {
     box-shadow: none;
   }
 }
+
+/* V10 · Obsidian command surfaces */
+body { background: #05080d; color: #e7eef7; }
+.hades-card { background: linear-gradient(145deg, #101a27 0%, #09111c 55%, #080d16 100%); border-color: #26374a; box-shadow: 0 16px 38px rgba(0,0,0,.18), inset 0 1px rgba(195,220,255,.035); }
+.hades-card-elevated { background: #111d2a; border-color: #304257; }
+.command-center { max-width: 1920px; margin: auto; }
+.command-heading { display:flex; align-items:center; justify-content:space-between; padding: 12px 2px 8px; }
+.command-heading p, .login-kicker { color:#b79b63; letter-spacing:.22em; font-size:10px; font-weight:700; }
+.command-heading h2 { color:#f2f6fc; font-size:clamp(26px, 3vw, 38px); font-weight:600; letter-spacing:-.04em; line-height:1.2; margin:8px 0 4px; }
+.command-heading span { color:#94a6ba; font-size:13px; }
+.command-heading-mark { color:#a98e58; font-size:25px; opacity:.7; }
+.command-center .hades-card { border-radius:12px; }
+.command-center .text-gray-600, .command-center .text-gray-700 { color:#8495a9; }
+.command-center .text-\[9px\], .command-center .text-\[10px\] { font-size:11px; }
+.expandable-panel { position:relative; min-width:0; }
+.expandable-panel > .hades-card { height:100%; }
+.expand-panel-button { position:absolute; z-index:5; right:9px; bottom:9px; width:27px; height:27px; border:1px solid #40546c; border-radius:6px; color:#aabbd0; background:#0c1622; }
+.expand-panel-button:hover, .expand-panel-button:focus-visible { color:#fff; border-color:#4dcfff; }
+.expandable-panel.is-expanded { grid-column:1 / -1; }
+.expandable-panel.is-expanded .max-h-56, .expandable-panel.is-expanded .max-h-48, .expandable-panel.is-expanded .max-h-64 { max-height:none; }
+.login-shell { min-height:100vh; display:grid; place-items:center; padding:24px; background: radial-gradient(ellipse at 50% 30%, #10263c 0%, #080f19 35%, #04070c 75%); }
+.login-card { width:min(100%, 430px); padding:48px; border:1px solid #2b3b4c; border-radius:16px; background:linear-gradient(150deg, rgba(20,31,45,.97), rgba(7,13,22,.98)); box-shadow:0 30px 100px #0009, inset 0 1px #ffffff0c; }
+.login-card h1 { margin:16px 0 2px; color:#dfc48d; font-size:38px; letter-spacing:.2em; font-weight:600; }
+.login-intro, .login-copy { color:#96a8ba; font-size:13px; }
+.login-divider { height:1px; background:linear-gradient(90deg,#b79b63,#344d66,transparent); margin:32px 0; }
+.login-card h2 { color:#edf4fb; font-size:23px; font-weight:600; }
+.login-copy { margin:6px 0 24px; }
+.login-card label { display:block; color:#bdc9d6; font-size:12px; margin:16px 0; }
+.login-card input { display:block; width:100%; margin-top:8px; padding:12px; color:#f5f8fc; border:1px solid #34465b; border-radius:7px; background:#080f19; }
+.login-card input:focus-visible { outline:2px solid #42bde7; outline-offset:2px; }
+.login-card button { display:flex; justify-content:space-between; width:100%; padding:13px 16px; margin-top:24px; border-radius:7px; color:#07101b; background:linear-gradient(100deg,#c4a66e,#ead4a5); font-weight:700; font-size:13px; }
+.login-card button:disabled { opacity:.6; }
+.login-foot { text-align:center; margin-top:30px; color:#718399; font-size:10px; letter-spacing:.17em; }
+@media(max-width:640px) { .login-card { padding:30px 24px; } .command-heading-mark { display:none; } .command-center .min-h-\[460px\] { min-height:340px; } }
+@media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; } }
+.login-logo { width: 240px; max-width:100%; height:auto; display:block; margin:-26px auto -10px; }
+.sidebar-logo { width:150px; max-width:calc(100% - 24px); height:auto; display:block; }
+.expandable-panel.is-expanded { position:fixed; z-index:100; inset:5vh 5vw; overflow:auto; padding:0; background:#09111c; border:1px solid #40546c; border-radius:12px; box-shadow:0 0 0 100vmax #000c, 0 20px 80px #000; }
+.expandable-panel.is-expanded > .hades-card { min-height:100%; height:auto; padding-bottom:42px; }
+.expandable-panel.is-expanded .expand-panel-button { position:fixed; bottom:calc(5vh + 10px); right:calc(5vw + 10px); }
+@media(max-width:640px) { .expandable-panel.is-expanded { inset:2vh 2vw; } .expandable-panel.is-expanded .expand-panel-button { bottom:calc(2vh + 10px); right:calc(2vw + 10px); } }
+.login-logo { width:190px; margin:-20px auto 8px; }
+/* V10 review: readable controls and balanced desktop login */
+@media (min-width: 900px) {
+  .login-card { width:min(860px, 100%); display:grid; grid-template-columns:minmax(260px, 1fr) minmax(280px, 1fr); column-gap:56px; align-items:start; padding:54px; }
+  .login-logo { width:100%; max-width:330px; grid-column:1; grid-row:1 / 9; margin:auto; align-self:center; }
+  .login-card > :not(.login-logo) { grid-column:2; }
+  .login-intro { margin-top:0; }
+  .login-divider { margin:22px 0; }
+  .login-card label { margin:10px 0; }
+  .login-card button { margin-top:16px; }
+  .login-foot { margin-top:22px; }
+}
+.command-center .font-mono { letter-spacing:.01em; }
+.command-center .text-\[9px\], .command-center .text-\[10px\] { font-size:12px; line-height:1.45; }
+.command-center button { min-height:30px; }
+.command-center .expand-panel-button { min-height:27px; }
+.command-center .text-gray-500 { color:#a3b3c6; }
+@media (max-width: 640px) {
+  aside { width:56px !important; }
+  aside .sidebar-logo, aside nav a > span:not(:first-child), aside > div:last-child span:not(:first-child), aside > div:last-child button { display:none; }
+  aside nav a { justify-content:center; padding-left:0; padding-right:0; }
+  aside > div:first-child { padding-left:8px; padding-right:8px; }
+}
+/* Final composition and mission readability */
+.command-heading { padding: 2px 2px 0; }
+.command-heading h2 { margin: 4px 0 2px; font-size:clamp(24px, 2.3vw, 34px); }
+.command-center { gap: 12px; }
+.approval-shortcut { color:#b9def0; border:1px solid #34536a; border-radius:6px; padding:6px 10px; font-size:12px; white-space:nowrap; }
+.approval-shortcut:hover,.approval-shortcut:focus-visible { color:#fff; border-color:#40cafa; }
+.mission-title { white-space:normal; overflow-wrap:anywhere; line-height:1.4; }
+.mission-results { margin-top:5px; border-top:1px solid #27394a; color:#a8bed1; font-size:12px; }
+.mission-results summary { cursor:pointer; padding:8px 0; color:#8ed6ee; }
+.mission-results-list { display:grid; gap:8px; }
+.mission-result { padding:8px; border-radius:6px; background:#07111d; overflow-wrap:anywhere; }
+.mission-result-title { color:#e4eef9; font-weight:600; margin-bottom:4px; }
+.mission-hash { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; color:#8ad5ef; }
+.mission-hash button { border:1px solid #3c6175; border-radius:5px; padding:2px 7px; color:#d2eaf5; }
+.hash-full { overflow-wrap:anywhere; }
+@media (min-width:1280px) and (max-height:900px) { .command-center .min-h-\[360px\] { min-height:300px; } }

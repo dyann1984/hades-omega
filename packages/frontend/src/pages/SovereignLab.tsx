@@ -61,7 +61,7 @@ export default function SovereignLab(): JSX.Element {
       <header style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 20px', height:'48px', borderBottom:'1px solid rgba(8,124,255,0.12)', background:'rgba(5,8,15,0.95)', backdropFilter:'blur(12px)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
           <div style={{ width:'8px', height:'8px', borderRadius:'50%', background:'#087CFF', boxShadow:'0 0 8px #087CFF', animation:'pulse 2s infinite' }} />
-          <span style={{ fontSize:'11px', fontWeight:700, letterSpacing:'0.22em', color:'#D7EEFF' }}>HADES OMEGA</span>
+          <span style={{ fontSize:'11px', fontWeight:700, letterSpacing:'0.22em', color:'#D7EEFF' }}>HADES</span>
           <span style={{ fontSize:'9px', color:'rgba(92,207,255,0.50)', letterSpacing:'0.1em' }}>/</span>
           <span style={{ fontSize:'9px', fontWeight:500, letterSpacing:'0.18em', color:'rgba(92,207,255,0.60)' }}>SOVEREIGN INTELLIGENCE LAB</span>
         </div>
