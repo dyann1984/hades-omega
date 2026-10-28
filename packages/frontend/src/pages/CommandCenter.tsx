@@ -191,8 +191,8 @@ function AgentMonitorPanel({ agents, apiAgents }: {
                 <p className="text-[9px] text-gray-700 leading-tight">{meta.role}</p>
                 {apiData?.capabilities && apiData.capabilities.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {apiData.capabilities.map(c => (
-                      <span key={c.id} className="font-mono text-[8px] bg-electric/10 text-electric border border-electric/20 px-1 py-0.2 rounded" title={`${c.name} (${c.version}) - ${c.description}`}>
+                    {apiData.capabilities.map((c, idx) => (
+                      <span key={`${name}-${c.id ?? idx}`} className="font-mono text-[8px] bg-electric/10 text-electric border border-electric/20 px-1 py-0.2 rounded" title={`${c.name} (${c.version}) - ${c.description}`}>
                         {c.name}
                       </span>
                     ))}

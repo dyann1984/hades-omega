@@ -55,6 +55,19 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (5)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 6').get()) {
+      this.db.transaction(() => {
+        // Añadir prev_hash y hash para cadena criptográfica de integridad en audit_events
+        const cols = (this.db.prepare("PRAGMA table_info(audit_events)").all() as Array<{ name: string }>).map(c => c.name)
+        if (!cols.includes('prev_hash')) {
+          this.db.exec(`ALTER TABLE audit_events ADD COLUMN prev_hash TEXT;`)
+        }
+        if (!cols.includes('hash')) {
+          this.db.exec(`ALTER TABLE audit_events ADD COLUMN hash TEXT;`)
+        }
+        this.db.prepare('INSERT INTO schema_migrations VALUES (6)').run()
+      })()
+    }
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
     try { raw = await readFile(this.legacyPath, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
@@ -104,11 +117,47 @@ export class SqliteRepository extends JsonRepository {
       this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); return approval
     })()
   }
-  recordAuditEvent(input: { actor: string; missionId?: string | null; action: string; result: string; correlationId?: string }): void {
-    this.db.prepare('INSERT INTO audit_events VALUES (?,?,?,?,?,?,?)').run(randomUUID(), input.actor, input.missionId ?? null, input.action, input.result, input.correlationId ?? input.missionId ?? randomUUID(), Date.now())
+  recordAuditEvent(input: { actor: string; missionId?: string | null; action: string; result: string; correlationId?: string }): { id: string; hash: string; prevHash: string | null } {
+    const id = randomUUID()
+    const now = Date.now()
+    const missionId = input.missionId ?? null
+    const correlationId = input.correlationId ?? input.missionId ?? randomUUID()
+
+    // Obtener el hash del último evento registrado para formar la cadena (blockchain local de auditoría)
+    const lastRow = this.db.prepare('SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1').get() as { hash: string | null } | undefined
+    const prevHash = lastRow?.hash ?? 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000'
+    const payload = `${prevHash}|${id}|${input.actor}|${missionId}|${input.action}|${input.result}|${correlationId}|${now}`
+    const hash = createHash('sha256').update(payload, 'utf8').digest('hex')
+
+    this.db.prepare('INSERT INTO audit_events (id,actor,mission_id,action,result,correlation_id,timestamp,prev_hash,hash) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(id, input.actor, missionId, input.action, input.result, correlationId, now, prevHash, hash)
+
+    return { id, hash, prevHash }
   }
-  listAuditEvents(filter: { action?: string; missionId?: string; limit: number; offset: number }): Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number}> {
-    return this.db.prepare('SELECT id,actor,mission_id AS missionId,action,result,correlation_id AS correlationId,timestamp FROM audit_events WHERE (? IS NULL OR action=?) AND (? IS NULL OR mission_id=?) ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?').all(filter.action ?? null,filter.action ?? null,filter.missionId ?? null,filter.missionId ?? null,filter.limit,filter.offset) as Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number}>
+  listAuditEvents(filter: { action?: string; missionId?: string; limit: number; offset: number }): Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number;prev_hash?:string|null;hash?:string|null}> {
+    return this.db.prepare('SELECT id,actor,mission_id AS missionId,action,result,correlation_id AS correlationId,timestamp,prev_hash,hash FROM audit_events WHERE (? IS NULL OR action=?) AND (? IS NULL OR mission_id=?) ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?').all(filter.action ?? null,filter.action ?? null,filter.missionId ?? null,filter.missionId ?? null,filter.limit,filter.offset) as Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number;prev_hash?:string|null;hash?:string|null}>
+  }
+  verifyAuditIntegrity(): { verified: boolean; totalEvents: number; brokenAtId: string | null; error: string | null } {
+    const events = this.db.prepare('SELECT id,actor,mission_id,action,result,correlation_id,timestamp,prev_hash,hash FROM audit_events ORDER BY rowid ASC').all() as Array<{
+      id: string; actor: string; mission_id: string | null; action: string; result: string; correlation_id: string; timestamp: number; prev_hash: string | null; hash: string | null
+    }>
+    let currentPrev = 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000'
+    for (const evt of events) {
+      if (!evt.hash) {
+        // Evento pre-migración v6: no rompe, pero se salta
+        continue
+      }
+      if (evt.prev_hash !== currentPrev) {
+        return { verified: false, totalEvents: events.length, brokenAtId: evt.id, error: `Discrepancia en cadena: prev_hash esperado ${currentPrev}, encontrado ${evt.prev_hash}` }
+      }
+      const payload = `${evt.prev_hash}|${evt.id}|${evt.actor}|${evt.mission_id}|${evt.action}|${evt.result}|${evt.correlation_id}|${evt.timestamp}`
+      const expectedHash = createHash('sha256').update(payload, 'utf8').digest('hex')
+      if (evt.hash !== expectedHash) {
+        return { verified: false, totalEvents: events.length, brokenAtId: evt.id, error: `Hash alterado o no coincidente para evento ${evt.id}` }
+      }
+      currentPrev = evt.hash
+    }
+    return { verified: true, totalEvents: events.length, brokenAtId: null, error: null }
   }
   private workflowEvent(missionId: string, actor: string, state: string): void {
     const event = { id: randomUUID(), type: 'LOCAL_EXECUTION_STATE', actor, timestamp: Date.now(), payload: { missionId, state } }

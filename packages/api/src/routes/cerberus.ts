@@ -13,6 +13,11 @@ export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRe
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 100000 || (q.action !== undefined && !/^[A-Z_]{1,64}$/.test(q.action)) || (q.missionId !== undefined && !/^[a-zA-Z0-9-]{1,100}$/.test(q.missionId))) return reply.code(400).send(err('VALIDATION_ERROR','Filtro inválido'))
     return ok(repository.listAuditEvents({action:q.action,missionId:q.missionId,limit,offset}))
   })
+  app.get('/audit/integrity', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('AUDIT_UNAVAILABLE', 'Auditoría persistente no disponible'))
+    const check = repository.verifyAuditIntegrity()
+    return ok(check)
+  })
   app.get('/cerberus/status', async () => {
     return ok({
       active:          true,

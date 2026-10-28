@@ -138,10 +138,11 @@ export class MinosAgent extends AgentBase {
       const issues: string[] = []
       const lower = doc.content.toLowerCase()
 
+      let isDocHighRisk = false
       if (doc.content.length < 50) issues.push('Contenido excesivamente breve para contrato formal')
       if (lower.includes('sin garantía') || lower.includes('sin garantia')) {
         issues.push('ALTO RIESGO: Cláusula explícita de exclusión de garantía o indemnización')
-        highRiskCount++
+        isDocHighRisk = true
       }
       if (lower.includes('sin penalización') || lower.includes('sin penalizacion') || lower.includes('0%')) {
         issues.push('ADVERTENCIA: Falta de esquema efectivo de penalización ante incumplimiento')
@@ -149,6 +150,19 @@ export class MinosAgent extends AgentBase {
       if (lower.includes('ambigua') || lower.includes('unilateral')) {
         issues.push('RIESGO MEDIO: Cláusula ambigua o terminación unilateral detectada')
       }
+
+      // Verificación de coherencia monetaria y fechas
+      if (doc.content.includes('USD') && doc.content.includes('MXN')) {
+        issues.push('RIESGO MEDIO: Monedas mixtas detectadas en el mismo instrumento contractual')
+      }
+
+      // Detección de contradicciones manifiestas
+      if (lower.includes('garantía') && lower.includes('sin garantía')) {
+        issues.push('ALTO RIESGO: Contradicción detectada entre cláusula de garantía y cláusula de exclusión')
+        isDocHighRisk = true
+      }
+
+      if (isDocHighRisk) highRiskCount++
 
       const riskLevel = issues.some(i => i.includes('ALTO RIESGO')) ? 'HIGH' : issues.length > 0 ? 'MEDIUM' : 'LOW'
       results.push({

@@ -75,6 +75,7 @@ export class PersephoneAgent extends AgentBase {
       filename: string
       amount: number | null
       amountRaw: string
+      currency: string
       penalty: number | null
       penaltyRaw: string
       sla: string
@@ -86,9 +87,11 @@ export class PersephoneAgent extends AgentBase {
     const items: DocAnalysis[] = []
 
     for (const doc of docs) {
-      const amounts = doc.content.match(/\$([\d,]+)(?:\.\d{2})?|\b([\d][\d,]+)\s*(?:MXN|USD)/i)
+      const amounts = doc.content.match(/\$([\d,]+)(?:\.\d{2})?|\b([\d][\d,]+)\s*(MXN|USD|EUR)/i)
       const amountVal = amounts ? Number.parseInt((amounts[1] ?? amounts[2] ?? '0').replace(/,/g, ''), 10) : null
       const amountRaw = amounts ? amounts[0] : 'No especificado'
+      const currencyMatch = doc.content.match(/\b(MXN|USD|EUR)\b/i)
+      const currency = currencyMatch ? currencyMatch[1]!.toUpperCase() : (amounts?.[0]?.startsWith('$') ? 'USD' : 'MXN')
 
       const pcts = doc.content.match(/(\d+(?:\.\d+)?)\s*%/g) ?? []
       const penaltyMatch = doc.content.match(/penalizaci[óo]n.*?(\d+(?:\.\d+)?)\s*%/i)
@@ -116,6 +119,7 @@ export class PersephoneAgent extends AgentBase {
         filename: doc.filename,
         amount: amountVal,
         amountRaw,
+        currency,
         penalty: penaltyVal,
         penaltyRaw,
         sla,
@@ -131,11 +135,15 @@ export class PersephoneAgent extends AgentBase {
     const minAmount = amountsFound.length > 0 ? Math.min(...amountsFound) : 0
     const priceVariance = maxAmount - minAmount
 
+    const currenciesUsed = Array.from(new Set(items.map(i => i.currency)))
     const discrepancies: string[] = [
-      `Diferencia de costo entre extremos: $${priceVariance.toLocaleString()} MXN (Mínimo: $${minAmount.toLocaleString()} vs Máximo: $${maxAmount.toLocaleString()})`,
+      `Diferencia de costo entre extremos: $${priceVariance.toLocaleString()} (Mínimo: $${minAmount.toLocaleString()} vs Máximo: $${maxAmount.toLocaleString()})`,
       `Disparidad crítica de penalizaciones: varía desde 0% (inaceptable) hasta 15% semanal`,
       `Variación de plazos de entrega: de ${Math.min(...items.map(i => i.deliveryDays ?? 30))} a ${Math.max(...items.map(i => i.deliveryDays ?? 60))} días hábiles`,
     ]
+    if (currenciesUsed.length > 1) {
+      discrepancies.push(`ADVERTENCIA: Comparación heterogénea entre monedas distintas: ${currenciesUsed.join(', ')}`)
+    }
 
     const validOptions = items.filter(i => !i.riskNote.includes('CRÍTICO'))
     const recommended = validOptions.sort((a, b) => (a.amount ?? 999999) - (b.amount ?? 999999))[0] ?? items[0]!
@@ -158,6 +166,7 @@ export class PersephoneAgent extends AgentBase {
         simulated: false,
         items,
         discrepancies,
+        priceVariance,
         recommendedOption: recommended.filename,
         decision,
       },
