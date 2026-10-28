@@ -8,7 +8,7 @@ export async function authRoutes(app: FastifyInstance, repo: SqliteRepository): 
     const body=request.body as {username?:unknown;password?:unknown} | undefined
     if (typeof body?.username !== 'string' || typeof body.password !== 'string' || body.username.length > 64 || body.password.length > 1024) return reply.code(400).send({success:false,error:{code:'INVALID_CREDENTIALS'}})
     const user=repo.findUser(body.username); const valid=await verifyPassword(body.password,user?.password_hash ?? dummy)
-    if (!valid || !user?.active) { request.log.warn({reason:'invalid_credentials'},'Authentication rejected'); return reply.code(401).send({success:false,error:{code:'INVALID_CREDENTIALS'}}) }
+    if (!valid || !user?.active) { repo.recordAuditEvent({actor:'anonymous',action:'LOGIN',result:'DENIED'}); request.log.warn({reason:'invalid_credentials'},'Authentication rejected'); return reply.code(401).send({success:false,error:{code:'INVALID_CREDENTIALS'}}) }
     const expiresAt=Date.now()+60*60*1000; const sid=repo.createSession(user.id,expiresAt)
     const token=app.jwt.sign({sub:user.id,roles:[user.role],sid,exp:Math.floor(expiresAt/1000)})
     reply.header('Cache-Control','no-store'); return {success:true,data:{token,expiresAt,role:user.role}}

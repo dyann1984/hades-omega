@@ -8,13 +8,8 @@ import { documentRoutes } from './documents.js'
 
 // Mock pdf-parse to avoid needing a real PDF binary in unit tests.
 // The PDF code path and pipeline logic are what we're testing here.
-vi.mock('pdf-parse', () => ({
-  default: vi.fn().mockResolvedValue({
-    text: 'Contrato HADES OMEGA vigente hasta 2026-12-31 por $150,000 MXN. Riesgo crítico de vencimiento. Penalización del 15% por mora.',
-    numpages: 3,
-    info: { Title: 'Contrato HADES', Author: 'HADES OMEGA System' },
-  }),
-}))
+const pdfMocks = vi.hoisted(() => ({ text: vi.fn().mockResolvedValue({text:'Contrato HADES OMEGA vigente hasta 2026-12-31 por $150,000 MXN. Riesgo crítico de vencimiento. Penalización del 15% por mora.'}), info: vi.fn().mockResolvedValue({total:3,info:{Title:'Contrato HADES',Author:'HADES OMEGA System'}}), destroy: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('pdf-parse', () => ({ PDFParse: class { getText = pdfMocks.text; getInfo = pdfMocks.info; destroy = pdfMocks.destroy } }))
 
 // Mock mammoth similarly
 vi.mock('mammoth', () => ({
@@ -84,7 +79,7 @@ describe('PDF and DOCX processing via base64', () => {
 
   it('triggers V-006 warning for scanned PDF (too few words extracted)', async () => {
     // Override mock to return very little text (simulating a scanned PDF)
-    const { default: pdfParseMock } = await import('pdf-parse')
+    const pdfParseMock = pdfMocks.text
     ;(pdfParseMock as any).mockResolvedValueOnce({
       text: 'Solo',  // < 10 words
       numpages: 1,
@@ -137,7 +132,7 @@ describe('PDF and DOCX processing via base64', () => {
   })
 
   it('rejects extracted PDF text exceeding the processing limit', async () => {
-    const { default: pdfParseMock } = await import('pdf-parse')
+    const pdfParseMock = pdfMocks.text
     ;(pdfParseMock as any).mockResolvedValueOnce({text: 'x'.repeat(5 * 1024 * 1024 + 1), numpages: 1, info: {}})
     const res = await app.inject({method:'POST',url:'/documents/process',payload:{filename:'large.pdf',content:Buffer.from('pdf').toString('base64'),encoding:'base64',mimeType:'application/pdf'}})
     expect(res.statusCode).toBe(413)
@@ -146,7 +141,7 @@ describe('PDF and DOCX processing via base64', () => {
   })
 
   it('returns 422 when PDF extraction fails (corrupt or unsupported PDF)', async () => {
-    const { default: pdfParseMock } = await import('pdf-parse')
+    const pdfParseMock = pdfMocks.text
     ;(pdfParseMock as any).mockRejectedValueOnce(new Error('private-parser-detail'))
 
     const corruptPdfBase64 = Buffer.from('NOT_A_VALID_PDF').toString('base64')

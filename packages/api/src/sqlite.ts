@@ -48,6 +48,12 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (4)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 5').get()) {
+      this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor TEXT NOT NULL, mission_id TEXT, action TEXT NOT NULL, result TEXT NOT NULL, correlation_id TEXT NOT NULL, timestamp INTEGER NOT NULL); CREATE INDEX audit_events_time ON audit_events(timestamp DESC); CREATE INDEX audit_events_mission ON audit_events(mission_id,timestamp DESC);`)
+        this.db.prepare('INSERT INTO schema_migrations VALUES (5)').run()
+      })()
+    }
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
     try { raw = await readFile(this.legacyPath, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
@@ -79,7 +85,7 @@ export class SqliteRepository extends JsonRepository {
   override getMission(id: string): Mission | undefined { const row = this.db.prepare('SELECT data FROM missions WHERE id=?').get(id) as Row | undefined; return row && JSON.parse(row.data) }
   override getIdempotent(key: string, fingerprint: string): Mission | undefined { const row = this.db.prepare('SELECT mission_id FROM idempotency WHERE key=? AND fingerprint=?').get(key, fingerprint) as { mission_id: string } | undefined; return row && this.getMission(row.mission_id) }
   override async saveMission(mission: Mission, idempotency?: {key: string; fingerprint: string}): Promise<void> {
-    this.db.transaction(() => { this.putMission(mission); if (idempotency) this.db.prepare('INSERT INTO idempotency VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET fingerprint=excluded.fingerprint, mission_id=excluded.mission_id').run(idempotency.key,idempotency.fingerprint,mission.id) })()
+    this.db.transaction(() => { this.putMission(mission); this.recordAuditEvent({actor:mission.ownerId ?? 'legacy',missionId:mission.id,action:'MISSION_SAVED',result:mission.status}); if (idempotency) this.db.prepare('INSERT INTO idempotency VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET fingerprint=excluded.fingerprint, mission_id=excluded.mission_id').run(idempotency.key,idempotency.fingerprint,mission.id) })()
   }
   override async recordMissionEvidence(audits: AuditRecord[], actor: string): Promise<void> {
     this.db.transaction(() => { for (const item of audits) this.db.prepare('INSERT OR IGNORE INTO audits VALUES (?,?)').run(item.id,JSON.stringify(item)); const event = {id:crypto.randomUUID(),type:'MISSION_EVIDENCE_RECORDED',actor,timestamp:Date.now(),payload:{count:audits.length}}; this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)) })()
@@ -97,9 +103,16 @@ export class SqliteRepository extends JsonRepository {
       this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); return approval
     })()
   }
+  recordAuditEvent(input: { actor: string; missionId?: string | null; action: string; result: string; correlationId?: string }): void {
+    this.db.prepare('INSERT INTO audit_events VALUES (?,?,?,?,?,?,?)').run(randomUUID(), input.actor, input.missionId ?? null, input.action, input.result, input.correlationId ?? input.missionId ?? randomUUID(), Date.now())
+  }
+  listAuditEvents(filter: { action?: string; missionId?: string; limit: number; offset: number }): Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number}> {
+    return this.db.prepare('SELECT id,actor,mission_id AS missionId,action,result,correlation_id AS correlationId,timestamp FROM audit_events WHERE (? IS NULL OR action=?) AND (? IS NULL OR mission_id=?) ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?').all(filter.action ?? null,filter.action ?? null,filter.missionId ?? null,filter.missionId ?? null,filter.limit,filter.offset) as Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number}>
+  }
   private workflowEvent(missionId: string, actor: string, state: string): void {
     const event = { id: randomUUID(), type: 'LOCAL_EXECUTION_STATE', actor, timestamp: Date.now(), payload: { missionId, state } }
     this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id, JSON.stringify(event))
+    this.recordAuditEvent({ actor, missionId, action: 'MISSION_STATE', result: state })
   }
   listMissionEvents(missionId: string): SystemEvent[] {
     return (this.db.prepare('SELECT data FROM events ORDER BY rowid').all() as Row[]).map(row => JSON.parse(row.data) as SystemEvent).filter(event => (event.payload as {missionId?: string} | null)?.missionId === missionId)
@@ -113,7 +126,7 @@ export class SqliteRepository extends JsonRepository {
     this.db.transaction(() => {
       this.putMission(mission)
       this.db.prepare('INSERT INTO local_operations (id,mission_id,owner_id,input,state) VALUES (?,?,?,?,?)').run(approvalId,id,owner,input,'WAITING_APPROVAL')
-      for (const state of ['CREATED','QUEUED','RUNNING','WAITING_APPROVAL']) this.workflowEvent(id,owner,state)
+      for (const state of ['CREATED','WAITING_APPROVAL']) this.workflowEvent(id,owner,state)
     })()
     return { mission, approvalId }
   }
@@ -180,12 +193,12 @@ export class SqliteRepository extends JsonRepository {
       this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); return true
     })()
   }
-  createSession(userId: string, expiresAt: number): string { const id=randomUUID(); this.db.prepare('INSERT INTO sessions (id,user_id,expires_at) VALUES (?,?,?)').run(id,userId,expiresAt); return id }
+  createSession(userId: string, expiresAt: number): string { return this.db.transaction(() => { const id=randomUUID(); this.db.prepare('INSERT INTO sessions (id,user_id,expires_at) VALUES (?,?,?)').run(id,userId,expiresAt); this.recordAuditEvent({actor:userId,action:'LOGIN',result:'SUCCESS'}); return id })() }
   getActiveSession(id: string): {sub:string;roles:string[]} | undefined {
     const row=this.db.prepare('SELECT u.id,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.revoked_at IS NULL AND s.expires_at>? AND u.active=1').get(id,Date.now()) as {id:string;role:string} | undefined
     return row ? {sub:row.id,roles:[row.role]} : undefined
   }
-  revokeSession(id: string): void { this.db.prepare('UPDATE sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(Date.now(),id) }
+  revokeSession(id: string): void { this.db.transaction(() => { const row=this.db.prepare('SELECT user_id FROM sessions WHERE id=? AND revoked_at IS NULL').get(id) as {user_id:string} | undefined; this.db.prepare('UPDATE sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(Date.now(),id); if(row) this.recordAuditEvent({actor:row.user_id,action:'LOGOUT',result:'SUCCESS'}) })() }
   cancelLocalMission(missionId: string, actor: string, admin: boolean, reason: string): Mission {
     return this.db.transaction(() => {
       const mission = this.getMission(missionId)
@@ -198,11 +211,11 @@ export class SqliteRepository extends JsonRepository {
       mission.status='CANCELLED'; mission.updatedAt=now; mission.completedAt=now
       this.db.prepare("UPDATE local_operations SET state='CANCELLED',decided_by=?,decided_at=? WHERE id=? AND state='WAITING_APPROVAL'").run(actor,now,op.id)
       const event = {id:randomUUID(),type:'LOCAL_EXECUTION_STATE',actor,timestamp:now,payload:{missionId,state:'CANCELLED',reason}}
-      this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); this.putMission(mission); return mission
+      this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id,JSON.stringify(event)); this.recordAuditEvent({actor,missionId,action:'MISSION_STATE',result:'CANCELLED'}); this.putMission(mission); return mission
     })()
   }
   saveDocumentResult(id: string, ownerId: string, filename: string, status: string, data: unknown): void {
-    this.db.prepare('INSERT INTO document_results (id,owner_id,filename,status,created_at,data) VALUES (?,?,?,?,?,?)').run(id, ownerId, filename, status, Date.now(), JSON.stringify(data))
+    this.db.transaction(() => { this.db.prepare('INSERT INTO document_results (id,owner_id,filename,status,created_at,data) VALUES (?,?,?,?,?,?)').run(id, ownerId, filename, status, Date.now(), JSON.stringify(data)); const missionId=(data as {missionId?:string})?.missionId; this.recordAuditEvent({actor:ownerId,missionId,action:'DOCUMENT_PROCESSED',result:status,correlationId:missionId ?? id}) })()
   }
   getDocumentResult(id: string, ownerId: string): { id: string; filename: string; status: string; createdAt: number; data: unknown } | undefined {
     const row = this.db.prepare('SELECT id,filename,status,created_at,data FROM document_results WHERE id=? AND owner_id=?').get(id, ownerId) as {id:string;filename:string;status:string;created_at:number;data:string} | undefined

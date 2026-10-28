@@ -71,17 +71,19 @@ export async function documentRoutes(app: FastifyInstance, repo: SqliteRepositor
       }
       if (ext === '.pdf' || mimeType === 'application/pdf') {
         try {
-          type PdfResult = { text: string; numpages: number; info: Record<string, unknown> | null }
-          type PdfParseFn = (buffer: Buffer) => Promise<PdfResult>
-          const pdfParse = (await import('pdf-parse')).default as unknown as PdfParseFn
-          const parsed = await pdfParse(buffer)
-          textContent = parsed.text
-          extractionMethod = 'pdf-parse'
-          extractionMetadata = {
-            pageCount: parsed.numpages,
-            pdfTitle: parsed.info?.['Title'] ?? undefined,
-            pdfAuthor: parsed.info?.['Author'] ?? undefined,
-          }
+          const { PDFParse } = await import('pdf-parse')
+          const parser = new PDFParse({ data: buffer })
+          try {
+            const parsed = await parser.getText()
+            const info = await parser.getInfo()
+            textContent = parsed.text
+            extractionMethod = 'pdf-parse'
+            extractionMetadata = {
+              pageCount: info.total,
+              pdfTitle: info.info?.['Title'] ?? undefined,
+              pdfAuthor: info.info?.['Author'] ?? undefined,
+            }
+          } finally { await parser.destroy() }
         } catch {
           return reply.status(422).send({ error: { code: 'PDF_EXTRACTION_FAILED', message: 'No se pudo extraer texto del PDF.' } })
         }

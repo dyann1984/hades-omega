@@ -122,6 +122,8 @@ export interface GUARDDecision {
 }
 
 export interface AuditRecord {
+  missionId?: ID
+  taskId?: ID
   id:               ID
   timestamp:        Timestamp
   agentId:          string
@@ -321,7 +323,7 @@ export interface DocumentDeliverable {
 // ---- WebSocket events ----
 
 export type ServerEvent =
-  | { type: 'AGENT_STATUS_CHANGED';   payload: { agent: AgentName; status: AgentStatus; currentTask?: string | null } }
+  | { type: 'AGENT_STATUS_CHANGED';   payload: { agent: AgentName; status: AgentStatus; currentTask?: string | null; missionId?: ID } }
   | { type: 'MISSION_PROGRESS';       payload: { missionId: ID; status: MissionStatus; progress: number } }
   | { type: 'TASK_UPDATED';           payload: { task: Task } }
   | { type: 'CERBERUS_DECISION';      payload: { auditRecord: AuditRecord } }

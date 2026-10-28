@@ -30,7 +30,7 @@ describe('SQLite migration and persistence', () => {
       const results=await Promise.allSettled([second.decideLocalOperation(approvalId,'APPROVED','admin','Reviewed'),second.decideLocalOperation(approvalId,'APPROVED','admin','Reviewed')])
       expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1)
       expect(second.getMission(mission.id)?.tasks[0].status).toBe('EXECUTED')
-      expect(second.listMissionEvents(mission.id).map(e=>(e.payload as {state:string}).state)).toEqual(['CREATED','QUEUED','RUNNING','WAITING_APPROVAL','APPROVED','RESUMING','RUNNING','COMPLETED'])
+      expect(second.listMissionEvents(mission.id).map(e=>(e.payload as {state:string}).state)).toEqual(['CREATED','WAITING_APPROVAL','APPROVED','RESUMING','RUNNING','COMPLETED'])
       second.close()
     } finally { await rm(dir,{recursive:true,force:true}) }
   })

@@ -2,9 +2,17 @@ import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../security.js'
 import { guard, audit, near } from '../runtime.js'
 import type { AuditFilter, GUARDOutcome, AgentName } from '@hades/core'
+import type { SqliteRepository } from '../sqlite.js'
 
-export async function cerberusRoutes(app: FastifyInstance): Promise<void> {
+export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRepository): Promise<void> {
   app.addHook('preHandler', async req => requireRole(req, ['ADMIN']))
+  app.get('/audit/events', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('AUDIT_UNAVAILABLE', 'Auditoría persistente no disponible'))
+    const q=req.query as {action?:string;missionId?:string;limit?:string;offset?:string}
+    const limit=q.limit === undefined ? 50 : Number(q.limit), offset=q.offset === undefined ? 0 : Number(q.offset)
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 100000 || (q.action !== undefined && !/^[A-Z_]{1,64}$/.test(q.action)) || (q.missionId !== undefined && !/^[a-zA-Z0-9-]{1,100}$/.test(q.missionId))) return reply.code(400).send(err('VALIDATION_ERROR','Filtro inválido'))
+    return ok(repository.listAuditEvents({action:q.action,missionId:q.missionId,limit,offset}))
+  })
   app.get('/cerberus/status', async () => {
     return ok({
       active:          true,

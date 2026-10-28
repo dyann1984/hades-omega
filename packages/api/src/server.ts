@@ -34,6 +34,19 @@ async function bootstrap(): Promise<void> {
   app.addHook('onClose', async () => { repository.close() })
   await registerSecurity(app, repository)
   await authRoutes(app, repository)
+  const unsubscribeAudit = bus.subscribe(event => {
+    if (event.type === 'CERBERUS_DECISION') {
+      const record = event.payload.auditRecord
+      repository.recordAuditEvent({actor:record.agentName,missionId:record.missionId,action:'POLICY_EVALUATED',result:record.guardDecision,correlationId:record.missionId ?? record.id})
+    } else if (event.type === 'AGENT_STATUS_CHANGED' && ['EXECUTING','ERROR'].includes(event.payload.status)) {
+      repository.recordAuditEvent({actor:event.payload.agent,missionId:event.payload.missionId,action:'AGENT_STATUS',result:event.payload.status})
+    }
+  })
+  app.addHook('onClose', async () => { unsubscribeAudit() })
+  app.addHook('onError', async (request, _reply, error) => {
+    const actor = (request.user as {sub?:string} | undefined)?.sub ?? 'anonymous'
+    repository.recordAuditEvent({actor,action:'REQUEST_ERROR',result:String(error.statusCode ?? 500),correlationId:request.id})
+  })
   await setupRoutes(app, repository)
 
   const healthResponse = async () => ({
@@ -50,7 +63,7 @@ async function bootstrap(): Promise<void> {
   await app.register(async (api) => {
     await missionRoutes(api, repository)
     await agentRoutes(api)
-    await api.register(cerberusRoutes)
+    await api.register(async scoped => cerberusRoutes(scoped, repository))
     await approvalRoutes(api, repository)
     await localMissionRoutes(api, repository)
     await documentRoutes(api, repository)

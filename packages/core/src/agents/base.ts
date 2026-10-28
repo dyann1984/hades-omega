@@ -38,7 +38,7 @@ export abstract class AgentBase {
     this.status = status
     bus.publish({
       type:    'AGENT_STATUS_CHANGED',
-      payload: { agent: this.name, status, currentTask: taskDescription ?? null },
+      payload: { agent: this.name, status, currentTask: taskDescription ?? null, missionId: this.currentTask?.missionId },
     })
   }
 

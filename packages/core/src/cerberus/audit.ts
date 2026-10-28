@@ -25,6 +25,8 @@ export class CerberusAUDIT {
 
     const recordData = {
       id:               uuidv4(),
+      missionId:        proposal.missionId,
+      taskId:           proposal.taskId,
       timestamp:        Date.now(),
       agentId:          proposal.agentId,
       agentName:        proposal.agentName,
