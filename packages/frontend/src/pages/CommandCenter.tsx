@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import HolographicCore from '../components/HolographicCore.js'
+import PersistentAudit from '../components/PersistentAudit.js'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName, AgentState, AuditRecord } from '../store/index.js'
 import type { SubAgent } from '../components/HolographicCore3D.js'
@@ -48,6 +49,7 @@ interface ApiAgent {
   id: string
   status: string
   currentTask: unknown
+  service?: { available:boolean; policyVersion:string; evaluations:number; permitted:number; denied:number; escalated:number; latest: {timestamp:number;decision:string;operation:string} | null; scope:string }
 }
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
@@ -66,7 +68,7 @@ const AGENT_META: Record<AgentName, { role: string; symbol: string; color: strin
 
 const STATUS_LABELS: Record<string, string> = {
   IDLE: 'INACTIVO', THINKING: 'ANALIZANDO', EXECUTING: 'EJECUTANDO',
-  WAITING: 'ESPERANDO', ERROR: 'ERROR', SUSPENDED: 'SUSPENDIDO', UNKNOWN: 'DESCONOCIDO',
+  WAITING: 'ESPERANDO', ERROR: 'ERROR', SUSPENDED: 'SUSPENDIDO', UNKNOWN: 'DESCONOCIDO', AVAILABLE: 'DISPONIBLE',
 }
 
 const MISSION_STATUS_COLORS: Record<string, string> = {
@@ -164,10 +166,10 @@ function AgentMonitorPanel({ agents, apiAgents }: {
         {AGENT_NAMES.map(name => {
           const agent   = agents[name]
           const apiData = getApiStatus(name)
-          const status  = apiData ? agent.status : 'UNKNOWN'
+          const status  = apiData?.service?.available ? 'AVAILABLE' : apiData ? agent.status : 'UNKNOWN'
           const task    = apiData ? agent.currentTask : null
           const meta    = AGENT_META[name]
-          const isActive = status !== 'IDLE' && status !== 'UNKNOWN'
+          const isActive = ['THINKING','EXECUTING','WAITING','ERROR'].includes(status)
           const isError  = status === 'ERROR'
 
           const dotColor = isError ? 'bg-deny' : isActive ? (name === 'HADES' ? 'bg-gold' : 'bg-electric') : 'bg-gray-700'
@@ -186,6 +188,7 @@ function AgentMonitorPanel({ agents, apiAgents }: {
                   </span>
                 </div>
                 <p className="text-[9px] text-gray-700 leading-tight">{meta.role}</p>
+                {apiData?.service && <p className="text-[9px] text-gray-500">Política {apiData.service.policyVersion} · Permitidas {apiData.service.permitted} · Rechazadas {apiData.service.denied} · Escaladas {apiData.service.escalated} · Última: {apiData.service.latest ? `${apiData.service.latest.decision} ${new Date(apiData.service.latest.timestamp).toLocaleString('es-MX')}` : 'sin evaluaciones en este proceso'}</p>}
                 {isActive && task && (
                   <p className="mt-0.5 text-[9px] text-electric/70 truncate">{task}</p>
                 )}
@@ -460,9 +463,8 @@ function ApprovalsKanban({ missions, pendingApprovals, onDecide, onRefresh, busy
 
 // ─── DOCUMENTS & AUDIT PANEL (Etapa 6) ───────────────────────────────────────
 
-function DocumentsAuditPanel({ docResults, auditRecords }: {
+function DocumentsAuditPanel({ docResults }: {
   docResults: DocResult[]
-  auditRecords: AuditRecord[]
 }): JSX.Element {
   const [tab, setTab] = useState<'docs' | 'audit'>('docs')
 
@@ -515,27 +517,7 @@ function DocumentsAuditPanel({ docResults, auditRecords }: {
             </div>
           )
         ) : (
-          auditRecords.length === 0 ? (
-            <p className="text-[10px] text-gray-700 text-center py-4">Sin eventos de auditoría recibidos en esta sesión</p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <p className="text-[9px] text-gray-600">Eventos recibidos en esta sesión; historial persistente no disponible aquí.</p>
-              {auditRecords.slice(0, 20).map(r => (
-                <div key={r.id} className="flex items-center gap-2 py-1 border-b border-white/5">
-                  <span className={`font-mono text-[9px] px-1 rounded flex-shrink-0 ${
-                    r.guardDecision === 'PERMIT'   ? 'bg-permit/10 text-permit' :
-                    r.guardDecision === 'DENY'     ? 'bg-deny/10 text-deny' :
-                    'bg-escalate/10 text-escalate'
-                  }`}>{r.guardDecision}</span>
-                  <span className="font-mono text-[9px] text-gray-500 flex-shrink-0 w-16 truncate">{r.agentName}</span>
-                  <span className="font-mono text-[9px] text-gray-600 truncate flex-1">{r.operationType}</span>
-                  <span className="font-mono text-[9px] text-gray-700 flex-shrink-0">
-                    {new Date(r.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )
+          <PersistentAudit />
         )}
       </div>
     </div>
@@ -868,7 +850,7 @@ export default function CommandCenter(): JSX.Element {
           onRefresh={() => void refreshAll()}
           busy={loadingData}
         />
-        <DocumentsAuditPanel docResults={docResults} auditRecords={auditRecords} />
+        <DocumentsAuditPanel docResults={docResults} />
       </div>
     </div>
   )

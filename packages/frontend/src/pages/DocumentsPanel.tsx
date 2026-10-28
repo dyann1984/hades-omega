@@ -83,7 +83,6 @@ export default function DocumentsPanel(): JSX.Element {
   const [mimeType, setMimeType] = useState('text/plain')
   const [isBinary, setIsBinary] = useState(false)
   const [loading, setLoading]   = useState(false)
-  const [activeStage, setActiveStage] = useState<string | null>(null)
   const [result, setResult]     = useState<ProcessResult | null>(null)
   const [error, setError]       = useState('')
   const [history, setHistory]   = useState<DocumentResult[]>([])
@@ -134,14 +133,8 @@ export default function DocumentsPanel(): JSX.Element {
 
   async function processDocument(): Promise<void> {
     if (!content.trim()) { setError('El contenido no puede estar vacío.'); return }
-    setLoading(true); setError(''); setResult(null); setOpenStage(null); setActiveStage('CHARON')
+    setLoading(true); setError(''); setResult(null); setOpenStage(null)
 
-    const stageNames = ['CHARON', 'MINOS', 'PERSEPHONE', 'ELYSIUM', 'TARTARUS']
-    let stageIdx = 0
-    const stageTimer = setInterval(() => {
-      stageIdx = Math.min(stageIdx + 1, stageNames.length - 1)
-      setActiveStage(stageNames[stageIdx] ?? null)
-    }, 500)
 
     try {
       const body: Record<string, unknown> = { filename, content, mimeType }
@@ -170,8 +163,6 @@ export default function DocumentsPanel(): JSX.Element {
       setError(msg)
       addNotification('error', `DOCUMENTOS: ${msg}`)
     } finally {
-      clearInterval(stageTimer)
-      setActiveStage(null)
       setLoading(false)
     }
   }
@@ -234,6 +225,7 @@ export default function DocumentsPanel(): JSX.Element {
 
         {/* Drag & drop zone */}
         <div
+          aria-label="Zona para soltar documento"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -245,6 +237,7 @@ export default function DocumentsPanel(): JSX.Element {
           <input
             ref={fileRef}
             type="file"
+            aria-label="Seleccionar documento"
             accept=".txt,.json,.csv,.md,.pdf,.docx"
             className="hidden"
             onChange={handleFileSelect}
@@ -305,30 +298,12 @@ export default function DocumentsPanel(): JSX.Element {
           {loading ? (
             <span className="flex items-center gap-2">
               <span className="animate-pulse">⬡</span>
-              <span className="animate-pulse">{activeStage ?? 'Procesando'}…</span>
+              <span>Procesando documento; progreso por agente no disponible…</span>
             </span>
           ) : '⚡ Procesar documento'}
         </button>
 
-        {/* Per-agent progress bar */}
-        {loading && (
-          <div className="flex gap-1 mt-1">
-            {STAGES.map(s => {
-              const idx = STAGES.findIndex(st => st.label.includes(activeStage ?? ''))
-              const stageIdx = STAGES.indexOf(s)
-              const done = idx > stageIdx
-              const active = s.label.includes(activeStage ?? '')
-              return (
-                <div
-                  key={s.name}
-                  className={`flex-1 h-0.5 rounded-full transition-all duration-300 ${
-                    done ? 'bg-permit' : active ? 'bg-electric animate-pulse' : 'bg-obsidian-700'
-                  }`}
-                />
-              )
-            })}
-          </div>
-        )}
+
       </div>
 
       {/* Result */}
