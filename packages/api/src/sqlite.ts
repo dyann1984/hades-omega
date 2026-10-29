@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { AuditRecord, Mission, Task, AgentName } from '@hades/core'
 import { defaultCapabilityRegistry } from '@hades/core'
 import { JsonRepository, type StoredApproval, type SystemEvent } from './persistence.js'
+import { analyzeDocuments } from './document-analysis.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
 type Row = { data: string }
@@ -192,6 +193,7 @@ export class SqliteRepository extends JsonRepository {
       this.db.prepare('INSERT INTO approvals VALUES (?,?,?)').run(approval.id,id,JSON.stringify(approval))
       this.workflowEvent(mission.id,actor,decision)
       if (decision === 'APPROVED') {
+        if (task.capabilityId && !defaultCapabilityRegistry.canExecute(task.assignedTo, task.capabilityId)) throw new Error('CAPABILITY_NOT_AVAILABLE')
         this.workflowEvent(mission.id,actor,'RESUMING'); this.workflowEvent(mission.id,actor,'RUNNING')
         const sha256 = createHash('sha256').update(op.input,'utf8').digest('hex')
         task.status = 'EXECUTED'; task.startedAt = at; task.completedAt = Date.now()
@@ -200,63 +202,52 @@ export class SqliteRepository extends JsonRepository {
         // Si existen tareas subsiguientes dependientes en la misión, ejecutarlas determinísticamente
         for (const nextTask of mission.tasks) {
           if (nextTask.id !== task.id && (nextTask.status === 'ASSIGNED' || nextTask.status === 'ACCEPTED')) {
+            if (!nextTask.capabilityId || !defaultCapabilityRegistry.canExecute(nextTask.assignedTo, nextTask.capabilityId)) throw new Error('CAPABILITY_NOT_AVAILABLE')
             nextTask.startedAt = Date.now()
             nextTask.completedAt = Date.now()
             nextTask.status = 'EXECUTED'
-            const nextDigest = createHash('sha256').update(`${nextTask.id}:${sha256}`).digest('hex')
 
             if (nextTask.capabilityId === 'cap:report:generate@1.0.0') {
-              const cleanDocs = (mission.context as any)?.documents ?? []
-              const reportMarkdown = `# INFORME CONSOLIDADO EJECUTIVO (FASE 8)\n\n` +
-                `**Misión:** ${mission.title}\n` +
-                `**ID de Misión:** \`${mission.id}\`\n\n` +
-                `## 1. Documentos Ingeridos\n` +
-                cleanDocs.map((d: any) => `- \`${d.filename}\`: ${d.content.slice(0, 80)}...`).join('\n') +
-                `\n\n## 2. Dictamen Normativo (MINOS)\n` +
-                `- Detección de cláusulas críticas: sin garantía expresa, 0% penalización por mora.\n` +
-                `- Nivel de Riesgo Global: MODERADO-ALTO\n\n` +
-                `## 3. Matriz Comparativa Financiera (PERSEPHONE)\n` +
-                `- Disparidad de precios cotizados: \$9,800 a \$12,500 USD.\n` +
-                `- Varianza: 27.5% sobre cotización base.\n\n` +
-                `## 4. Resolución de Gobernanza (CERBERUS / HADES)\n` +
-                `- Operación autorizada por administrador: **${actor}**.\n` +
-                `- Justificación: "${justification}".\n\n` +
-                `## 5. Custodia y Sellado\n` +
-                `- Hash de integridad preliminar: \`${sha256}\`\n`
+              const cleanDocs = (mission.context as { documents?: Array<{filename:string;content:string}> }).documents ?? []
+              const evidence = analyzeDocuments(cleanDocs)
+              const reportMarkdown = `# Informe documental determinista\n\nMisión: ${mission.title}\nID: ${mission.id}\n\n` +
+                `Los hallazgos son coincidencias textuales, no un dictamen jurídico ni análisis generativo.\n\n` +
+                evidence.map(item => `## ${item.filename}\nSHA-256 del texto: ${item.sha256}\n` +
+                  `Importes encontrados: ${item.amounts.map(x => x.text).join(', ') || 'ninguno'}\n` +
+                  `Porcentajes encontrados: ${item.percentages.map(x => x.text).join(', ') || 'ninguno'}\n` +
+                  `Términos encontrados: ${item.clauses.map(x => x.text).join(', ') || 'ninguno'}\n`).join('\n')
 
               nextTask.result = {
                 taskId: nextTask.id,
                 success: true,
-                summary: `${nextTask.assignedTo}: Informe consolidado ejecutivo generado`,
+                summary: 'Informe local determinista generado; despacho de ELYSIUM no implementado',
                 data: {
-                  executor: nextTask.assignedTo,
-                  simulated: false,
+                  executor: 'local-rule-engine', intendedAgent: nextTask.assignedTo,
+                  mode: 'RULE_BASED',
+                  simulated: true, executionMode: 'DEMO',
                   reportMarkdown,
                   generatedAt: Date.now(),
                 },
                 cerberusIds: [],
               }
             } else if (nextTask.capabilityId === 'cap:crypto:hash@1.0.0') {
+              const report = mission.tasks.find(t => t.capabilityId === 'cap:report:generate@1.0.0')?.result?.data as {reportMarkdown?: string} | undefined
+              if (!report?.reportMarkdown) throw new Error('REPORT_NOT_READY')
+              const deliverableHash = createHash('sha256').update(report.reportMarkdown, 'utf8').digest('hex')
               nextTask.result = {
                 taskId: nextTask.id,
                 success: true,
-                summary: `${nextTask.assignedTo}: Hash SHA-256 de custodia y sellado completado`,
+                summary: 'Hash local del informe calculado; despacho de TARTARUS no implementado',
                 data: {
-                  executor: nextTask.assignedTo,
-                  simulated: false,
-                  sha256: nextDigest,
+                  executor: 'local-rule-engine', intendedAgent: nextTask.assignedTo,
+                  simulated: true, executionMode: 'DEMO',
+                  sha256: deliverableHash,
                   sealedAt: Date.now(),
                 },
                 cerberusIds: [],
               }
             } else {
-              nextTask.result = {
-                taskId: nextTask.id,
-                success: true,
-                summary: `${nextTask.assignedTo}: Tarea completada determinísticamente tras autorización`,
-                data: { executor: nextTask.assignedTo, simulated: false, outputHash: nextDigest, sealedAt: Date.now() },
-                cerberusIds: [],
-              }
+              throw new Error('CAPABILITY_NOT_IMPLEMENTED')
             }
           }
         }
@@ -327,6 +318,7 @@ export class SqliteRepository extends JsonRepository {
       mimeType: d.mimeType ?? 'text/plain',
       sizeBytes: Buffer.byteLength(d.content, 'utf8'),
     }))
+    const documentEvidence = analyzeDocuments(cleanDocs)
 
     const t1Id = randomUUID(), t2Id = randomUUID(), t3Id = randomUUID()
     const t4Id = randomUUID(), t5Id = randomUUID(), t6Id = randomUUID()
@@ -348,8 +340,8 @@ export class SqliteRepository extends JsonRepository {
         result: {
           taskId: t1Id,
           success: true,
-          summary: `CHARON: ${docCount} documentos procesados e indexados correctamente`,
-          data: { simulated: false, totalDocuments: docCount, totalWords: cleanDocs.reduce((sum, d) => sum + d.content.split(/\s+/).length, 0) },
+          summary: `Análisis local de ${docCount} textos; despacho de CHARON no implementado`,
+          data: { simulated: true, executionMode: 'DEMO', totalDocuments: docCount, totalWords: cleanDocs.reduce((sum, d) => sum + d.content.split(/\s+/).length, 0) },
           cerberusIds: [],
         },
       },
@@ -369,9 +361,10 @@ export class SqliteRepository extends JsonRepository {
         result: {
           taskId: t2Id,
           success: true,
-          summary: `MINOS: Validación normativa completada (${cleanDocs.length} documentos verificados)`,
+          summary: `Búsqueda textual básica; validación normativa por MINOS no implementada`,
           data: {
-            simulated: false,
+            simulated: true,
+            executionMode: 'DEMO',
             totalChecked: docCount,
             highRiskDetected: cleanDocs.some(d => d.content.toLowerCase().includes('sin garantía') || d.content.toLowerCase().includes('0%')),
           },
@@ -394,16 +387,13 @@ export class SqliteRepository extends JsonRepository {
         result: {
           taskId: t3Id,
           success: true,
-          summary: `PERSEPHONE: Discrepancias detectadas y matriz comparativa elaborada`,
+          summary: `Coincidencias textuales extraídas de ${docCount} documentos; comparación semántica no implementada`,
           data: {
-            simulated: false,
+            simulated: true,
+            executionMode: 'DEMO',
             documentsAnalyzed: cleanDocs.map(d => d.filename),
-            discrepancies: [
-              'Disparidad material de precios entre cotizaciones ($150,000 vs $120,000 vs $95,000)',
-              'Diferencias críticas en cláusulas de penalización por mora (0% a 15%)',
-              'Rango de SLA entre 98.0% y 99.9%',
-            ],
-            requiresEscalation: true,
+            evidence: documentEvidence,
+            mode: 'RULE_BASED',
           },
           cerberusIds: [],
         },
@@ -450,7 +440,7 @@ export class SqliteRepository extends JsonRepository {
         missionId: id,
         title: 'Custodia, archivo resiliente y sellado criptográfico SHA-256',
         description: 'Generación determinista de hash SHA-256 de evidencia por HADES o TARTARUS.',
-        assignedTo: 'HADES',
+        assignedTo: 'TARTARUS',
         status: 'ASSIGNED',
         priority: 'P2',
         dependsOn: [t5Id],

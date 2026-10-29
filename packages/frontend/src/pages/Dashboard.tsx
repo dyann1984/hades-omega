@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import HolographicCore from '../components/HolographicCore.js'
 import { useHadesStore } from '../store/index.js'
@@ -503,7 +503,7 @@ function StageCard({ stageName, isActive, isDone }: {
 
 // ─── EXECUTION TIMELINE ──────────────────────────────────────────────────────
 
-function ExecutionTimeline({ missionTitle, animProgress, agents }: {
+function ExecutionTimeline({ missionTitle }: {
   missionTitle: string; animProgress: number; agents: Record<AgentName, AgentState>
 }): JSX.Element {
   return (
@@ -517,32 +517,18 @@ function ExecutionTimeline({ missionTitle, animProgress, agents }: {
           <p className="font-mono text-[10px] text-gray-500 tracking-widest">EJECUTANDO MISIÓN</p>
           <p className="text-sm text-gray-200 font-medium truncate max-w-md">{missionTitle}</p>
         </div>
-        <div className="text-right">
-          <p className="font-mono text-2xl font-bold text-electric">{animProgress}%</p>
-          <p className="font-mono text-[10px] text-gray-600">completado</p>
-        </div>
+        <p className="text-xs text-gray-300">Esperando respuesta del servidor</p>
       </div>
 
-      {/* Progress bar */}
-      <div className="h-1 bg-obsidian-600 rounded-full overflow-hidden">
-        <motion.div
-          className="h-full bg-electric rounded-full"
-          animate={{ width: `${animProgress}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-        />
-      </div>
-
-      {/* Stage grid */}
+      {/* No stage is attributed to this request until the server provides evidence. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        {STAGE_TIMELINE.map(({ agent: stageName, progressTarget }) => {
-          const isActive = agents[stageName]?.status === 'EXECUTING'
-          const isDone   = !isActive && animProgress >= progressTarget
-          return <StageCard key={stageName} stageName={stageName} isActive={isActive} isDone={isDone} />
+        {STAGE_TIMELINE.map(({ agent: stageName }) => {
+          return <StageCard key={stageName} stageName={stageName} isActive={false} isDone={false} />
         })}
       </div>
 
       <p className="text-[10px] text-gray-600 font-mono text-center animate-pulse">
-        Procesando — CERBERUS evaluando políticas en tiempo real…
+        Las etapas se mostrarán cuando exista evidencia del servidor.
       </p>
     </motion.div>
   )
@@ -830,7 +816,6 @@ export default function Dashboard(): JSX.Element {
   const [lastMissionId, setLastMissionId] = useState<string | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<SubAgent | null>(null)
   const [orbitalPaused, setOrbitalPaused] = useState(false)
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   const activeAgentCount = Object.values(agents).filter(a => a.status !== 'IDLE').length
   const anyActive        = activeAgentCount > 0
@@ -842,34 +827,10 @@ export default function Dashboard(): JSX.Element {
   const denies         = auditRecords.filter(r => r.guardDecision === 'DENY').length
   const escalations    = auditRecords.filter(r => r.guardDecision === 'ESCALATE').length
 
-  function startStageAnimation(): void {
-    timersRef.current.forEach(clearTimeout)
-    timersRef.current = []
-
-    STAGE_TIMELINE.forEach(({ agent, task, progressTarget, delayMs }, idx) => {
-      const t = setTimeout(() => {
-        // Reset previous agent
-        if (idx > 0) {
-          useHadesStore.getState().setAgentStatus(STAGE_TIMELINE[idx - 1].agent, 'IDLE', null)
-        }
-        setAnimProgress(progressTarget)
-        useHadesStore.getState().setAgentStatus(agent, 'EXECUTING', task)
-      }, delayMs)
-      timersRef.current.push(t)
-    })
-  }
-
-  function stopStageAnimation(): void {
-    timersRef.current.forEach(clearTimeout)
-    timersRef.current = []
-    AGENT_NAMES.forEach(name => useHadesStore.getState().setAgentStatus(name, 'IDLE', null))
-  }
-
   async function createMission(): Promise<void> {
     if (!form.title.trim()) return
     setPhase('executing')
     setAnimProgress(0)
-    startStageAnimation()
 
     try {
       const res = await fetch(apiPath('/api/v1/missions'), {
@@ -882,8 +843,6 @@ export default function Dashboard(): JSX.Element {
         }),
       })
       const json = await res.json()
-      stopStageAnimation()
-      setAnimProgress(100)
 
       if (json.success) {
         const m     = json.data
@@ -905,7 +864,6 @@ export default function Dashboard(): JSX.Element {
         throw new Error(json.error?.message ?? 'Error desconocido del servidor')
       }
     } catch (e: any) {
-      stopStageAnimation()
       useHadesStore.getState().addNotification('error', `Error al crear misión: ${e.message}`)
       setPhase('idle')
     }

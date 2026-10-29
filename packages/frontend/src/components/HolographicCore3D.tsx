@@ -431,7 +431,6 @@ interface OrbitalSystemProps {
 
 function OrbitalSystem({ speedMult, selectedAgent, onAgentSelect }: OrbitalSystemProps) {
   const groupRef  = useRef<THREE.Group>(null)
-  const agents    = useHadesStore(s => s.agents)
   const CENTER: [number, number, number] = [0, 0, 0]
 
   useFrame(({ clock }) => {
@@ -446,8 +445,7 @@ function OrbitalSystem({ speedMult, selectedAgent, onAgentSelect }: OrbitalSyste
     <group ref={groupRef} rotation={[0.44, 0, 0.06]}>
       {/* Connection lines — inside group so they rotate with agents */}
       {(Object.entries(ORBIT_POSITIONS) as [SubAgent, [number, number, number]][]).map(([name, pos]) => {
-        const a      = agents[name]
-        const active = a?.status !== 'IDLE'
+        const active = false // A visible agent status does not prove communication.
         return (
           <Line
             key={name}
@@ -500,14 +498,10 @@ interface Props {
 
 export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {}, paused = false, missionActive = false, lowPower = false }: Props) {
   const agents       = useHadesStore(s => s.agents)
-  const nearTxs      = useHadesStore(s => s.nearTxs)
-  const auditRecords = useHadesStore(s => s.auditRecords)
 
   const anyActive   = missionActive || Object.values(agents).some(a => a.status !== 'IDLE')
   const hasAlert    = Object.values(agents).some(a => a.status === 'ERROR')
-                    || auditRecords.some(r => r.guardDecision === 'DENY')
   const speedMult   = paused ? 0 : anyActive ? 2.4 : 1.0
-  const nearTxCount = nearTxs.length
 
   return (
     <Canvas
@@ -550,7 +544,7 @@ export default function HolographicCore3D({ selectedAgent = null, onAgentSelect 
         onAgentSelect={onAgentSelect}
       />
 
-      <PulseWave trigger={nearTxCount} />
+      <PulseWave trigger={0} />
     </Canvas>
   )
 }

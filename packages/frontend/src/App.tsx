@@ -48,8 +48,7 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
             HADES — Centro de Comando IA
           </h1>
           <div className="ml-auto flex items-center gap-2">
-            <span className="badge-demo">NEAR TESTNET</span>
-            <span className="badge-demo">MODO DEMO</span>
+            <span className="badge-demo">NEAR: consultar estado</span>
             <button onClick={onLogout} className="text-xs text-gray-300 border border-white/20 rounded px-2 py-1">Cerrar sesión</button>
           </div>
         </header>

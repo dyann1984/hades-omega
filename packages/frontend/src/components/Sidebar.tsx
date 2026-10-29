@@ -56,8 +56,8 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
             className={({ isActive }) => clsx(
               'flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors font-mono text-xs',
               isActive
-                ? 'bg-electric/15 text-electric border border-electric/30'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-obsidian-700',
+                ? 'bg-electric/15 text-gray-100 border border-electric/40 shadow-[inset_3px_0_0_#45c9ec]'
+                : 'text-gray-300 hover:text-white hover:bg-obsidian-700',
             )}
           >
             <span className="text-base flex-shrink-0 w-5 text-center">{item.icon}</span>

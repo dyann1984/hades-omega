@@ -81,6 +81,8 @@ export function useWebSocket(): void {
     switch (msg.type) {
       case 'CONNECTED':
         store.setWsConnected(true)
+        // Re-read authorized snapshots after initial connection and reconnection.
+        window.dispatchEvent(new Event('hades:mission-update'))
         pingInterval()
         break
       case 'AGENT_STATUS_CHANGED': {
