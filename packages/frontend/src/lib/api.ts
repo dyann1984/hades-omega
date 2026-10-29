@@ -24,7 +24,8 @@ export function setSessionToken(token: string | undefined, expiresAt?: number): 
 }
 export function getStoredSession(): StoredSession | null { return readStored() }
 export function websocketToken(): string | undefined { return sessionToken }
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const API_BASE = ((import.meta as any).env?.VITE_API_URL as string | undefined) ?? ''
 export function apiPath(path: string): string { return `${API_BASE}${path}` }
 export function apiHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return { ...extra, ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}) }
