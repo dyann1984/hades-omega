@@ -71,6 +71,31 @@ function pickRow(result: TursoResult | null, i = 0): Record<string, string | nul
   return obj
 }
 
+// ——— User lookup: Turso DB (if configured) OR env-var auth (zero external services) ————
+async function findUser(username: string): Promise<{ id: string; password_hash: string; role: string } | null> {
+  // Mode 1 — Turso DB
+  if (process.env.TURSO_URL && process.env.TURSO_AUTH_TOKEN) {
+    const result = await tursoQuery(
+      'SELECT id, password_hash, role FROM users WHERE username = ?',
+      [{ type: 'text', value: username }]
+    )
+    const row = pickRow(result)
+    if (!row?.id || !row.password_hash || !row.role) return null
+    return { id: row.id, password_hash: row.password_hash, role: row.role }
+  }
+
+  // Mode 2 — env-var auth (ADMIN_PASSWORD_HASH + optional USER_{NAME}_HASH / USER_{NAME}_ROLE)
+  if (username === 'admin') {
+    const hash = process.env.ADMIN_PASSWORD_HASH
+    if (hash) return { id: 'admin', password_hash: hash, role: 'ADMIN' }
+  }
+  const key = username.toUpperCase().replace(/[^A-Z0-9]/g, '_')
+  const hash = process.env[`USER_${key}_HASH`]
+  const role = process.env[`USER_${key}_ROLE`]
+  if (hash && role) return { id: username, password_hash: hash, role }
+  return null
+}
+
 // ——— Handler ——————————————————————————————————————————————————————————————
 export default async function handler(req: any, res: any): Promise<void> {
   setSafeCors(req, res)
@@ -78,8 +103,9 @@ export default async function handler(req: any, res: any): Promise<void> {
   if (req.method !== 'POST') { res.status(405).end(); return }
 
   const jwtSecret = process.env.JWT_SECRET
-  const tursoReady = Boolean(process.env.TURSO_URL && process.env.TURSO_AUTH_TOKEN)
-  if (!jwtSecret || jwtSecret.length < 32 || !tursoReady) {
+  const tursoMode = Boolean(process.env.TURSO_URL && process.env.TURSO_AUTH_TOKEN)
+  const envVarMode = Boolean(process.env.ADMIN_PASSWORD_HASH)
+  if (!jwtSecret || jwtSecret.length < 32 || (!tursoMode && !envVarMode)) {
     res.status(503).json({
       success: false,
       error: { code: 'MISCONFIGURED', message: 'Authentication service is not yet configured.' }
@@ -95,11 +121,7 @@ export default async function handler(req: any, res: any): Promise<void> {
     return
   }
 
-  const userResult = await tursoQuery(
-    'SELECT id, password_hash, role FROM users WHERE username = ?',
-    [{ type: 'text', value: username }]
-  )
-  const user = pickRow(userResult)
+  const user = await findUser(username)
 
   // Always run scrypt to prevent timing-based user enumeration
   const DUMMY = `scrypt-32768-8-3:${'0'.repeat(32)}:${'0'.repeat(128)}`
@@ -121,16 +143,19 @@ export default async function handler(req: any, res: any): Promise<void> {
   const exp = now + TTL
   const expiresAt = exp * 1000 // ms for frontend
 
+  // Create a session record in Turso when available; otherwise use JWT-only (client-cleared on logout)
   const sessionId = randomBytes(16).toString('hex')
-  await tursoQuery('INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [
-    { type: 'text', value: sessionId },
-    { type: 'text', value: user.id! },
-    { type: 'integer', value: String(now * 1000) },
-    { type: 'integer', value: String(expiresAt) }
-  ])
+  if (tursoMode) {
+    await tursoQuery('INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [
+      { type: 'text', value: sessionId },
+      { type: 'text', value: user.id },
+      { type: 'integer', value: String(now * 1000) },
+      { type: 'integer', value: String(expiresAt) }
+    ])
+  }
 
   const token = signJwt(
-    { sub: user.id!, roles: [user.role!], sid: sessionId, exp, iat: now },
+    { sub: user.id, roles: [user.role], sid: sessionId, exp, iat: now },
     jwtSecret
   )
 
