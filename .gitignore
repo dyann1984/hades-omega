@@ -101,3 +101,21 @@ ehthumbs.db
 *.sqlite-wal
 *.sqlite-shm
 *.json.backup-*
+
+# ── Scripts de desarrollo local (no incorporar — pueden contener credenciales) ──
+scripts/init-live-db.cjs
+scripts/run-live-demo.cjs
+scripts/sqlite-check.cjs
+scripts/start-api-daemon.cjs
+scripts/start-frontend-daemon.cjs
+scripts/check-webgl-v10.cjs
+scripts/check-webgl-v10-integration.cjs
+scripts/e2e-v10-review.cjs
+
+# ── Archivos locales no rastreados (respaldos, evidencias, temporales) ─────────
+recovery-*/
+evidence-*/
+integration-v10-temp/
+.test-tmp/
+ESTRATEGIA_INTEGRACION_SEGURA_V10.md
+INFORME_INTEGRACION_V10.md
