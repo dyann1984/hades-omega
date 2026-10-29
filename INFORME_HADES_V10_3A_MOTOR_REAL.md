@@ -14,7 +14,7 @@ La ruta admite `Idempotency-Key`: una clave repetida por el mismo propietario y 
 
 **Limitaciones:** una interrupción durante una tarea o después de registrar una aprobación puede dejar la misión en `RUNNING` o `APPROVED`; no hay recuperación automática con leases ni proceso de reconciliación, y no se ha probado concurrencia entre procesos. El cursor permite recuperar eventos, pero la publicación en vivo no usa outbox y podría perderse si el proceso falla tras el commit. La interfaz anterior no se actualizó para los nuevos estados por instrucción del usuario. La prueba API usa `Fastify.inject`, no un servidor de red independiente. Estas limitaciones impiden declarar completa la integración frente a todos los criterios de recuperación y concurrencia.
 
-Validación de esta integración: suite sin caché, 69 pruebas de API, 49 de core y 5 de frontend aprobadas; los builds incluidos en esa ejecución y el typecheck completo sin caché pasaron. Los últimos ajustes menores de compatibilidad y cancelación recibieron pruebas dirigidas adicionales. Punto de recuperación del prototipo: `cfd5f0b`.
+Validación de esta integración: suite sin caché, 69 pruebas de API, 49 de core y 5 de frontend aprobadas; los builds incluidos en esa ejecución y el typecheck completo sin caché pasaron. Los últimos ajustes menores de compatibilidad y cancelación recibieron pruebas dirigidas adicionales. Punto de recuperación del prototipo: `cfd5f0b`; integración: `52ed140`.
 
 **Estado de la primera entrega, anterior a la integración descrita arriba: incompleto.**
 
