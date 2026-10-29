@@ -16,6 +16,7 @@ describe('deterministic capability dispatcher', () => {
     const seal = dispatchCapability('TARTARUS', 'cap:crypto:hash@1.0.0', report.reportMarkdown) as {sha256:string}
     expect(validation.checks.map(x => x.sourceHash)).toEqual(docs.map(d => createHash('sha256').update(d.content).digest('hex')))
     expect(comparison.values.map(x => x.amounts[0])).toEqual([12100,45600,78900])
+    expect(comparison.ranges).toEqual([{currency:'MXN',minimum:12100,maximum:78900,difference:66800,documents:['a.txt','b.txt','c.txt']}])
     expect(report.reportMarkdown).toContain('$45,600')
     expect(report.reportMarkdown).not.toContain('150,000')
     expect(seal.sha256).toBe(createHash('sha256').update(report.reportMarkdown).digest('hex'))

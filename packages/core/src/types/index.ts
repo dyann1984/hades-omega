@@ -14,6 +14,10 @@ export type MissionStatus =
   | 'CANCELLED'
   | 'FAILED'
 export type TaskStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'BLOCKED'
   | 'ASSIGNED'
   | 'ACCEPTED'
   | 'IN_PROGRESS'

@@ -35,20 +35,23 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
   app.post('/local-missions/multi-document', async (req, reply) => {
     requireRole(req, ['ADMIN', 'OPERATOR'])
     const body = req.body as { title?: unknown; documents?: unknown; budgetLimit?: unknown } | undefined
-    if (typeof body?.title !== 'string' || body.title.trim().length < 3 || !Array.isArray(body.documents) || body.documents.length < 2) {
+    if (typeof body?.title !== 'string' || body.title.trim().length < 3 || body.title.length > 200 || !Array.isArray(body.documents) || body.documents.length < 2 || body.documents.length > 20) {
       return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Se requiere título y al menos dos documentos para comparación.' } })
     }
     const cleanDocs: Array<{ filename: string; content: string; mimeType?: string }> = []
     for (const d of body.documents) {
-      if (typeof d?.filename !== 'string' || typeof d?.content !== 'string') {
+      if (typeof d?.filename !== 'string' || !d.filename.trim() || d.filename.length > 255 || typeof d?.content !== 'string' || Buffer.byteLength(d.content,'utf8') > 32768 || (d.mimeType !== undefined && typeof d.mimeType !== 'string')) {
         return reply.code(400).send({ success: false, error: { code: 'INVALID_DOCUMENT', message: 'Cada documento debe incluir filename y content' } })
       }
       cleanDocs.push({ filename: d.filename, content: d.content, mimeType: d.mimeType })
     }
     const owner = (req.user as { sub: string }).sub
     const budgetLimit = typeof body.budgetLimit === 'number' && body.budgetLimit > 0 ? body.budgetLimit : 150000
-    const result = await repository.createMultiDocumentMission(owner, body.title.trim(), cleanDocs, budgetLimit)
-    publishExecutionEvents(repository, result.mission.id, 0)
+    const idempotencyKey = req.headers['idempotency-key']
+    if (idempotencyKey !== undefined && (typeof idempotencyKey !== 'string' || idempotencyKey.length < 1 || idempotencyKey.length > 200)) return reply.code(400).send({success:false,error:{code:'INVALID_IDEMPOTENCY_KEY'}})
+    let result: Awaited<ReturnType<SqliteRepository['createMultiDocumentMission']>>
+    try { result = await repository.createMultiDocumentMission(owner, body.title.trim(), cleanDocs, budgetLimit, idempotencyKey) }
+    catch (error) { if ((error as Error).message === 'IDEMPOTENCY_CONFLICT') return reply.code(409).send({success:false,error:{code:'IDEMPOTENCY_CONFLICT'}}); throw error }
     publishMission(result.mission)
     return reply.code(201).send({ success: true, data: result })
   })
@@ -94,12 +97,13 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
       const missionId = repository.getLocalOperationMissionId(operationId)
       const cursor = missionId ? repository.executionCursor(missionId) : 0
       const mission = await repository.decideLocalOperation(operationId,body.status,(req.user as {sub:string}).sub,body.justification.trim())
-      publishExecutionEvents(repository, mission.id, cursor)
+      if (!mission.context?.tags?.includes('dispatcher-v1')) publishExecutionEvents(repository, mission.id, cursor)
       publishMission(mission)
       return {success:true,data:mission}
     } catch (error) {
       if ((error as Error).message === 'ESCALATION_NOT_FOUND') return reply.code(404).send({success:false,error:{code:'ESCALATION_NOT_FOUND'}})
       if ((error as Error).message === 'APPROVAL_ALREADY_RESOLVED') return reply.code(409).send({success:false,error:{code:'APPROVAL_ALREADY_RESOLVED'}})
+      if ((error as Error).message === 'LEGACY_WORKFLOW_BLOCKED') return reply.code(409).send({success:false,error:{code:'LEGACY_WORKFLOW_BLOCKED',message:'El flujo histórico requiere revisión antes de continuar.'}})
       throw error
     }
   })

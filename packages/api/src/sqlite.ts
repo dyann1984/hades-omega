@@ -3,9 +3,11 @@ import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { AuditRecord, Mission, Task, AgentName } from '@hades/core'
-import { defaultCapabilityRegistry } from '@hades/core'
+import { defaultCapabilityRegistry, bus } from '@hades/core'
 import { JsonRepository, type StoredApproval, type SystemEvent } from './persistence.js'
 import { analyzeDocuments } from './document-analysis.js'
+import { dispatchCapability } from './capability-dispatcher.js'
+import { guard } from './runtime.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
 type Row = { data: string }
@@ -17,7 +19,7 @@ export interface ExecutionEvent {
 /** SQLite-backed repository. Legacy JSON is imported once, after a separate backup. */
 export class SqliteRepository extends JsonRepository {
   private db!: Database.Database
-  constructor(private readonly databasePath: string, private readonly legacyPath: string) { super(legacyPath) }
+  constructor(private readonly databasePath: string, private readonly legacyPath: string, private readonly policyGuard = guard) { super(legacyPath) }
   override async init(): Promise<void> {
     await mkdir(dirname(this.databasePath), { recursive: true })
     this.db = new Database(this.databasePath)
@@ -209,6 +211,10 @@ export class SqliteRepository extends JsonRepository {
     return { mission, approvalId }
   }
   async decideLocalOperation(id: string, decision: 'APPROVED' | 'REJECTED', actor: string, justification: string): Promise<Mission> {
+    const initialId = this.getLocalOperationMissionId(id)
+    const initial = initialId ? this.getMission(initialId) : undefined
+    if (initial?.context?.tags?.includes('dispatcher-v1')) return this.decideDispatchedMission(id, decision, actor, justification)
+    if (initial?.context?.tags?.includes('multi-doc') && decision === 'APPROVED') throw new Error('LEGACY_WORKFLOW_BLOCKED')
     return this.db.transaction(() => {
       const op = this.db.prepare('SELECT * FROM local_operations WHERE id=?').get(id) as { mission_id: string; input: string; state: string } | undefined
       if (!op) throw new Error('ESCALATION_NOT_FOUND')
@@ -297,7 +303,8 @@ export class SqliteRepository extends JsonRepository {
       if (!mission) throw new Error('MISSION_NOT_FOUND')
       const task = mission.tasks.find(t => t.id === taskId)
       if (!task) throw new Error('TASK_NOT_FOUND')
-      if (task.status === 'EXECUTED') {
+      if (mission.context?.tags?.includes('dispatcher-v1')) throw new Error('BLOCKED_BY_DESIGN: Reasignación no disponible para el flujo con aprobación')
+      if (task.status === 'EXECUTED' || task.status === 'COMPLETED' || task.status === 'RUNNING') {
         throw new Error('CANNOT_REASSIGN_COMPLETED_TASK')
       }
 
@@ -331,187 +338,165 @@ export class SqliteRepository extends JsonRepository {
       return { mission, task }
     })()
   }
+  private emitExecution(missionId: string, task: Task | null, type: string, status: string): void {
+    const eventId = randomUUID()
+    this.db.prepare('INSERT INTO execution_events (sequence,event_id,mission_id,task_id,agent_id,type,status,timestamp,correlation_id) VALUES ((SELECT COALESCE(MAX(sequence),0)+1 FROM execution_events WHERE mission_id=?),?,?,?,?,?,?,?,?)')
+      .run(missionId,eventId,missionId,task?.id ?? null,task?.assignedTo ?? null,type,status,Date.now(),missionId)
+  }
+  private publishSince(missionId: string, cursor: number): void {
+    for (const event of this.listExecutionEvents(missionId,cursor)) bus.publish({type:'EXECUTION_EVENT',payload:event})
+  }
+  private runDispatchedTask(missionId: string, taskId: string, input: unknown): boolean {
+    let task!: Task
+    let cursor = this.executionCursor(missionId)
+    this.db.transaction(() => {
+      const mission = this.getMission(missionId)!
+      task = mission.tasks.find(item => item.id === taskId)!
+      if (task.status !== 'QUEUED') throw new Error('TASK_ALREADY_CLAIMED')
+      task.status = 'RUNNING'; task.startedAt = Date.now(); task.context = { ...(task.context ?? {}), executionInput: input }
+      this.putMission(mission); this.emitExecution(missionId,task,'agent.started','RUNNING')
+    })()
+    this.publishSince(missionId,cursor)
+    let output: unknown
+    try { output = dispatchCapability(task.assignedTo, task.capabilityId!, input) }
+    catch (error) {
+      const message = (error as Error).message
+      cursor = this.executionCursor(missionId)
+      this.db.transaction(() => {
+        const mission = this.getMission(missionId)!, current = mission.tasks.find(item => item.id === taskId)!
+        current.status = message.startsWith('CAPABILITY_') ? 'BLOCKED' : 'FAILED'; current.completedAt = Date.now()
+        current.result = {taskId,success:false,summary:message,data:{error:message,method:'RULE_BASED'},cerberusIds:[]}
+        mission.status='FAILED'; mission.completedAt=Date.now(); mission.updatedAt=Date.now()
+        this.db.prepare("UPDATE local_operations SET state='FAILED' WHERE mission_id=?").run(missionId)
+        this.putMission(mission); this.emitExecution(missionId,current,'agent.failed',current.status); this.emitExecution(missionId,null,'mission.failed','FAILED')
+      })()
+      this.publishSince(missionId,cursor); return false
+    }
+    cursor = this.executionCursor(missionId)
+    this.db.transaction(() => {
+      const mission = this.getMission(missionId)!, current = mission.tasks.find(item => item.id === taskId)!
+      if (current.status !== 'RUNNING') throw new Error('TASK_NOT_RUNNING')
+      current.result={taskId,success:true,summary:`Capacidad ${current.capabilityId} ejecutada por adaptador determinista`,data:output,cerberusIds:[]}
+      current.status='COMPLETED'; current.completedAt=Date.now(); mission.updatedAt=Date.now()
+      this.putMission(mission); this.emitExecution(missionId,current,'agent.completed','COMPLETED')
+    })()
+    this.publishSince(missionId,cursor); return true
+  }
+  private createDispatchedMission(owner: string, title: string, documents: Array<{filename:string;content:string;mimeType?:string}>, budgetLimit: number, idempotencyKey?: string): {mission:Mission;approvalId:string} {
+    const id=randomUUID(), approvalId=randomUUID(), now=Date.now()
+    const key=idempotencyKey ? JSON.stringify([owner,idempotencyKey]) : undefined
+    const fingerprint=createHash('sha256').update(JSON.stringify({title,documents,budgetLimit})).digest('hex')
+    const steps: Array<[AgentName,string,string]> = [
+      ['CHARON','cap:doc:intake@1.0.0','Extraer documentos'], ['MINOS','cap:doc:validate@1.0.0','Validar documentos'],
+      ['PERSEPHONE','cap:doc:compare@1.0.0','Comparar documentos'], ['ELYSIUM','cap:report:generate@1.0.0','Generar informe'],
+      ['TARTARUS','cap:crypto:hash@1.0.0','Sellar informe'],
+    ]
+    const tasks: Task[] = steps.map(([assignedTo,capabilityId,taskTitle]) => ({id:randomUUID(),missionId:id,title:taskTitle,description:taskTitle,assignedTo,capabilityId,status:'QUEUED',priority:'P1',dependsOn:[],createdAt:now,startedAt:null,completedAt:null,result:null}))
+    tasks.forEach((task,index) => { if (index) task.dependsOn=[tasks[index-1]!.id] })
+    const mission: Mission={id,ownerId:owner,title,description:'Análisis documental determinista',context:{organizationId:'',budgetLimit,currency:'MXN',deadline:null,priority:'MEDIUM',tags:['multi-doc','dispatcher-v1'],documents},status:'IN_PROGRESS',createdAt:now,updatedAt:now,completedAt:null,tasks,report:null}
+    const existing=this.db.transaction(() => {
+      if (key) {
+        const prior=this.db.prepare('SELECT fingerprint,mission_id FROM idempotency WHERE key=?').get(key) as {fingerprint:string;mission_id:string}|undefined
+        if (prior) {
+          if (prior.fingerprint !== fingerprint) throw new Error('IDEMPOTENCY_CONFLICT')
+          const operation=this.db.prepare('SELECT id FROM local_operations WHERE mission_id=?').get(prior.mission_id) as {id:string}
+          return {mission:this.getMission(prior.mission_id)!,approvalId:operation.id}
+        }
+      }
+      this.putMission(mission)
+      this.db.prepare('INSERT INTO local_operations (id,mission_id,owner_id,input,state) VALUES (?,?,?,?,?)').run(approvalId,id,owner,'','RUNNING')
+      if (key) this.db.prepare('INSERT INTO idempotency (key,fingerprint,mission_id) VALUES (?,?,?)').run(key,fingerprint,id)
+      for (const task of tasks) this.emitExecution(id,task,'task.queued','QUEUED')
+      return undefined
+    })()
+    if (existing) return existing
+    this.publishSince(id,0)
+    let input: unknown=documents
+    for (const task of tasks.slice(0,3)) {
+      if (!this.runDispatchedTask(id,task.id,input)) return {mission:this.getMission(id)!,approvalId}
+      input=this.getMission(id)!.tasks.find(t => t.id === task.id)!.result!.data
+    }
+    const protectedTask=tasks[4]!
+    const decision=this.policyGuard.evaluate({id:randomUUID(),agentId:`agent:${protectedTask.assignedTo.toLowerCase()}`,agentName:protectedTask.assignedTo,operationType:'CRYPTO_HASH',payload:{missionId:id},missionId:id,taskId:protectedTask.id,requestedAt:Date.now()})
+    const cursor=this.executionCursor(id)
+    this.db.transaction(() => {
+      const current=this.getMission(id)!
+      this.recordAuditEvent({actor:'CERBERUS',missionId:id,action:'POLICY_EVALUATED',result:decision.outcome,correlationId:decision.proposalId})
+      current.context.guardDecision=decision
+      current.context.guardPolicyHash=this.policyGuard.getPolicyHash()
+      if (decision.outcome === 'DENY') {
+        const task=current.tasks[4]!; task.status='BLOCKED'; task.completedAt=Date.now(); task.result={taskId:task.id,success:false,summary:decision.reason ?? 'DENY',data:{decision},cerberusIds:[decision.auditId]}
+        current.status='FAILED'; current.completedAt=Date.now(); this.db.prepare("UPDATE local_operations SET state='FAILED' WHERE id=?").run(approvalId)
+        this.putMission(current); this.emitExecution(id,task,'cerberus.blocked','DENY'); this.emitExecution(id,null,'mission.failed','FAILED')
+      } else {
+        current.tasks[3]!.status='CERBERUS_REVIEW'; current.status='PARTIAL_COMPLETE'; this.putMission(current)
+        this.db.prepare("UPDATE local_operations SET state='WAITING_APPROVAL' WHERE id=?").run(approvalId)
+        if (decision.outcome === 'ESCALATE') this.emitExecution(id,protectedTask,'cerberus.escalated','ESCALATE')
+        this.workflowEvent(id,owner,'WAITING_APPROVAL')
+      }
+    })()
+    this.publishSince(id,cursor)
+    return {mission:this.getMission(id)!,approvalId}
+  }
+  private decideDispatchedMission(id: string, decision: 'APPROVED'|'REJECTED', actor: string, justification: string): Mission {
+    const missionId=this.getLocalOperationMissionId(id)!
+    const cursor=this.executionCursor(missionId)
+    this.db.transaction(() => {
+      const op=this.db.prepare('SELECT state FROM local_operations WHERE id=?').get(id) as {state:string}|undefined
+      if (!op) throw new Error('ESCALATION_NOT_FOUND')
+      if (op.state !== 'WAITING_APPROVAL') throw new Error('APPROVAL_ALREADY_RESOLVED')
+      const mission=this.getMission(missionId)!, task=mission.tasks[3]!, now=Date.now()
+      const approval: StoredApproval={id:randomUUID(),escalationId:id,status:decision,justification,decidedBy:actor,decidedAt:now,executionAuthorized:decision==='APPROVED'}
+      this.db.prepare('INSERT INTO approvals VALUES (?,?,?)').run(approval.id,id,JSON.stringify(approval)); this.workflowEvent(missionId,actor,decision)
+      if (decision === 'REJECTED') { task.status='BLOCKED'; task.completedAt=now; mission.status='FAILED'; mission.completedAt=now; this.db.prepare("UPDATE local_operations SET state='CANCELLED' WHERE id=?").run(id); this.putMission(mission); this.emitExecution(missionId,task,'mission.failed','REJECTED') }
+      else { task.status='QUEUED'; mission.status='IN_PROGRESS'; this.db.prepare("UPDATE local_operations SET state='APPROVED' WHERE id=?").run(id); this.putMission(mission) }
+    })()
+    this.publishSince(missionId,cursor)
+    if (decision==='REJECTED') return this.getMission(missionId)!
+    const mission=this.getMission(missionId)!
+    const comparison=mission.tasks[2]!.result!.data
+    if (!this.runDispatchedTask(missionId,mission.tasks[3]!.id,comparison)) return this.getMission(missionId)!
+    const report=this.getMission(missionId)!.tasks[3]!.result!.data as {reportMarkdown:string}
+    const protectedTask=this.getMission(missionId)!.tasks[4]!
+    const policyDecision=this.policyGuard.evaluate({id:randomUUID(),agentId:`agent:${protectedTask.assignedTo.toLowerCase()}`,agentName:protectedTask.assignedTo,operationType:'CRYPTO_HASH',payload:{inputBytes:Buffer.byteLength(report.reportMarkdown,'utf8')},missionId,taskId:protectedTask.id,requestedAt:Date.now()})
+    const beforePolicy=this.executionCursor(missionId)
+    const policyContext=this.getMission(missionId)!.context
+    const previousDecision=policyContext.guardDecision as {outcome?:string} | undefined
+    const blocked=policyContext.guardPolicyHash !== this.policyGuard.getPolicyHash() || policyDecision.outcome === 'DENY' || (policyDecision.outcome === 'ESCALATE' && (previousDecision?.outcome !== 'ESCALATE' || previousDecision && (previousDecision as {ruleMatched?:string|null}).ruleMatched !== policyDecision.ruleMatched))
+    this.db.transaction(() => {
+      const current=this.getMission(missionId)!
+      this.recordAuditEvent({actor:'CERBERUS',missionId,action:'POLICY_EVALUATED',result:policyDecision.outcome,correlationId:policyDecision.proposalId})
+      current.context.finalGuardDecision=policyDecision
+      if (blocked) {
+        const task=current.tasks[4]!; task.status='BLOCKED'; task.completedAt=Date.now()
+        task.result={taskId:task.id,success:false,summary:'Política cambió o denegó la operación',data:{decision:policyDecision},cerberusIds:[policyDecision.auditId]}
+        current.status='FAILED'; current.completedAt=Date.now()
+        this.db.prepare("UPDATE local_operations SET state='FAILED' WHERE id=?").run(id)
+        this.putMission(current); this.emitExecution(missionId,task,'cerberus.blocked',policyDecision.outcome); this.emitExecution(missionId,null,'mission.failed','BLOCKED')
+      } else this.putMission(current)
+    })()
+    this.publishSince(missionId,beforePolicy)
+    if (blocked) return this.getMission(missionId)!
+    if (!this.runDispatchedTask(missionId,mission.tasks[4]!.id,report.reportMarkdown)) return this.getMission(missionId)!
+    const endCursor=this.executionCursor(missionId)
+    this.db.transaction(() => {
+      const finished=this.getMission(missionId)!; finished.status='COMPLETED'; finished.completedAt=Date.now(); finished.updatedAt=Date.now()
+      this.db.prepare("UPDATE local_operations SET state='COMPLETED' WHERE id=? AND state='APPROVED'").run(id)
+      this.putMission(finished); this.emitExecution(missionId,null,'mission.completed','COMPLETED')
+    })()
+    this.publishSince(missionId,endCursor)
+    return this.getMission(missionId)!
+  }
   async createMultiDocumentMission(
     owner: string,
     title: string,
     documents: Array<{ filename: string; content: string; mimeType?: string }>,
     budgetLimit = 150000,
+    idempotencyKey?: string,
   ): Promise<{ mission: Mission; approvalId: string }> {
-    const id = randomUUID(), approvalId = randomUUID(), now = Date.now()
-    const docCount = documents.length
-    const cleanDocs = documents.map(d => ({
-      filename: d.filename,
-      content: d.content,
-      mimeType: d.mimeType ?? 'text/plain',
-      sizeBytes: Buffer.byteLength(d.content, 'utf8'),
-    }))
-    const documentEvidence = analyzeDocuments(cleanDocs)
-
-    const t1Id = randomUUID(), t2Id = randomUUID(), t3Id = randomUUID()
-    const t4Id = randomUUID(), t5Id = randomUUID(), t6Id = randomUUID()
-
-    const tasks: Task[] = [
-      {
-        id: t1Id,
-        missionId: id,
-        title: `Ingesta y extracción de ${docCount} documentos`,
-        description: `Recepción, parsing estructurado y normalización del lote por CHARON.`,
-        assignedTo: 'CHARON',
-        status: 'EXECUTED',
-        priority: 'P0',
-        dependsOn: [],
-        createdAt: now,
-        startedAt: now,
-        completedAt: now,
-        capabilityId: 'cap:doc:intake@1.0.0',
-        result: {
-          taskId: t1Id,
-          success: true,
-          summary: `Análisis local de ${docCount} textos; despacho de CHARON no implementado`,
-          data: { simulated: true, executionMode: 'DEMO', totalDocuments: docCount, totalWords: cleanDocs.reduce((sum, d) => sum + d.content.split(/\s+/).length, 0) },
-          cerberusIds: [],
-        },
-      },
-      {
-        id: t2Id,
-        missionId: id,
-        title: 'Validación de cumplimiento y detección de cláusulas de riesgo',
-        description: 'Inspección de integridad normativa, términos de mora y causales de rescisión por MINOS.',
-        assignedTo: 'MINOS',
-        status: 'EXECUTED',
-        priority: 'P0',
-        dependsOn: [t1Id],
-        createdAt: now,
-        startedAt: now,
-        completedAt: now,
-        capabilityId: 'cap:doc:validate@1.0.0',
-        result: {
-          taskId: t2Id,
-          success: true,
-          summary: `Búsqueda textual básica; validación normativa por MINOS no implementada`,
-          data: {
-            simulated: true,
-            executionMode: 'DEMO',
-            totalChecked: docCount,
-            highRiskDetected: cleanDocs.some(d => d.content.toLowerCase().includes('sin garantía') || d.content.toLowerCase().includes('0%')),
-          },
-          cerberusIds: [],
-        },
-      },
-      {
-        id: t3Id,
-        missionId: id,
-        title: 'Comparación multi-documental y análisis financiero cruzado',
-        description: 'Síntesis comparativa de ofertas: contraste de precios, penalizaciones y SLA por PERSEPHONE.',
-        assignedTo: 'PERSEPHONE',
-        status: 'EXECUTED',
-        priority: 'P1',
-        dependsOn: [t2Id],
-        createdAt: now,
-        startedAt: now,
-        completedAt: now,
-        capabilityId: 'cap:doc:compare@1.0.0',
-        result: {
-          taskId: t3Id,
-          success: true,
-          summary: `Coincidencias textuales extraídas de ${docCount} documentos; comparación semántica no implementada`,
-          data: {
-            simulated: true,
-            executionMode: 'DEMO',
-            documentsAnalyzed: cleanDocs.map(d => d.filename),
-            evidence: documentEvidence,
-            mode: 'RULE_BASED',
-          },
-          cerberusIds: [],
-        },
-      },
-      {
-        id: t4Id,
-        missionId: id,
-        title: 'Gobernanza de políticas y control de aprobación ejecutiva',
-        description: 'Supervisión de CERBERUS y autorización administrativa obligatoria.',
-        assignedTo: 'HADES',
-        status: 'CERBERUS_REVIEW',
-        priority: 'P1',
-        dependsOn: [t3Id],
-        createdAt: now,
-        startedAt: now,
-        completedAt: null,
-        capabilityId: 'cap:crypto:hash@1.0.0',
-        requiresApproval: true,
-        result: {
-          taskId: t4Id,
-          success: false,
-          summary: 'Esperando aprobación de administrador para autorizar dictamen y sellado',
-          data: { pendingApproval: true, escalationId: approvalId, simulated: false },
-          cerberusIds: [],
-        },
-      },
-      {
-        id: t5Id,
-        missionId: id,
-        title: 'Generación de informe consolidado ejecutivo',
-        description: 'Elaboración de entregable final con tabla comparativa de proveedores y dictamen por ELYSIUM.',
-        assignedTo: 'ELYSIUM',
-        status: 'ASSIGNED',
-        priority: 'P1',
-        dependsOn: [t4Id],
-        createdAt: now,
-        startedAt: null,
-        completedAt: null,
-        capabilityId: 'cap:report:generate@1.0.0',
-        result: null,
-      },
-      {
-        id: t6Id,
-        missionId: id,
-        title: 'Custodia, archivo resiliente y sellado criptográfico SHA-256',
-        description: 'Generación determinista de hash SHA-256 de evidencia por HADES o TARTARUS.',
-        assignedTo: 'TARTARUS',
-        status: 'ASSIGNED',
-        priority: 'P2',
-        dependsOn: [t5Id],
-        createdAt: now,
-        startedAt: null,
-        completedAt: null,
-        capabilityId: 'cap:crypto:hash@1.0.0',
-        result: null,
-      },
-    ]
-
-    const mission: Mission = {
-      id,
-      ownerId: owner,
-      title,
-      description: `Comparación multiagente de ${docCount} documentos contractuales`,
-      context: {
-        organizationId: 'techcore-enterprise',
-        budgetLimit,
-        currency: 'MXN',
-        deadline: null,
-        priority: 'HIGH',
-        tags: ['multi-doc', 'enterprise-comparison', 'phase8'],
-        documents: cleanDocs,
-      },
-      status: 'PARTIAL_COMPLETE',
-      createdAt: now,
-      updatedAt: now,
-      completedAt: null,
-      tasks,
-      report: null,
-    }
-
-    const inputData = cleanDocs.map(d => `${d.filename}:${d.content.slice(0, 100)}`).join('|')
-
-    this.db.transaction(() => {
-      this.putMission(mission)
-      this.db.prepare('INSERT INTO local_operations (id,mission_id,owner_id,input,state) VALUES (?,?,?,?,?)')
-        .run(approvalId, id, owner, inputData, 'WAITING_APPROVAL')
-      for (const state of ['CREATED', 'WAITING_APPROVAL']) this.workflowEvent(id, owner, state)
-    })()
-
-    return { mission, approvalId }
+    return this.createDispatchedMission(owner, title, documents, budgetLimit, idempotencyKey)
   }
+
   hasUsers(): boolean { return !!(this.db.prepare('SELECT 1 FROM users LIMIT 1').get()) }
   getMeta(key: string): string | undefined { const row = this.db.prepare('SELECT value FROM metadata WHERE key=?').get(key) as { value: string } | undefined; return row?.value }
   setMeta(key: string, value: string): void { this.db.prepare('INSERT INTO metadata (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,value) }
@@ -560,8 +545,9 @@ export class SqliteRepository extends JsonRepository {
       const op = this.db.prepare('SELECT id,state FROM local_operations WHERE mission_id=?').get(missionId) as {id:string;state:string} | undefined
       if (!op) throw new Error('CANNOT_CANCEL')
       if (op.state !== 'WAITING_APPROVAL') throw new Error('CANNOT_CANCEL')
-      const now=Date.now(), task=mission.tasks[0]!
+      const now=Date.now(), task=mission.context?.tags?.includes('dispatcher-v1') ? mission.tasks.find(item => item.status === 'CERBERUS_REVIEW')! : mission.tasks[0]!
       task.status='CANCELLED'; task.completedAt=now; task.result={taskId:task.id,success:false,summary:'Cancelada antes de la ejecución',data:{cancelled:true},cerberusIds:[]}
+      if (mission.context?.tags?.includes('dispatcher-v1')) for (const pending of mission.tasks) if (pending.status === 'QUEUED') pending.status='BLOCKED'
       mission.status='CANCELLED'; mission.updatedAt=now; mission.completedAt=now
       this.db.prepare("UPDATE local_operations SET state='CANCELLED',decided_by=?,decided_at=? WHERE id=? AND state='WAITING_APPROVAL'").run(actor,now,op.id)
       const event = {id:randomUUID(),type:'LOCAL_EXECUTION_STATE',actor,timestamp:now,payload:{missionId,state:'CANCELLED',reason}}

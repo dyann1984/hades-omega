@@ -148,11 +148,11 @@ describe('FASE 8 — Autonomous Intelligence & Capabilities', () => {
       const { mission, approvalId } = createRes.json().data
 
       // Check stages: CHARON, MINOS, PERSEPHONE executed immediately; Task 4 is waiting approval (CERBERUS_REVIEW)
-      expect(mission.tasks[0].status).toBe('EXECUTED')
-      expect(mission.tasks[1].status).toBe('EXECUTED')
-      expect(mission.tasks[2].status).toBe('EXECUTED')
+      expect(mission.tasks[0].status).toBe('COMPLETED')
+      expect(mission.tasks[1].status).toBe('COMPLETED')
+      expect(mission.tasks[2].status).toBe('COMPLETED')
       expect(mission.tasks[3].status).toBe('CERBERUS_REVIEW')
-      expect(mission.tasks[3].assignedTo).toBe('HADES')
+      expect(mission.tasks[3].assignedTo).toBe('ELYSIUM')
 
       // 2. Test INCOMPATIBLE reassignment attempt: reassigning Task 2 (MINOS validation) to PERSEPHONE
       const badReassignRes = await app.inject({
@@ -167,7 +167,7 @@ describe('FASE 8 — Autonomous Intelligence & Capabilities', () => {
       // Must be blocked because task 2 already completed or PERSEPHONE lacks cap:doc:validate
       expect([400, 409]).toContain(badReassignRes.statusCode)
 
-      // Test INCOMPATIBLE reassignment on unexecuted task: try assigning Task 5 (ELYSIUM report) to MINOS
+      // Reassignment is blocked for the new approval-bound workflow.
       const badReassignReport = await app.inject({
         method: 'POST',
         url: `/api/v1/local-missions/${mission.id}/tasks/${mission.tasks[4].id}/reassign`,
@@ -179,9 +179,9 @@ describe('FASE 8 — Autonomous Intelligence & Capabilities', () => {
       })
       expect(badReassignReport.statusCode).toBe(409)
       expect(badReassignReport.json().error.code).toBe('REASSIGNMENT_BLOCKED_BY_DESIGN')
-      expect(badReassignReport.json().error.message).toContain('MINOS')
+      expect(badReassignReport.json().error.message).toContain('Reasignación')
 
-      // 3. Test COMPATIBLE reassignment: Task 4 (SHA-256 hash / crypto) from HADES to TARTARUS!
+      // The approved workflow does not allow reassignment after policy evaluation.
       const goodReassignRes = await app.inject({
         method: 'POST',
         url: `/api/v1/local-missions/${mission.id}/tasks/${mission.tasks[3].id}/reassign`,
@@ -191,18 +191,16 @@ describe('FASE 8 — Autonomous Intelligence & Capabilities', () => {
           justification: 'Transferencia autorizada al especialista en seguridad criptográfica TARTARUS',
         },
       })
-      expect(goodReassignRes.statusCode).toBe(200)
-      const reassignedTask = goodReassignRes.json().data.task
-      expect(reassignedTask.assignedTo).toBe('TARTARUS')
+      expect(goodReassignRes.statusCode).toBe(409)
 
-      // Check audit event recorded for reassignment
+      // Check the actual policy evaluation is recorded.
       const auditRes = await app.inject({
         url: `/api/v1/audit/events?missionId=${mission.id}`,
         headers: adminHeaders,
       })
       expect(auditRes.statusCode).toBe(200)
       const events = auditRes.json().data
-      expect(events.some((e: any) => e.action === 'TASK_REASSIGNED')).toBe(true)
+      expect(events.some((e: any) => e.action === 'POLICY_EVALUATED')).toBe(true)
 
       // 4. Admin decides approval on the mission hold
       const decideRes = await app.inject({
@@ -217,16 +215,15 @@ describe('FASE 8 — Autonomous Intelligence & Capabilities', () => {
       expect(decideRes.statusCode).toBe(200)
       const finishedMission = decideRes.json().data
       expect(finishedMission.status).toBe('COMPLETED')
-      // Task 4 executed by TARTARUS
+      // The report and seal are produced by their registered adapters.
       const task4 = finishedMission.tasks.find((t: any) => t.id === mission.tasks[3].id)
-      expect(task4.status).toBe('EXECUTED')
-      expect(task4.assignedTo).toBe('TARTARUS')
-      expect(task4.result.data.executor).toBe('TARTARUS')
-      expect(task4.result.data.sha256).toBeTruthy()
+      expect(task4.status).toBe('COMPLETED')
+      expect(task4.assignedTo).toBe('ELYSIUM')
+      expect(task4.result.data.reportMarkdown).toBeTruthy()
 
       // Subsequent tasks executed
-      expect(finishedMission.tasks[4].status).toBe('EXECUTED')
-      expect(finishedMission.tasks[5].status).toBe('EXECUTED')
+      expect(finishedMission.tasks[4].status).toBe('COMPLETED')
+      expect(finishedMission.tasks[4].result.data.sha256).toBeTruthy()
 
       // 5. Restart backend and check persistence
       await app.close(); repo.close()
@@ -234,7 +231,7 @@ describe('FASE 8 — Autonomous Intelligence & Capabilities', () => {
       const restored = repo.getMission(mission.id)
       expect(restored).toBeTruthy()
       expect(restored?.status).toBe('COMPLETED')
-      expect(restored?.tasks.every(t => t.status === 'EXECUTED')).toBe(true)
+      expect(restored?.tasks.every(t => t.status === 'COMPLETED')).toBe(true)
     } finally {
       await app.close(); repo.close(); await rm(dir, { recursive: true, force: true }); process.env.JWT_SECRET = old
     }
