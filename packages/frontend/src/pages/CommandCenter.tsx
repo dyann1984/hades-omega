@@ -92,7 +92,7 @@ function SectionHeader({ title, badge, children }: { title: string; badge?: stri
   return (
     <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between">
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[11px] font-semibold text-gray-400 tracking-widest">{title}</span>
+        <span className="font-mono text-[11px] font-semibold text-gray-300 tracking-widest">{title}</span>
         {badge !== undefined && (
           <span className="font-mono text-[9px] bg-electric/10 text-electric border border-electric/20 px-1.5 py-0.5 rounded-full">
             {badge}
@@ -188,7 +188,7 @@ function AgentMonitorPanel({ agents, apiAgents }: {
                     {STATUS_LABELS[status] ?? status}
                   </span>
                 </div>
-                <p className="text-[9px] text-gray-700 leading-tight">{meta.role}</p>
+                <p className="text-[9px] text-gray-400 leading-tight">{meta.role}</p>
                 {apiData?.capabilities && apiData.capabilities.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {apiData.capabilities.map((c, idx) => (
@@ -399,7 +399,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
                 >
                   {submitting ? '⏳ ENVIANDO…' : missionMode === 'single' ? '▶ SOLICITAR OPERACIÓN' : '⚡ PLANIFICAR Y COMPARAR (FASE 8)'}
                 </button>
-                <p className="font-mono text-[9px] text-gray-700">
+                <p className="font-mono text-[9px] text-gray-500">
                   La operación requerirá aprobación ADMIN antes de ejecutarse
                 </p>
               </div>
@@ -412,7 +412,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
         )}
 
         {missions.length === 0 ? (
-          <p className="text-[10px] text-gray-700 font-mono py-2">Sin misiones activas</p>
+          <p className="text-[10px] text-gray-400 font-mono py-2">Sin misiones activas</p>
         ) : (
           <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
             {missions.map(m => {
@@ -424,7 +424,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
                     <p className="font-mono text-[10px] text-gray-300 mission-title flex-1">{m.title}</p>
                     <span className={`font-mono text-[9px] flex-shrink-0 ${statusColor}`}>{m.status}</span>
                   </div>
-                  <p className="font-mono text-[9px] text-gray-600">
+                  <p className="font-mono text-[9px] text-gray-500">
                     {new Date(m.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
                   </p>
                   {m.tasks.length > 0 && (
@@ -434,7 +434,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
                           ['COMPLETED', 'EXECUTED'].includes(t.status) ? 'bg-permit/10 text-permit' :
                           t.status === 'FAILED'    ? 'bg-deny/10 text-deny' :
                           t.status === 'RUNNING'   ? 'bg-electric/10 text-electric' :
-                          'bg-white/5 text-gray-600'
+                          'bg-white/5 text-gray-400'
                         }`}>{t.status}</span>
                       ))}
                     </div>
@@ -502,7 +502,7 @@ function ApprovalsKanban({ missions, pendingApprovals, onDecide, onReassign, onR
             {pendingApprovals.map(p => (
               <div key={p.id} className="border border-escalate/20 bg-escalate/5 rounded p-2 flex flex-col gap-1.5">
                 <p className="font-mono text-[10px] text-gray-300 break-all whitespace-pre-wrap">{p.input}</p>
-                <p className="font-mono text-[9px] text-gray-600">Misión: {p.missionId.slice(0, 8)}…</p>
+                <p className="font-mono text-[9px] text-gray-400">Misión: {p.missionId.slice(0, 8)}…</p>
                 <div className="flex gap-2 mt-0.5">
                   <button
                     onClick={() => void onDecide(p.id, 'APPROVED')}
@@ -555,15 +555,15 @@ function ApprovalsKanban({ missions, pendingApprovals, onDecide, onReassign, onR
                           </button>
                         </div>
                       )}
-                      {!!t.dependsOn?.length && <p className="font-mono text-[8px] text-gray-600">Dependencias: {t.dependsOn.length}</p>}
+                      {!!t.dependsOn?.length && <p className="font-mono text-[8px] text-gray-400">Dependencias: {t.dependsOn.length}</p>}
                       {t.result?.summary && (
-                        <p className="font-mono text-[8px] text-gray-600 truncate mt-0.5">{t.result.summary}</p>
+                        <p className="font-mono text-[8px] text-gray-400 truncate mt-0.5">{t.result.summary}</p>
                       )}
                     </div>
                   ))}
                   {tasks.length === 0 && (
                     <div className="border border-dashed border-white/5 rounded p-1.5 text-center">
-                      <span className="font-mono text-[8px] text-gray-700">—</span>
+                      <span className="font-mono text-[8px] text-gray-500">—</span>
                     </div>
                   )}
                 </div>
@@ -607,7 +607,7 @@ function DocumentsAuditPanel({ docResults }: {
         {tab === 'docs' ? (
           docResults.length === 0 ? (
             <div className="text-center py-4">
-              <p className="text-[10px] text-gray-700">Sin documentos procesados</p>
+              <p className="text-[10px] text-gray-400">Sin documentos procesados</p>
               <Link to="/documents" className="font-mono text-[10px] text-electric hover:underline mt-1 block">
                 → Ir al módulo de Documentos
               </Link>
@@ -623,7 +623,7 @@ function DocumentsAuditPanel({ docResults }: {
                   }`}>{d.status}</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-mono text-[10px] text-gray-300 truncate">{d.filename}</p>
-                    <p className="font-mono text-[9px] text-gray-600">
+                    <p className="font-mono text-[9px] text-gray-500">
                       {new Date(d.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
                     </p>
                   </div>
@@ -709,7 +709,7 @@ function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryA
         <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-electric/20 pointer-events-none" />
 
         {!selectedAgent && (
-          <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-gray-700 pointer-events-none whitespace-nowrap">
+          <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-gray-500 pointer-events-none whitespace-nowrap">
             Haz clic en un agente para ver su estado
           </p>
         )}
@@ -741,17 +741,17 @@ function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryA
       {/* Footer with real metrics */}
       <div className="px-4 py-2.5 border-t border-white/5 grid grid-cols-3 gap-0 text-center">
         <div className="flex flex-col gap-0.5">
-          <p className="font-mono text-[9px] text-gray-600 uppercase">Sistema</p>
-          <p className="font-mono text-[10px] text-gray-400">IA DISTRIBUIDA</p>
+          <p className="font-mono text-[9px] text-gray-500 uppercase">Sistema</p>
+          <p className="font-mono text-[10px] text-gray-300">IA DISTRIBUIDA</p>
         </div>
         <div className="flex flex-col gap-0.5 border-x border-white/5">
-          <p className="font-mono text-[9px] text-gray-600 uppercase">Decisiones</p>
-          <p className={`font-mono text-[10px] ${auditRecords.length > 0 ? 'text-electric' : 'text-gray-600'}`}>
+          <p className="font-mono text-[9px] text-gray-500 uppercase">Decisiones</p>
+          <p className={`font-mono text-[10px] ${auditRecords.length > 0 ? 'text-electric' : 'text-gray-400'}`}>
             {auditRecords.length} CERBERUS
           </p>
         </div>
         <div className="flex flex-col gap-0.5">
-          <p className="font-mono text-[9px] text-gray-600 uppercase">Red</p>
+          <p className="font-mono text-[9px] text-gray-500 uppercase">Red</p>
           <p className="font-mono text-[10px] text-gold/80">NEAR SIMULACIÓN</p>
         </div>
       </div>
@@ -947,11 +947,11 @@ export default function CommandCenter(): JSX.Element {
           <button
             onClick={() => void refreshAll()}
             disabled={loadingData}
-            className="font-mono text-[10px] text-gray-600 hover:text-gray-400 border border-white/10 px-2 py-1 rounded transition-colors"
+            className="font-mono text-[10px] text-gray-400 hover:text-gray-200 border border-white/10 px-2 py-1 rounded transition-colors"
           >
             {loadingData ? '⏳' : '↺ ACTUALIZAR'}
           </button>
-          <span className="font-mono text-[10px] text-gray-600">HADES COMMAND CENTER</span>
+          <span className="font-mono text-[10px] text-gray-500">HADES COMMAND CENTER</span>
         </div>
       </div>
 

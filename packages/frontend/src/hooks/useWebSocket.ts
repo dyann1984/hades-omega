@@ -127,6 +127,46 @@ export function useWebSocket(): void {
         }
         break
       }
+      case 'EXECUTION_EVENT': {
+        const p = msg.payload as { type: string; agentId: string | null; missionId: string; status: string }
+        const agentId = p.agentId as import('../store/index.js').AgentName | null
+        switch (p.type) {
+          case 'task.queued':
+            store.setAgentStatus('HADES', 'EXECUTING', `mission:${p.missionId}`)
+            break
+          case 'agent.started':
+            if (agentId) store.setAgentStatus(agentId, 'EXECUTING', `mission:${p.missionId}`)
+            break
+          case 'agent.completed':
+            if (agentId) store.setAgentStatus(agentId, 'IDLE', null)
+            break
+          case 'agent.failed':
+            if (agentId) store.setAgentStatus(agentId, 'ERROR', null)
+            break
+          case 'cerberus.blocked':
+            store.setAgentStatus('CERBERUS', 'ERROR', null)
+            break
+          case 'cerberus.escalated':
+          case 'approval.requested':
+            store.setAgentStatus('CERBERUS', 'WAITING', null)
+            break
+          case 'approval.granted':
+            store.setAgentStatus('CERBERUS', 'IDLE', null)
+            break
+          case 'approval.denied':
+            store.setAgentStatus('CERBERUS', 'ERROR', null)
+            break
+          case 'mission.completed':
+            store.setAgentStatus('HADES', 'IDLE', null)
+            window.dispatchEvent(new Event('hades:mission-update'))
+            break
+          case 'mission.failed':
+            store.setAgentStatus('HADES', 'ERROR', null)
+            window.dispatchEvent(new Event('hades:mission-update'))
+            break
+        }
+        break
+      }
     }
   }
 }

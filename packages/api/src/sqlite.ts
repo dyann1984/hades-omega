@@ -81,6 +81,13 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (7)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 8').get()) {
+      this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE task_leases (attempt_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, mission_id TEXT NOT NULL, process_id TEXT NOT NULL, acquired_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, released_at INTEGER, outcome TEXT); CREATE INDEX idx_task_leases_active ON task_leases(task_id, mission_id, released_at);`)
+        this.db.prepare('INSERT INTO schema_migrations VALUES (8)').run()
+      })()
+    }
+    this.reconcileOnStartup()
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
     try { raw = await readFile(this.legacyPath, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
@@ -346,22 +353,118 @@ export class SqliteRepository extends JsonRepository {
   private publishSince(missionId: string, cursor: number): void {
     for (const event of this.listExecutionEvents(missionId,cursor)) bus.publish({type:'EXECUTION_EVENT',payload:event})
   }
-  private runDispatchedTask(missionId: string, taskId: string, input: unknown): boolean {
+  private claimTaskLease(missionId: string, taskId: string, processId: string, ttlMs = 30_000): string | null {
+    return this.db.transaction(() => {
+      const now = Date.now()
+      const active = this.db.prepare(`SELECT attempt_id FROM task_leases WHERE task_id=? AND mission_id=? AND released_at IS NULL AND expires_at > ?`).get(taskId, missionId, now) as {attempt_id:string} | undefined
+      if (active) return null
+      const attemptId = randomUUID()
+      this.db.prepare(`INSERT INTO task_leases (attempt_id,task_id,mission_id,process_id,acquired_at,expires_at) VALUES (?,?,?,?,?,?)`).run(attemptId,taskId,missionId,processId,now,now+ttlMs)
+      return attemptId
+    })()
+  }
+  private releaseTaskLease(attemptId: string, outcome: string): void {
+    this.db.prepare(`UPDATE task_leases SET released_at=?,outcome=? WHERE attempt_id=?`).run(Date.now(),outcome,attemptId)
+  }
+  private reconcileOnStartup(): void {
+    // Expire leases from previous process sessions
+    this.db.prepare(`UPDATE task_leases SET released_at=?,outcome='EXPIRED' WHERE released_at IS NULL AND expires_at<?`).run(Date.now(),Date.now())
+    // RUNNING → FAILED: process restarted mid-execution
+    const runningOps = this.db.prepare(`SELECT id,mission_id FROM local_operations WHERE state='RUNNING'`).all() as Array<{id:string;mission_id:string}>
+    for (const op of runningOps) {
+      const mission = this.getMission(op.mission_id)
+      if (!mission) continue
+      let hadRunning = false
+      for (const task of mission.tasks) {
+        if (task.status === 'RUNNING') {
+          task.status='FAILED'; task.completedAt=Date.now()
+          task.result={taskId:task.id,success:false,summary:'Proceso interrumpido; recuperado como fallido al reiniciar',data:{error:'PROCESS_RESTART_RECOVERY',method:'RULE_BASED'},cerberusIds:[]}
+          hadRunning=true
+        }
+      }
+      if (hadRunning) {
+        mission.status='FAILED'; mission.updatedAt=Date.now(); mission.completedAt=mission.completedAt??Date.now()
+        this.db.prepare(`UPDATE local_operations SET state='FAILED' WHERE id=?`).run(op.id)
+        this.putMission(mission)
+        this.emitExecution(op.mission_id,null,'mission.failed','PROCESS_RESTART_RECOVERY')
+        this.recordAuditEvent({actor:'system:startup-recovery',missionId:op.mission_id,action:'STARTUP_RECOVERY',result:'RUNNING_MARKED_FAILED'})
+      }
+    }
+    // APPROVED → attempt resume for dispatcher-v1 missions (crashed between approval and execution)
+    const approvedOps = this.db.prepare(`SELECT id,mission_id FROM local_operations WHERE state='APPROVED'`).all() as Array<{id:string;mission_id:string}>
+    for (const op of approvedOps) {
+      const mission = this.getMission(op.mission_id)
+      if (!mission?.context?.tags?.includes('dispatcher-v1')) continue
+      for (const task of mission.tasks) { if (task.status === 'RUNNING') { task.status='QUEUED'; task.startedAt=null } }
+      this.putMission(mission)
+      try {
+        this.resumeApprovedDispatchedMission(op.id, op.mission_id)
+        this.recordAuditEvent({actor:'system:startup-recovery',missionId:op.mission_id,action:'STARTUP_RECOVERY',result:'APPROVED_RESUMED'})
+      } catch (e) {
+        const current=this.getMission(op.mission_id)!
+        current.status='FAILED'; current.updatedAt=Date.now()
+        this.db.prepare(`UPDATE local_operations SET state='FAILED' WHERE id=?`).run(op.id)
+        this.putMission(current)
+        this.emitExecution(op.mission_id,null,'mission.failed','STARTUP_RECOVERY_FAILED')
+        this.recordAuditEvent({actor:'system:startup-recovery',missionId:op.mission_id,action:'STARTUP_RECOVERY',result:`APPROVED_RESUME_FAILED:${(e as Error).message}`})
+      }
+    }
+    // Log WAITING_APPROVAL missions for audit transparency (preserved without modification)
+    const waitingOps = this.db.prepare(`SELECT mission_id FROM local_operations WHERE state='WAITING_APPROVAL'`).all() as Array<{mission_id:string}>
+    for (const op of waitingOps) {
+      this.recordAuditEvent({actor:'system:startup-recovery',missionId:op.mission_id,action:'STARTUP_RECOVERY',result:'WAITING_APPROVAL_PRESERVED'})
+    }
+  }
+  private resumeApprovedDispatchedMission(opId: string, missionId: string): void {
+    const mission = this.getMission(missionId)!
+    if (mission.tasks.length !== 5) throw new Error('UNEXPECTED_TASK_COUNT')
+    const elysiumTask=mission.tasks[3]!, tartarusTask=mission.tasks[4]!
+    if (elysiumTask.status === 'QUEUED') {
+      const persephoneResult=mission.tasks[2]?.result?.data
+      if (!persephoneResult) throw new Error('PERSEPHONE_RESULT_MISSING')
+      if (!this.runDispatchedTask(missionId,elysiumTask.id,persephoneResult)) throw new Error('ELYSIUM_FAILED_ON_RECOVERY')
+    } else if (elysiumTask.status !== 'COMPLETED') throw new Error(`ELYSIUM_UNEXPECTED_STATE:${elysiumTask.status}`)
+    const updated=this.getMission(missionId)!
+    const elysiumResult=updated.tasks[3]!.result!.data as {reportMarkdown:string}
+    if (!elysiumResult?.reportMarkdown) throw new Error('ELYSIUM_RESULT_MISSING')
+    if (tartarusTask.status === 'QUEUED') {
+      if (!this.runDispatchedTask(missionId,tartarusTask.id,elysiumResult.reportMarkdown)) throw new Error('TARTARUS_FAILED_ON_RECOVERY')
+    } else if (tartarusTask.status !== 'COMPLETED') throw new Error(`TARTARUS_UNEXPECTED_STATE:${tartarusTask.status}`)
+    const endCursor=this.executionCursor(missionId)
+    this.db.transaction(() => {
+      const finished=this.getMission(missionId)!
+      if (finished.status === 'COMPLETED') return
+      finished.status='COMPLETED'; finished.completedAt=finished.completedAt??Date.now(); finished.updatedAt=Date.now()
+      this.db.prepare(`UPDATE local_operations SET state='COMPLETED' WHERE id=? AND state='APPROVED'`).run(opId)
+      this.putMission(finished); this.emitExecution(missionId,null,'mission.completed','COMPLETED')
+    })()
+    this.publishSince(missionId,endCursor)
+  }
+  private runDispatchedTask(missionId: string, taskId: string, input: unknown, processId = String(process.pid)): boolean {
+    const attemptId = this.claimTaskLease(missionId, taskId, processId)
+    if (!attemptId) return false
     let task!: Task
     let cursor = this.executionCursor(missionId)
-    this.db.transaction(() => {
-      const mission = this.getMission(missionId)!
-      task = mission.tasks.find(item => item.id === taskId)!
-      if (task.status !== 'QUEUED') throw new Error('TASK_ALREADY_CLAIMED')
-      task.status = 'RUNNING'; task.startedAt = Date.now(); task.context = { ...(task.context ?? {}), executionInput: input }
-      this.putMission(mission); this.emitExecution(missionId,task,'agent.started','RUNNING')
-    })()
+    try {
+      this.db.transaction(() => {
+        const mission = this.getMission(missionId)!
+        task = mission.tasks.find(item => item.id === taskId)!
+        if (task.status !== 'QUEUED') throw new Error('TASK_ALREADY_CLAIMED')
+        task.status = 'RUNNING'; task.startedAt = Date.now()
+        task.context = { ...(task.context ?? {}), executionInput: input, leaseAttemptId: attemptId, executorPid: processId }
+        this.putMission(mission); this.emitExecution(missionId,task,'agent.started','RUNNING')
+      })()
+    } catch {
+      this.releaseTaskLease(attemptId, 'SKIPPED')
+      return false
+    }
     this.publishSince(missionId,cursor)
     let output: unknown
     try { output = dispatchCapability(task.assignedTo, task.capabilityId!, input) }
     catch (error) {
       const message = (error as Error).message
       cursor = this.executionCursor(missionId)
+      this.releaseTaskLease(attemptId, 'FAILED')
       this.db.transaction(() => {
         const mission = this.getMission(missionId)!, current = mission.tasks.find(item => item.id === taskId)!
         current.status = message.startsWith('CAPABILITY_') ? 'BLOCKED' : 'FAILED'; current.completedAt = Date.now()
@@ -373,6 +476,7 @@ export class SqliteRepository extends JsonRepository {
       this.publishSince(missionId,cursor); return false
     }
     cursor = this.executionCursor(missionId)
+    this.releaseTaskLease(attemptId, 'COMPLETED')
     this.db.transaction(() => {
       const mission = this.getMission(missionId)!, current = mission.tasks.find(item => item.id === taskId)!
       if (current.status !== 'RUNNING') throw new Error('TASK_NOT_RUNNING')
