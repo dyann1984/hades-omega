@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'integration/**', 'codex/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Typecheck · Build · Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (all workspaces)
+        run: npm run type-check --workspace=packages/api --workspace=packages/core --workspace=packages/frontend
+
+      - name: Build (api + core)
+        run: npm run build --workspace=packages/core --workspace=packages/api
+
+      - name: Test (api + core + frontend)
+        run: npm run test --workspace=packages/api --workspace=packages/core --workspace=packages/frontend
+        # Tests create isolated temp databases (mkdtemp) — no external services needed.
+        # JWT_SECRET is set per-test internally.
+        # ALLOWED_ORIGIN is NOT required: tests bypass server.ts and use Fastify() directly.
