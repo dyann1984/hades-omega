@@ -1,5 +1,15 @@
 # HADES V10.3 — ejecución documental y telemetría
 
+## Continuación — 29 de octubre de 2026
+
+**La finalización sigue pendiente.** Se creó el commit local de recuperación `c025495`, tras revisar los archivos incluidos; no contiene SQLite, credenciales, temporales ni respaldos locales. Los cambios posteriores descritos a continuación permanecen sin commit.
+
+Se añadió la migración SQLite 7 con `execution_events`, secuencia por misión y cursor. La ruta autenticada `GET /api/v1/local-missions/:id/execution-events?after=...` permite consultar páginas de hasta 200 eventos y restringe su lectura al propietario o a ADMIN. El flujo local registra de forma transaccional `approval.requested`, `approval.granted` y `approval.denied`, y los publica por WebSocket después de confirmar la operación. Los eventos de historial se consultan por API y no se reproducen como actividad visual.
+
+Las pruebas dirigidas verificaron persistencia tras reinicio, orden y cursor, rechazo de un usuario ajeno, publicación al bus y filtrado por propietario de `EXECUTION_EVENT` en WebSocket. La ejecución concurrente de las pruebas WebSocket pasó con timeout de 15 segundos; eso no demuestra la causa del timeout anterior de cinco segundos. Type-check general aprobado sin caché. La regresión de API con un worker pasó 62 pruebas; durante esa ejecución se modificó la secuencia por misión, y las pruebas dirigidas finales pasaron después de ese cambio. El build general pasó, con dos tareas servidas de caché. No se ejecutó una suite completa sin caché de todos los paquetes ni E2E.
+
+**Pendiente crítico:** no se ha construido el despachador de capacidades. El flujo multidocumento aún crea tareas en `EXECUTED` sin despachar los agentes, y los resultados históricos y demo siguen separados solo por sus metadatos. No se han integrado evaluaciones CERBERUS en ese flujo ni eventos de inicio, finalización o fallo de agente, ni se ha conectado el holograma a eventos persistentes. No hay E2E visual ni prueba completa de recuperación tras interrupción de un ejecutor. Por tanto, no se declara PASS ni debe interpretarse el flujo multidocumento actual como ejecución multiagente real.
+
 Fecha: 29 de octubre de 2026. **Estado: avance parcial; la condición de éxito NO está verificada.**
 
 ## Preservación y estado inicial

@@ -5,6 +5,17 @@ import type { Mission, AgentName } from '@hades/core'
 import { requireRole } from '../security.js'
 
 export async function localMissionRoutes(app: FastifyInstance, repository: SqliteRepository): Promise<void> {
+  app.get('/local-missions/:id/execution-events', async (req, reply) => {
+    const id = (req.params as {id:string}).id
+    const mission = repository.getMission(id)
+    const claims = req.user as {sub:string;roles:string[]}
+    if (!mission || (!claims.roles.includes('ADMIN') && mission.ownerId !== claims.sub)) return reply.code(404).send({success:false,error:{code:'MISSION_NOT_FOUND'}})
+    const query = req.query as {after?: string; limit?: string}
+    const after = query.after === undefined ? 0 : Number(query.after)
+    const limit = query.limit === undefined ? 200 : Number(query.limit)
+    if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) return reply.code(400).send({success:false,error:{code:'INVALID_CURSOR'}})
+    return {success:true,data:repository.listExecutionEvents(id, after, limit)}
+  })
   app.get('/local-missions/:id/history', async (req, reply) => {
     const id = (req.params as {id:string}).id; const mission = repository.getMission(id); const claims = req.user as {sub:string;roles:string[]}
     if (!mission || (!claims.roles.includes('ADMIN') && mission.ownerId !== claims.sub)) return reply.code(404).send({success:false,error:{code:'MISSION_NOT_FOUND'}})
@@ -17,6 +28,7 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
     if (typeof body?.title !== 'string' || body.title.trim().length < 3 || body.title.length > 200 || typeof body.input !== 'string' || Buffer.byteLength(body.input,'utf8') > 32768) return reply.code(400).send({success:false,error:{code:'VALIDATION_ERROR'}})
     const owner = (req.user as {sub:string}).sub
     const result = await repository.createLocalMission(owner,body.title.trim(),body.input)
+    publishExecutionEvents(repository, result.mission.id, 0)
     publishMission(result.mission)
     return reply.code(201).send({success:true,data:result})
   })
@@ -36,6 +48,7 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
     const owner = (req.user as { sub: string }).sub
     const budgetLimit = typeof body.budgetLimit === 'number' && body.budgetLimit > 0 ? body.budgetLimit : 150000
     const result = await repository.createMultiDocumentMission(owner, body.title.trim(), cleanDocs, budgetLimit)
+    publishExecutionEvents(repository, result.mission.id, 0)
     publishMission(result.mission)
     return reply.code(201).send({ success: true, data: result })
   })
@@ -77,7 +90,11 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
     const body = req.body as {status?: unknown; justification?: unknown} | undefined
     if ((body?.status !== 'APPROVED' && body?.status !== 'REJECTED') || typeof body.justification !== 'string' || body.justification.trim().length < 3 || body.justification.length > 2000) return reply.code(400).send({success:false,error:{code:'VALIDATION_ERROR'}})
     try {
-      const mission = await repository.decideLocalOperation((req.params as {id:string}).id,body.status,(req.user as {sub:string}).sub,body.justification.trim())
+      const operationId = (req.params as {id:string}).id
+      const missionId = repository.getLocalOperationMissionId(operationId)
+      const cursor = missionId ? repository.executionCursor(missionId) : 0
+      const mission = await repository.decideLocalOperation(operationId,body.status,(req.user as {sub:string}).sub,body.justification.trim())
+      publishExecutionEvents(repository, mission.id, cursor)
       publishMission(mission)
       return {success:true,data:mission}
     } catch (error) {
@@ -86,6 +103,10 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
       throw error
     }
   })
+}
+
+function publishExecutionEvents(repository: SqliteRepository, missionId: string, after: number): void {
+  for (const event of repository.listExecutionEvents(missionId, after)) bus.publish({type:'EXECUTION_EVENT',payload:event})
 }
 
 function publishMission(mission: Mission): void {

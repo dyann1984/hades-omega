@@ -327,6 +327,7 @@ export interface DocumentDeliverable {
 // ---- WebSocket events ----
 
 export type ServerEvent =
+  | { type: 'EXECUTION_EVENT'; payload: { eventId: string; missionId: string; taskId: string | null; agentId: string | null; type: string; status: string; timestamp: number; sequence: number; correlationId: string } }
   | { type: 'AGENT_STATUS_CHANGED';   payload: { agent: AgentName; status: AgentStatus; currentTask?: string | null; missionId?: ID } }
   | { type: 'MISSION_PROGRESS';       payload: { missionId: ID; status: MissionStatus; progress: number } }
   | { type: 'TASK_UPDATED';           payload: { task: Task } }

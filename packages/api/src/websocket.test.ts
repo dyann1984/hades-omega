@@ -43,4 +43,15 @@ describe('WebSocket security', () => {
     const pong = next(viewer); viewer.send(JSON.stringify({ type: 'PING' })); expect((await pong).type).toBe('PONG'); expect(seen).not.toContain('MISSION_PROGRESS')
     viewer.close(); admin.close()
   })
+  it('isolates persisted execution notifications by mission owner', async () => {
+    const a = await connect(); const b = await connect()
+    for (const [ws, sub] of [[a,'a'],[b,'b']] as const) { const reply=next(ws); ws.send(JSON.stringify({type:'AUTH',token:app.jwt.sign({sub,roles:['OPERATOR'],exp:Math.floor(Date.now()/1000)+60})})); await reply }
+    const received = next(a)
+    const seenB: string[] = []; b.on('message', data => seenB.push(JSON.parse(data.toString()).type))
+    bus.publish({type:'EXECUTION_EVENT',payload:{eventId:'event-1',missionId:'mission-a',taskId:'task-1',agentId:'HADES',type:'approval.requested',status:'WAITING_APPROVAL',timestamp:1,sequence:1,correlationId:'mission-a'}})
+    expect((await received).payload.missionId).toBe('mission-a')
+    const pong = next(b); b.send(JSON.stringify({type:'PING'})); await pong
+    expect(seenB).not.toContain('EXECUTION_EVENT')
+    a.close(); b.close()
+  })
 })

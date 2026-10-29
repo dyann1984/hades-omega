@@ -9,6 +9,10 @@ import { analyzeDocuments } from './document-analysis.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
 type Row = { data: string }
+export interface ExecutionEvent {
+  eventId: string; missionId: string; taskId: string | null; agentId: string | null
+  type: string; status: string; timestamp: number; sequence: number; correlationId: string
+}
 
 /** SQLite-backed repository. Legacy JSON is imported once, after a separate backup. */
 export class SqliteRepository extends JsonRepository {
@@ -69,6 +73,12 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (6)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 7').get()) {
+      this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE execution_events (sequence INTEGER NOT NULL, event_id TEXT NOT NULL UNIQUE, mission_id TEXT NOT NULL REFERENCES missions(id), task_id TEXT, agent_id TEXT, type TEXT NOT NULL, status TEXT NOT NULL, timestamp INTEGER NOT NULL, correlation_id TEXT NOT NULL, PRIMARY KEY (mission_id, sequence));`)
+        this.db.prepare('INSERT INTO schema_migrations VALUES (7)').run()
+      })()
+    }
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
     try { raw = await readFile(this.legacyPath, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
@@ -98,6 +108,12 @@ export class SqliteRepository extends JsonRepository {
   }
   override listMissions(): Mission[] { return (this.db.prepare('SELECT data FROM missions ORDER BY rowid DESC').all() as Row[]).map(r => JSON.parse(r.data)) }
   override getMission(id: string): Mission | undefined { const row = this.db.prepare('SELECT data FROM missions WHERE id=?').get(id) as Row | undefined; return row && JSON.parse(row.data) }
+  listExecutionEvents(missionId: string, after: number, limit = 200): ExecutionEvent[] {
+    return this.db.prepare(`SELECT event_id AS eventId, mission_id AS missionId, task_id AS taskId, agent_id AS agentId, type, status, timestamp, sequence, correlation_id AS correlationId FROM execution_events WHERE mission_id=? AND sequence>? ORDER BY sequence LIMIT ?`).all(missionId, after, limit) as ExecutionEvent[]
+  }
+  executionCursor(missionId: string): number {
+    return (this.db.prepare('SELECT COALESCE(MAX(sequence), 0) AS cursor FROM execution_events WHERE mission_id=?').get(missionId) as {cursor:number}).cursor
+  }
   override getIdempotent(key: string, fingerprint: string): Mission | undefined { const row = this.db.prepare('SELECT mission_id FROM idempotency WHERE key=? AND fingerprint=?').get(key, fingerprint) as { mission_id: string } | undefined; return row && this.getMission(row.mission_id) }
   override async saveMission(mission: Mission, idempotency?: {key: string; fingerprint: string}): Promise<void> {
     this.db.transaction(() => { this.putMission(mission); this.recordAuditEvent({actor:mission.ownerId ?? 'legacy',missionId:mission.id,action:'MISSION_SAVED',result:mission.status}); if (idempotency) this.db.prepare('INSERT INTO idempotency VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET fingerprint=excluded.fingerprint, mission_id=excluded.mission_id').run(idempotency.key,idempotency.fingerprint,mission.id) })()
@@ -164,6 +180,17 @@ export class SqliteRepository extends JsonRepository {
     const event = { id: randomUUID(), type: 'LOCAL_EXECUTION_STATE', actor, timestamp: Date.now(), payload: { missionId, state } }
     this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id, JSON.stringify(event))
     this.recordAuditEvent({ actor, missionId, action: 'MISSION_STATE', result: state })
+    const eventType = state === 'WAITING_APPROVAL' ? 'approval.requested' : state === 'APPROVED' ? 'approval.granted' : state === 'REJECTED' ? 'approval.denied' : null
+    if (eventType) {
+      const mission = this.getMission(missionId)
+      const task = mission?.tasks.find(item => item.status === 'CERBERUS_REVIEW')
+      this.db.prepare('INSERT INTO execution_events (sequence,event_id,mission_id,task_id,agent_id,type,status,timestamp,correlation_id) VALUES ((SELECT COALESCE(MAX(sequence),0)+1 FROM execution_events WHERE mission_id=?),?,?,?,?,?,?,?,?)')
+        .run(missionId, randomUUID(), missionId, task?.id ?? null, task?.assignedTo ?? null, eventType, state, Date.now(), missionId)
+    }
+  }
+  getLocalOperationMissionId(operationId: string): string | undefined {
+    const row = this.db.prepare('SELECT mission_id FROM local_operations WHERE id=?').get(operationId) as {mission_id:string} | undefined
+    return row?.mission_id
   }
   listMissionEvents(missionId: string): SystemEvent[] {
     return (this.db.prepare('SELECT data FROM events ORDER BY rowid').all() as Row[]).map(row => JSON.parse(row.data) as SystemEvent).filter(event => (event.payload as {missionId?: string} | null)?.missionId === missionId)

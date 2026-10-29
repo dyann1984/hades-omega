@@ -48,7 +48,7 @@ export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository
           const claims = token && claimsFor(token)
           if (!claims) return reject('session_expired')
           if (event.type !== 'SYSTEM_HEARTBEAT' && !(claims.roles as string[]).includes('ADMIN')) {
-            const missionId = event.type === 'MISSION_PROGRESS' ? event.payload.missionId : event.type === 'TASK_UPDATED' ? event.payload.task.missionId : undefined
+            const missionId = event.type === 'MISSION_PROGRESS' || event.type === 'EXECUTION_EVENT' ? event.payload.missionId : event.type === 'TASK_UPDATED' ? event.payload.task.missionId : undefined
             if (!missionId || !repository || repository.getMission(missionId)?.ownerId !== claims.sub) return
           }
           if (socket.readyState === 1) socket.send(JSON.stringify(event))
