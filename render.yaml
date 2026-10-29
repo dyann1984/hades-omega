@@ -4,7 +4,9 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: npm ci --include=dev && npx turbo build --filter=@hades/api...
+    # Build: override NODE_ENV so npm ci installs devDeps (turbo is a devDep), then build
+    buildCommand: env NODE_ENV=development npm ci && npx turbo build --filter=@hades/api...
+    # Start: node runs the compiled Fastify server
     startCommand: node packages/api/dist/server.js
     healthCheckPath: /api/health
     envVars:
@@ -13,15 +15,26 @@ services:
       - key: ALLOWED_ORIGIN
         sync: false   # set to: https://hades-omega-ten.vercel.app
       - key: JWT_SECRET
-        sync: false   # generate: node -e "require('crypto').randomBytes(48).toString('hex') |> console.log"
+        sync: false   # must be >=32 chars; generate: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      # SQLite path — default is relative (ephemeral on free tier; survives process restarts
+      # but NOT deploys). To make durable, upgrade to Starter plan, add a disk at /data,
+      # and change this to /data/hades.sqlite.
       - key: HADES_DB_FILE
-        value: /data/hades.sqlite
+        value: ./data/hades.sqlite
       - key: HADES_DATA_FILE
-        value: /data/hades.json
+        value: ./data/hades.json
       - key: ANTHROPIC_API_KEY
-        sync: false   # required for Claude-powered agent planner
+        sync: false   # required for Claude-powered agent planner (ELYSIUM/CHARON)
 
-# Persistent disk — required for durable SQLite storage.
-# Add via: Render dashboard → hades-api → Disks → Add Disk
-# Name: hades-db  |  Mount path: /data  |  Size: 1 GB  (~$0.25/GB-month)
-# Without this disk all DB data is lost on each deploy/restart.
+# ─── PERSISTENT DISK (OPTIONAL BUT REQUIRED FOR DURABLE DATA) ────────────────
+# Without a disk, SQLite data is lost on every new deploy (but NOT on restarts).
+# To add durability:
+#   1. Upgrade service from "free" to "starter" (~$7/month)
+#   2. Add disk via Render dashboard: hades-api → Disks → Add Disk
+#      Name: hades-db  |  Mount path: /data  |  Size: 1 GB
+#      Cost: $0.25/GB-month (1 GB = ~$0.25/month additional)
+#   3. Change HADES_DB_FILE above to /data/hades.sqlite
+#   Total cost with disk: ~$7.25/month
+#
+# Free tier with ephemeral SQLite: login, missions, approvals, audit, hologram all
+# work normally within a deployment — data resets only when you redeploy.
