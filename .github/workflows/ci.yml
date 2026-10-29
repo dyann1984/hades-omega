@@ -24,11 +24,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build core (required by api typecheck)
+        run: npm run build --workspace=packages/core
+
       - name: Typecheck (all workspaces)
         run: npm run type-check --workspace=packages/api --workspace=packages/core --workspace=packages/frontend
 
-      - name: Build (api + core)
-        run: npm run build --workspace=packages/core --workspace=packages/api
+      - name: Build api
+        run: npm run build --workspace=packages/api
 
       - name: Test (api + core + frontend)
         run: npm run test --workspace=packages/api --workspace=packages/core --workspace=packages/frontend
