@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: hades-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --include=dev && npx turbo build --filter=@hades/api...
+    startCommand: node packages/api/dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGIN
+        sync: false   # set to: https://hades-omega-ten.vercel.app
+      - key: JWT_SECRET
+        sync: false   # generate: node -e "require('crypto').randomBytes(48).toString('hex') |> console.log"
+      - key: HADES_DB_FILE
+        value: /data/hades.sqlite
+      - key: HADES_DATA_FILE
+        value: /data/hades.json
+      - key: ANTHROPIC_API_KEY
+        sync: false   # required for Claude-powered agent planner
+
+# Persistent disk — required for durable SQLite storage.
+# Add via: Render dashboard → hades-api → Disks → Add Disk
+# Name: hades-db  |  Mount path: /data  |  Size: 1 GB  (~$0.25/GB-month)
+# Without this disk all DB data is lost on each deploy/restart.
