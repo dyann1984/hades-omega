@@ -18,7 +18,7 @@ import NotificationToast from './components/NotificationToast.js'
 import { useWebSocket } from './hooks/useWebSocket.js'
 import { useApiStatus } from './hooks/useApiStatus.js'
 import { useHadesStore, clearPrivateState } from './store/index.js'
-import { apiHeaders, apiPath, setSessionToken } from './lib/api.js'
+import { apiHeaders, apiPath, setSessionToken, getStoredSession } from './lib/api.js'
 import LoginPanel from './components/LoginPanel.js'
 
 // Visual preview labs — dev only, do NOT affect dashboard
@@ -79,19 +79,31 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
 }
 
 export default function App(): JSX.Element {
-  const [role, setRole] = useState<string | null>(null)
+  // Restore session from sessionStorage on mount (survives page refresh, cleared on tab close)
+  const stored = getStoredSession()
+  const [role, setRole] = useState<string | null>(() => {
+    if (!stored) return null
+    // We don't know the role from storage; defer to a /me check or optimistically trust storage.
+    // Decode role from JWT payload (base64url, no verify needed — server still validates on API calls).
+    try {
+      const payload = JSON.parse(atob(stored.token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/')))
+      return (payload.roles?.[0] as string) ?? null
+    } catch { return null }
+  })
   const [logoutError, setLogoutError] = useState('')
-  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  const [expiresAt, setExpiresAt] = useState<number | null>(() => stored?.expiresAt ?? null)
   useEffect(() => {
     if (!expiresAt) return
-    const timer = setTimeout(() => { setSessionToken(undefined); clearPrivateState(); setRole(null); setExpiresAt(null) }, Math.max(0, expiresAt - Date.now()))
+    const remaining = expiresAt - Date.now()
+    if (remaining <= 0) { setSessionToken(undefined); clearPrivateState(); setRole(null); setExpiresAt(null); return }
+    const timer = setTimeout(() => { setSessionToken(undefined); clearPrivateState(); setRole(null); setExpiresAt(null) }, remaining)
     return () => clearTimeout(timer)
   }, [expiresAt])
   async function logout(): Promise<void> {
     try {
       const response = await fetch(apiPath('/api/v1/auth/logout'), { method:'POST', headers:apiHeaders() })
       if (!response.ok) throw new Error('No se pudo revocar la sesión. Compruebe la conexión y vuelva a intentarlo.')
-      setSessionToken(undefined); clearPrivateState(); setRole(null); setExpiresAt(null); setLogoutError('')
+      setSessionToken(undefined, undefined); clearPrivateState(); setRole(null); setExpiresAt(null); setLogoutError('')
     } catch (error) { setLogoutError(error instanceof Error ? error.message : 'Error de conexión') }
   }
   if (!role) return <LoginPanel onLogin={(nextRole, expiry) => { setExpiresAt(expiry); setRole(nextRole) }} />
