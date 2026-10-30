@@ -23,26 +23,37 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [slowWarning, setSlowWarning] = useState(false)
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault()
     setBusy(true)
     setError('')
+    setSlowWarning(false)
+    // Warn the user if Render Free cold-start is causing a delay (>5 s)
+    const slowTimer = setTimeout(() => setSlowWarning(true), 5000)
     try {
       const response = await fetch(apiPath('/api/v1/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       })
-      if (!response.ok) throw new Error(response.status === 429 ? 'Demasiados intentos. Inténtelo más tarde.' : 'Credenciales inválidas o servicio no disponible.')
+      if (!response.ok) {
+        const code = response.status
+        if (code === 429) throw new Error('Demasiados intentos. Espere 1 minuto e inténtelo de nuevo.')
+        if (code === 503) throw new Error('El servidor no está disponible. Espere unos segundos y reintente.')
+        throw new Error('Credenciales inválidas.')
+      }
       const body = await response.json()
       clearPrivateState()
       setSessionToken(body.data.token, body.data.expiresAt)
       setPassword('')
       onLogin(body.data.role, body.data.expiresAt)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Error de conexión')
+      setError(cause instanceof Error ? cause.message : 'Sin conexión con el servidor. Reintente en 30 segundos.')
     } finally {
+      clearTimeout(slowTimer)
+      setSlowWarning(false)
       setBusy(false)
     }
   }
@@ -84,6 +95,11 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
             </button>
           </div>
         </label>
+        {slowWarning && !error && (
+          <p role="status" className="login-error" style={{color:'#f0a500'}}>
+            El servicio puede tardar hasta 50 s en despertar del modo inactivo. Por favor espere…
+          </p>
+        )}
         {error && <p role="alert" className="login-error">{error}</p>}
         <button type="submit" className="login-submit" disabled={busy}>
           {busy ? 'Ingresando…' : 'Ingresar al sistema'}
