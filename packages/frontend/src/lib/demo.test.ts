@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { apiPath, isDemoToken, demoPath } from './api.js'
 import { translate } from './i18n.js'
+import { translateForTest } from './domTranslate.js'
 
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url')
 const token = (roles: string[]) => `${b64({ alg: 'HS256' })}.${b64({ sub: 'x', roles })}.sig`
@@ -26,5 +27,16 @@ describe('demo helpers', () => {
     expect(translate('es', 'demo.button')).toBe('Explorar demo')
     expect(translate('es', 'demo.subtitle')).toContain('Conoce HADES')
     expect(translate('en', 'demo.subtitle')).toContain('Discover HADES')
+  })
+})
+describe('legacy UI string translation', () => {
+  it('translates known chrome strings preserving case style, and never touches unknown/user content', () => {
+    expect(translateForTest('Sin misiones activas')).toBe('No active missions')
+    expect(translateForTest('  SIN ESCALACIONES ')).toBe('  NO ESCALATIONS ')
+    expect(translateForTest('Completada')).toBe('Completed')
+    expect(translateForTest('1 APROBACIONES PENDIENTES')).toBe('1 PENDING APPROVAL')
+    expect(translateForTest('3 MISIONES ACTIVAS')).toBe('3 ACTIVE MISSIONS')
+    expect(translateForTest('Comparar propuestas de proveedores')).toBeNull()
+    expect(translateForTest('SHA-256 abc123')).toBeNull()
   })
 })

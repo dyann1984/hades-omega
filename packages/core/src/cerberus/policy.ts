@@ -13,7 +13,7 @@ export interface PolicyRule {
 }
 
 export interface PolicyCondition {
-  type:          'AMOUNT_LIMIT' | 'VENDOR_ALLOWLIST' | 'BUDGET_THRESHOLD' | 'ALWAYS' | 'COMPOUND'
+  type:          'AMOUNT_LIMIT' | 'VENDOR_ALLOWLIST' | 'BUDGET_THRESHOLD' | 'ALWAYS' | 'COMPOUND' | 'AGENT_PERMISSION'
   maxAmount?:    number
   currency?:     string
   allowedVendors?: string[]
@@ -29,12 +29,20 @@ export interface CerberusPolicy {
   rules:         PolicyRule[]
   vendorAllowlist: string[]
   budgetCategories: Record<string, number>
+  /** Sensitive operation types -> the only agents allowed to propose them (checked by rule R-009). */
+  operationPermissions: Record<string, AgentName[]>
 }
 
 export const DEFAULT_POLICY: Omit<CerberusPolicy, 'hash'> = {
   version: '1.0.0',
   effectiveFrom: Date.now(),
   vendorAllowlist: ['cloudpro-standard', 'techvision', 'inframax', 'securenet'],
+  operationPermissions: {
+    PURCHASE_ORDER:   ['CHARON'],
+    PAYMENT:          ['PERSEPHONE'],
+    TRANSFER:         ['PERSEPHONE'],
+    NEAR_TRANSACTION: ['PERSEPHONE', 'HADES'],
+  },
   budgetCategories: {
     INFRASTRUCTURE: 50000,
     SOFTWARE: 20000,
@@ -47,7 +55,6 @@ export const DEFAULT_POLICY: Omit<CerberusPolicy, 'hash'> = {
       name:          'Límite presupuestario absoluto',
       description:   'Ninguna orden de compra puede superar el límite de presupuesto aprobado',
       operationType: 'PURCHASE_ORDER',
-      agent:         'CHARON',
       condition:     { type: 'AMOUNT_LIMIT', maxAmount: 50000, currency: 'MXN' },
       outcome:       'DENY',
       priority:      100,
@@ -58,7 +65,6 @@ export const DEFAULT_POLICY: Omit<CerberusPolicy, 'hash'> = {
       name:          'Escalar compras de alto valor',
       description:   'Órdenes entre 30,000 y 50,000 MXN requieren aprobación humana',
       operationType: 'PURCHASE_ORDER',
-      agent:         'CHARON',
       condition:     { type: 'AMOUNT_LIMIT', maxAmount: 30000, currency: 'MXN' },
       outcome:       'ESCALATE',
       priority:      90,
@@ -112,6 +118,36 @@ export const DEFAULT_POLICY: Omit<CerberusPolicy, 'hash'> = {
       condition:     { type: 'ALWAYS' },
       outcome:       'PERMIT',
       priority:      10,
+      active:        true,
+    },
+    {
+      id:            'R-009',
+      name:          'Permiso por tipo de operación',
+      description:   'Las operaciones sensibles solo pueden ser propuestas por los agentes autorizados para ese tipo',
+      operationType: '*',
+      condition:     { type: 'AGENT_PERMISSION' },
+      outcome:       'DENY',
+      priority:      200,
+      active:        true,
+    },
+    {
+      id:            'R-010',
+      name:          'Límite de importe (cualquier operación)',
+      description:   'Ninguna operación con importe puede superar 50,000 MXN, sin importar el agente',
+      operationType: '*',
+      condition:     { type: 'AMOUNT_LIMIT', maxAmount: 50000, currency: 'MXN' },
+      outcome:       'DENY',
+      priority:      95,
+      active:        true,
+    },
+    {
+      id:            'R-011',
+      name:          'Escalar importes altos (cualquier operación)',
+      description:   'Operaciones con importe entre 30,000 y 50,000 MXN requieren aprobación humana, sin importar el agente',
+      operationType: '*',
+      condition:     { type: 'AMOUNT_LIMIT', maxAmount: 30000, currency: 'MXN' },
+      outcome:       'ESCALATE',
+      priority:      85,
       active:        true,
     },
     {

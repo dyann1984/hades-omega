@@ -6,7 +6,7 @@ import type { WebSocket } from 'ws'
 import type { JsonRepository } from './persistence.js'
 
 interface Claims { sub?: unknown; roles?: unknown; exp?: unknown; sid?: unknown }
-interface WSClient { socket: WebSocket; token: string; sid?: string }
+interface WSClient { socket: WebSocket; token: string; sid?: string; demo?: boolean }
 const clients = new Map<string, WSClient>()
 const allowedRoles = new Set(['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER', 'DEMO'])
 
@@ -42,7 +42,13 @@ export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository
       if (!token) {
         if (data.type !== 'AUTH' || typeof data.token !== 'string' || Object.keys(data).length !== 2 || !claimsFor(data.token)) return reject('authentication_failed')
         token = data.token
-        clients.set(id, { socket, token, sid: claimsFor(token)?.sid as string | undefined })
+        const authed = claimsFor(token)
+        if ((authed?.roles as string[] | undefined)?.includes('DEMO')) {
+          let same = 0, demoTotal = 0
+          for (const c of clients.values()) { if (c.demo) demoTotal++; if (c.sid === authed!.sid) same++ }
+          if (same >= 3 || demoTotal >= 120) { token = undefined; return reject('demo_socket_limit') }
+        }
+        clients.set(id, { socket, token, sid: claimsFor(token)?.sid as string | undefined, demo: ((claimsFor(token)?.roles as string[] | undefined) ?? []).includes('DEMO') })
         clearTimeout(timeout)
         unsubscribe = bus.subscribe((event: ServerEvent) => {
           const claims = token && claimsFor(token)

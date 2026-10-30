@@ -22,7 +22,7 @@ export class CerberusGUARD {
   constructor(policy?: Partial<CerberusPolicy>) {
     const merged = { ...DEFAULT_POLICY, ...policy }
     this.policyHash = createHash('sha256')
-      .update(JSON.stringify(merged.rules))
+      .update(JSON.stringify({ rules: merged.rules, operationPermissions: merged.operationPermissions }))
       .digest('hex')
     this.policy = { ...merged, hash: this.policyHash }
   }
@@ -53,14 +53,23 @@ export class CerberusGUARD {
     ctx: GUARDContext,
   ): boolean {
     const cond = rule.condition
-    const payload = proposal.payload as Record<string, unknown>
+    const payload = (proposal.payload ?? {}) as Record<string, unknown>
 
     switch (cond.type) {
       case 'ALWAYS':
         return true
 
+      case 'AGENT_PERMISSION': {
+        const allowed = this.policy.operationPermissions?.[proposal.operationType]
+        return !!allowed && !allowed.includes(proposal.agentName)
+      }
+
       case 'AMOUNT_LIMIT': {
-        const amount = (payload.totalAmount as number) ?? (payload.amount as number) ?? 0
+        const raw = payload.totalAmount ?? payload.amount
+        if (raw === undefined || raw === null) return false
+        const amount = Number(raw)
+        // Fail closed: a non-numeric or negative amount is treated as over the limit.
+        if (!Number.isFinite(amount) || amount < 0) return true
         return amount > (cond.maxAmount ?? Infinity)
       }
 
@@ -99,9 +108,9 @@ export class CerberusGUARD {
   ): GUARDOutcome {
     if (rule.outcome !== 'ESCALATE') return rule.outcome
 
-    if (rule.id === 'R-002') {
-      const payload = proposal.payload as Record<string, unknown>
-      const amount = (payload.totalAmount as number) ?? 0
+    if (rule.condition.type === 'AMOUNT_LIMIT') {
+      const payload = (proposal.payload ?? {}) as Record<string, unknown>
+      const amount = Number(payload.totalAmount ?? payload.amount ?? 0)
       if (ctx.budgetLimit && amount > ctx.budgetLimit) return 'DENY'
     }
 
@@ -127,7 +136,7 @@ export class CerberusGUARD {
   updatePolicy(patch: { vendorAllowlist?: string[]; budgetCategories?: Record<string, number> }): void {
     if (patch.vendorAllowlist) this.policy.vendorAllowlist = [...patch.vendorAllowlist]
     if (patch.budgetCategories) this.policy.budgetCategories = { ...patch.budgetCategories }
-    this.policyHash = createHash('sha256').update(JSON.stringify(this.policy.rules)).digest('hex')
+    this.policyHash = createHash('sha256').update(JSON.stringify({ rules: this.policy.rules, operationPermissions: this.policy.operationPermissions })).digest('hex')
     this.policy.hash = this.policyHash
     this.policy.version = `${this.policy.version.split('.')[0]}.${this.policy.version.split('.')[1]}.${parseInt(this.policy.version.split('.')[2] ?? '0') + 1}`
   }

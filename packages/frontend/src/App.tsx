@@ -22,6 +22,8 @@ import { apiHeaders, apiPath, setSessionToken, getStoredSession } from './lib/ap
 import LoginPanel from './components/LoginPanel.js'
 import DemoTour from './pages/DemoTour.js'
 import AccountPanel from './pages/AccountPanel.js'
+import JustificationHost from './components/JustificationDialog.js'
+import { startDomTranslation } from './lib/domTranslate.js'
 import { isDemoToken, demoPath } from './lib/api.js'
 import { useT, useLang } from './lib/i18n.js'
 import { LanguageSwitch } from './components/LoginPanel.js'
@@ -39,6 +41,7 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
   useWebSocket()
   useApiStatus()
   const lang = useLang()
+  useEffect(() => startDomTranslation(), [])
   // DEMO: load illustrative sample data (real CERBERUS decisions on fictional operations) into the in-memory store.
   useEffect(() => {
     if (!demo) return
@@ -98,6 +101,7 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
       </main>
 
       <NotificationToast />
+      <JustificationHost />
     </div>
   )
 }

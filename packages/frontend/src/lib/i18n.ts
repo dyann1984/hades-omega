@@ -20,6 +20,7 @@ export function setLang(lang: Lang): void {
   try { localStorage.setItem(KEY, lang) } catch { /* ignore */ }
   try { document.documentElement.lang = lang } catch { /* ignore */ }
   listeners.forEach(l => l())
+  try { window.dispatchEvent(new Event('hades:lang')) } catch { /* no window */ }
 }
 function subscribe(l: () => void): () => void { listeners.add(l); return () => { listeners.delete(l) } }
 
@@ -92,6 +93,14 @@ const DICT = {
     'tour.explore': 'Explora todas las secciones desde el menú lateral. Acceso de solo demostración: sin permisos administrativos.',
     'label.REAL': 'Real', 'label.DETERMINISTA': 'Determinista', 'label.SIMULADA': 'Simulada', 'label.NO_DISPONIBLE': 'No disponible',
     'lang.label': 'Idioma',
+    'dlg.label': 'Justificación',
+    'dlg.hint': 'Mínimo 3 caracteres',
+    'dlg.cancel': 'Cancelar',
+    'dlg.confirm': 'Confirmar',
+    'dlg.decide': 'Justificación de la decisión',
+    'dlg.cancelReason': 'Motivo de cancelación',
+    'dlg.reassign': 'Justificación de reasignación a',
+    'dlg.reassignDefault': 'Reasignación operativa de balanceo de carga',
     'acct.title': 'Cuenta y seguridad',
     'acct.nav': 'Cuenta',
     'acct.current': 'Contraseña actual',
@@ -172,6 +181,14 @@ const DICT = {
     'tour.explore': 'Explore every section from the side menu. Demo-only access: no administrative permissions.',
     'label.REAL': 'Real', 'label.DETERMINISTA': 'Deterministic', 'label.SIMULADA': 'Simulated', 'label.NO_DISPONIBLE': 'Not available',
     'lang.label': 'Language',
+    'dlg.label': 'Justification',
+    'dlg.hint': 'At least 3 characters',
+    'dlg.cancel': 'Cancel',
+    'dlg.confirm': 'Confirm',
+    'dlg.decide': 'Decision justification',
+    'dlg.cancelReason': 'Cancellation reason',
+    'dlg.reassign': 'Reassignment justification to',
+    'dlg.reassignDefault': 'Operational load-balancing reassignment',
     'acct.title': 'Account & security',
     'acct.nav': 'Account',
     'acct.current': 'Current password',

@@ -18,7 +18,11 @@ import { documentRoutes } from './routes/documents.js'
 const PORT = Number(process.env['PORT'] ?? 3001)
 const HOST = process.env['HOST'] ?? '0.0.0.0'
 
-const app = Fastify({ logger: { level: 'info' } })
+// Behind Render's proxy every client shares the proxy IP unless trustProxy is set, which would collapse all per-IP
+// rate limits into one global bucket. Trust only the configured number of hops (default 1 in production) so
+// X-Forwarded-For cannot be spoofed beyond the platform proxy.
+const proxyHops = Number(process.env['HADES_TRUST_PROXY_HOPS'] ?? (process.env['NODE_ENV'] === 'production' ? 1 : 0))
+const app = Fastify({ logger: { level: 'info' }, trustProxy: Number.isInteger(proxyHops) && proxyHops > 0 ? (_address: string, hop: number) => hop < proxyHops : false })
 
 async function bootstrap(): Promise<void> {
   const allowedOrigin = process.env['ALLOWED_ORIGIN']

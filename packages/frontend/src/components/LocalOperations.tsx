@@ -1,3 +1,5 @@
+import { askJustification } from '../components/JustificationDialog.js'
+import { translate, getLang } from '../lib/i18n.js'
 import { useState } from 'react'
 import { apiHeaders, apiPath } from '../lib/api.js'
 
@@ -27,7 +29,7 @@ export default function LocalOperations(): JSX.Element {
     } catch (error) {setNotice(error instanceof Error ? error.message : 'Error de conexión')} finally {setBusy(false)}
   }
   async function decide(id: string, status: 'APPROVED'|'REJECTED'): Promise<void> {
-    const justification=window.prompt('Justificación (mínimo tres caracteres):')?.trim()
+    const justification=await askJustification(translate(getLang(), 'dlg.decide'))
     if (!justification || justification.length < 3) return
     setBusy(true); setNotice('')
     try {
@@ -37,7 +39,7 @@ export default function LocalOperations(): JSX.Element {
     } catch(error){setNotice(error instanceof Error ? error.message : 'Error de conexión')} finally {setBusy(false)}
   }
   async function cancel(id: string): Promise<void> {
-    const reason=window.prompt('Motivo de cancelación (mínimo tres caracteres):')?.trim()
+    const reason=await askJustification(translate(getLang(), 'dlg.cancelReason'))
     if (!reason || reason.length < 3) return
     setBusy(true); setNotice('')
     try { const response=await fetch(apiPath(`/api/v1/local-missions/${encodeURIComponent(id)}/cancel`),{method:'POST',headers:apiHeaders({'Content-Type':'application/json'}),body:JSON.stringify({reason})}); if (!response.ok) throw new Error(`No se pudo cancelar (HTTP ${response.status})`); setNotice('Misión cancelada antes de ejecutar.'); await refresh() }

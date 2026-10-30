@@ -10,7 +10,7 @@ import { SqliteRepository } from './sqlite.js'
 import { hashPassword, validatePasswordPolicy } from './password.js'
 import { registerSecurity } from './security.js'
 import { authRoutes } from './auth.js'
-import { demoRoutes, expireDemoSessionForTest, resetDemoSessions, DEMO_MAX_RUNS } from './demo.js'
+import { demoRoutes, expireDemoSessionForTest, resetDemoSessions, DEMO_MAX_RUNS, DEMO_MAX_SESSIONS, DEMO_MAX_SESSIONS_PER_IP, DEMO_TTL_MS } from './demo.js'
 import { setupWebSocket } from './websocket.js'
 import { resolveDemoSession } from './demo.js'
 import { missionRoutes } from './routes/missions.js'
@@ -241,6 +241,62 @@ describe('DEMO WebSocket', () => {
       expect(wa.events.filter(e => e.type === 'EXECUTION_EVENT').every(e => e.demo === true)).toBe(true)
       expect(wb.events.filter(e => e.type === 'EXECUTION_EVENT')).toHaveLength(0)
       wa.ws.close(); wb.ws.close()
+    } finally { await cleanup() }
+  })
+})
+
+describe('DEMO abuse limits (Render Free protection)', () => {
+  const create = (app: App, ip: string, payload: unknown = {}) => app.inject({ method: 'POST', url: '/api/v1/demo/session', remoteAddress: ip, payload: payload as object })
+  it('honours the 30 minute lifetime in both the response and the signed token', async () => {
+    const { app, cleanup } = await build()
+    try {
+      const before = Date.now()
+      const data = (await create(app, '10.0.0.1')).json().data
+      expect(DEMO_TTL_MS).toBe(30 * 60 * 1000)
+      expect(data.expiresAt - before).toBeLessThanOrEqual(DEMO_TTL_MS + 2000)
+      const exp = app.jwt.decode<{ exp: number }>(data.token)!.exp
+      expect(exp * 1000).toBeLessThanOrEqual(before + DEMO_TTL_MS + 2000)
+      expect(exp * 1000).toBeGreaterThan(before + DEMO_TTL_MS - 5000)
+    } finally { await cleanup() }
+  })
+  it('caps concurrent sessions per IP and in total', async () => {
+    const { app, cleanup } = await build()
+    try {
+      for (let i = 0; i < DEMO_MAX_SESSIONS_PER_IP; i++) expect((await create(app, '10.0.1.1')).statusCode).toBe(200)
+      const blocked = await create(app, '10.0.1.1')
+      expect(blocked.statusCode).toBe(429); expect(blocked.json().error.code).toBe('DEMO_IP_LIMIT')
+      resetDemoSessions()
+      for (let i = 0; i < DEMO_MAX_SESSIONS; i++) expect((await create(app, `10.0.2.${i + 1}`)).statusCode).toBe(200)
+      const full = await create(app, '10.0.3.1')
+      expect(full.statusCode).toBe(503); expect(full.json().error.code).toBe('DEMO_CAPACITY')
+    } finally { await cleanup() }
+  })
+  it('rate-limits session creation per IP and rejects oversized bodies', async () => {
+    const { app, cleanup } = await build()
+    try {
+      const codes: number[] = []
+      for (let i = 0; i < 12; i++) { codes.push((await create(app, '10.0.4.1')).statusCode); resetDemoSessions() }
+      expect(codes.slice(0, 10).every(c => c === 200)).toBe(true)
+      expect(codes[10]).toBe(429)
+      const big = await create(app, '10.0.5.1', { lang: 'x'.repeat(5000) })
+      expect(big.statusCode).toBe(413)
+    } finally { await cleanup() }
+  })
+  it('limits sockets per demo session', async () => {
+    const { app, cleanup } = await build()
+    try {
+      const addr = await app.listen({ host: '127.0.0.1', port: 0 })
+      const { token } = await demo(app)
+      const connect = () => new Promise<number | 'open'>(resolve => {
+        const ws = new WebSocket(addr.replace('http:', 'ws:') + '/ws')
+        ws.on('message', raw => { if (JSON.parse(raw.toString()).type === 'CONNECTED') resolve('open') })
+        ws.once('close', code => resolve(code)); ws.once('open', () => ws.send(JSON.stringify({ type: 'AUTH', token })))
+        ;(connect as unknown as { open: WebSocket[] }).open ??= []; (connect as unknown as { open: WebSocket[] }).open.push(ws)
+      })
+      const results = [await connect(), await connect(), await connect(), await connect()]
+      expect(results.slice(0, 3)).toEqual(['open', 'open', 'open'])
+      expect(results[3]).toBe(1008)
+      for (const ws of (connect as unknown as { open: WebSocket[] }).open) ws.close()
     } finally { await cleanup() }
   })
 })

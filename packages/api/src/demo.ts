@@ -16,9 +16,10 @@ import { sendToSession, closeSessionSockets } from './websocket.js'
 export const DEMO_TTL_MS = 30 * 60 * 1000
 export const DEMO_MAX_SESSIONS = 40
 export const DEMO_MAX_RUNS = 5
+export const DEMO_MAX_SESSIONS_PER_IP = 5
 
 type Lang = 'es' | 'en'
-interface DemoSession { sid: string; sub: string; expiresAt: number; repo?: SqliteRepository; runs: number; lang: Lang; escalationIds?: Set<string> }
+interface DemoSession { sid: string; sub: string; expiresAt: number; repo?: SqliteRepository; runs: number; lang: Lang; ip: string; escalationIds?: Set<string> }
 const sessions = new Map<string, DemoSession>()
 
 export function isDemoSession(sid: unknown): boolean { return typeof sid === 'string' && sessions.has(sid) }
@@ -108,13 +109,16 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('onClose', async () => { clearInterval(timer); resetDemoSessions() })
 
   // Public: creates a temporary, signed, isolated DEMO session. No credentials are requested.
-  app.post('/api/v1/demo/session', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/api/v1/demo/session', { bodyLimit: 1024, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     purgeExpiredDemoSessions()
     if (sessions.size >= DEMO_MAX_SESSIONS) return reply.code(503).send({ success: false, error: { code: 'DEMO_CAPACITY' } })
+    const ip = request.ip
+    let fromIp = 0; for (const s of sessions.values()) if (s.ip === ip) fromIp++
+    if (fromIp >= DEMO_MAX_SESSIONS_PER_IP) return reply.code(429).send({ success: false, error: { code: 'DEMO_IP_LIMIT' } })
     const body = request.body as { lang?: unknown } | undefined
     const sid = `demo-${randomUUID()}`, sub = `demo:${randomUUID()}`
     const expiresAt = Date.now() + DEMO_TTL_MS
-    sessions.set(sid, { sid, sub, expiresAt, runs: 0, lang: body?.lang === 'en' ? 'en' : 'es' })
+    sessions.set(sid, { sid, sub, expiresAt, runs: 0, lang: body?.lang === 'en' ? 'en' : 'es', ip })
     const token = app.jwt.sign({ sub, roles: ['DEMO'], sid, demo: true, exp: Math.floor(expiresAt / 1000) })
     reply.header('Cache-Control', 'no-store')
     return { success: true, data: { token, expiresAt, role: 'DEMO', demo: true } }
@@ -156,7 +160,7 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
       const s = currentSession(request)
       return { success: true, data: s.repo ? s.repo.listPendingLocalOperations() : [] }
     })
-    demo.post('/local-approvals/:id/decision', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    demo.post('/local-approvals/:id/decision', { bodyLimit: 2048, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
       const s = currentSession(request)
       const body = request.body as { status?: unknown; justification?: unknown } | undefined
       if (!s.repo) return reply.code(404).send({ success: false, error: { code: 'APPROVAL_NOT_FOUND' } })
@@ -208,7 +212,7 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
       ]
       return { success: true, data: { label: 'REAL', note: lang === 'en' ? 'Decisions are produced by the real CERBERUS policy on fictional operations; missions are illustrative examples.' : 'Las decisiones las produce la política real de CERBERUS sobre operaciones ficticias; las misiones son ejemplos ilustrativos.', auditRecords, escalations, missions, nearTxs: [] } }
     })
-    demo.post('/approvals/:id/decision', async (request, reply) => {
+    demo.post('/approvals/:id/decision', { bodyLimit: 2048 }, async (request, reply) => {
       const s = currentSession(request)
       const id = (request.params as { id: string }).id
       const body = request.body as { status?: unknown; justification?: unknown } | undefined
@@ -226,7 +230,7 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
     demo.get('/near/status', async () => ({ success: true, data: { mode: 'simulation', label: 'SIMULADA', transactionsSigned: 0, note: 'No se firma ni envía ninguna transacción. / No transaction is signed or sent.' } }))
 
     // Reproducible demonstration scenario on the session's isolated engine.
-    demo.post('/scenario/run', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    demo.post('/scenario/run', { bodyLimit: 1024, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
       const s = currentSession(request)
       if (s.runs >= DEMO_MAX_RUNS) return reply.code(429).send({ success: false, error: { code: 'DEMO_RUN_LIMIT' } })
       s.runs += 1

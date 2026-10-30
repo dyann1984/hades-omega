@@ -1,3 +1,5 @@
+import { askJustification } from '../components/JustificationDialog.js'
+import { translate, getLang } from '../lib/i18n.js'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useHadesStore } from '../store/index.js'
@@ -85,7 +87,7 @@ function EscalationCard({ esc }: { esc: Escalation }): JSX.Element {
   const [error, setError] = useState('')
 
   async function decide(approve: boolean): Promise<void> {
-    const justification = window.prompt('Justificación de la decisión (mínimo 3 caracteres):')?.trim()
+    const justification = await askJustification(translate(getLang(), 'dlg.decide'))
     if (!justification || justification.length < 3) return
     setLoading(true); setError('')
     try {

@@ -111,3 +111,48 @@ describe('CerberusGUARD', () => {
     expect(decision.auditId).toMatch(/^[0-9a-f-]{36}$/)
   })
 })
+
+describe('R-008 hardening: controls by operation type, amount and permission (not by agent name)', () => {
+  const guard = new CerberusGUARD()
+  const ctx = { budgetLimit: 50000, vendorAllowlist: ['inframax', 'cloudpro-standard'] }
+  const propose = (agentName: string, operationType: string, payload: unknown) =>
+    guard.evaluate(makeProposal({ agentName: agentName as never, operationType, payload }), ctx)
+
+  it('does not let a purchase bypass R-001/R-002 by swapping CHARON for another agent', () => {
+    const asCharon = propose('CHARON', 'PURCHASE_ORDER', { totalAmount: 42000, vendorId: 'inframax' })
+    expect(asCharon.outcome).toBe('ESCALATE')
+    for (const agent of ['PERSEPHONE', 'MINOS', 'ELYSIUM', 'TARTARUS', 'HADES', 'EVIL']) {
+      const d = propose(agent, 'PURCHASE_ORDER', { totalAmount: 42000, vendorId: 'inframax' })
+      expect(d.outcome, agent).not.toBe('PERMIT')
+      expect(d.ruleMatched, agent).toBe('R-009') // only agents with the PURCHASE_ORDER permission may propose it
+    }
+  })
+  it('applies the amount limits to any operation type and any agent', () => {
+    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 90000 })).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-010' })
+    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 42000 })).toMatchObject({ outcome: 'ESCALATE', ruleMatched: 'R-011' })
+    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 1000 }).outcome).toBe('PERMIT')
+    expect(propose('ELYSIUM', 'CUSTOM_OPERATION', { totalAmount: 80000 })).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-010' })
+  })
+  it('requires the permission for sensitive operation types', () => {
+    expect(propose('CHARON', 'PAYMENT', { amount: 10 })).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-009' })
+    expect(propose('CHARON', 'NEAR_TRANSACTION', {})).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-009' })
+    expect(propose('PERSEPHONE', 'NEAR_TRANSACTION', {}).outcome).toBe('PERMIT')
+  })
+  it('fails closed on malformed amounts and tolerates a null payload', () => {
+    expect(propose('CHARON', 'PURCHASE_ORDER', { totalAmount: 'abc', vendorId: 'inframax' }).outcome).toBe('DENY')
+    expect(propose('CHARON', 'PURCHASE_ORDER', { totalAmount: -5, vendorId: 'inframax' }).outcome).toBe('DENY')
+    expect(propose('CHARON', 'PURCHASE_ORDER', { totalAmount: '90000', vendorId: 'inframax' }).outcome).toBe('DENY')
+    expect(() => propose('CHARON', 'CUSTOM_OPERATION', null)).not.toThrow()
+  })
+  it('keeps R-008 as the default only for non-sensitive operations, and is deterministic', () => {
+    expect(propose('MINOS', 'CUSTOM_OPERATION', {})).toMatchObject({ outcome: 'PERMIT', ruleMatched: 'R-008' })
+    expect(propose('TARTARUS', 'CRYPTO_HASH', { algorithm: 'sha256' }).outcome).toBe('PERMIT')
+    const a = propose('PERSEPHONE', 'PURCHASE_ORDER', { totalAmount: 42000 }), b = propose('PERSEPHONE', 'PURCHASE_ORDER', { totalAmount: 42000 })
+    expect([a.outcome, a.ruleMatched]).toEqual([b.outcome, b.ruleMatched])
+    expect(a.auditId).not.toBe(b.auditId)
+  })
+  it('includes the permission matrix in the policy hash', () => {
+    const custom = new CerberusGUARD({ operationPermissions: { PURCHASE_ORDER: ['CHARON', 'PERSEPHONE'] } })
+    expect(custom.getPolicyHash()).not.toBe(new CerberusGUARD().getPolicyHash())
+  })
+})

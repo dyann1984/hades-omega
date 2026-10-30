@@ -1,3 +1,5 @@
+import { askJustification } from '../components/JustificationDialog.js'
+import { translate, getLang } from '../lib/i18n.js'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
@@ -288,7 +290,7 @@ function MissionControlPanel({ missions, onRefresh, busy }: {
   }
 
   async function cancelMission(id: string): Promise<void> {
-    const reason = window.prompt('Motivo de cancelación (mínimo 3 caracteres):')?.trim()
+    const reason = await askJustification(translate(getLang(), 'dlg.cancelReason'))
     if (!reason || reason.length < 3) return
     try {
       const res = await fetch(apiPath(`/api/v1/local-missions/${encodeURIComponent(id)}/cancel`), {
@@ -882,7 +884,7 @@ export default function CommandCenter(): JSX.Element {
   const activeMissionCount = missions.filter(m => ['RECEIVED','ANALYZING','PLANNED','IN_PROGRESS','RUNNING','WAITING_APPROVAL','QUEUED'].includes(m.status) || isPendingReview(m.status, m.tasks.map(t => t.status))).length
 
   async function handleDecide(id: string, status: 'APPROVED' | 'REJECTED'): Promise<void> {
-    const justification = window.prompt('Justificación (mínimo 3 caracteres):')?.trim()
+    const justification = await askJustification(translate(getLang(), 'dlg.decide'))
     if (!justification || justification.length < 3) return
     try {
       const res = await fetch(apiPath(`/api/v1/local-approvals/${encodeURIComponent(id)}/decision`), {
@@ -901,7 +903,7 @@ export default function CommandCenter(): JSX.Element {
   }
 
   async function handleReassign(missionId: string, taskId: string, newAgent: string): Promise<void> {
-    const justification = window.prompt(`Justificación de reasignación a ${newAgent} (mínimo 3 caracteres):`, 'Reasignación operativa de balanceo de carga')?.trim()
+    const justification = await askJustification(`${translate(getLang(), 'dlg.reassign')} ${newAgent}`, translate(getLang(), 'dlg.reassignDefault'))
     if (!justification || justification.length < 3) return
     try {
       const res = await fetch(apiPath(`/api/v1/local-missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}/reassign`), {
@@ -913,11 +915,9 @@ export default function CommandCenter(): JSX.Element {
       if (!res.ok) {
         throw new Error(body?.error?.message ?? `HTTP ${res.status}: Reasignación no permitida`)
       }
-      window.alert(`Reasignación exitosa a ${newAgent}`)
       await refreshAll()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'No se pudo reasignar la tarea.'
-      window.alert(msg)
       setRequestIssue(msg)
     }
   }

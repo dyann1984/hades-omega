@@ -203,3 +203,15 @@ body { background: #05080d; color: #e7eef7; }
 .tour table { width:100%; border-collapse:collapse; font-size:13px; }
 .tour td, .tour th { text-align:left; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.08); color:#d0d4dc; }
 .tour pre { white-space:pre-wrap; word-break:break-word; font:12px/1.5 'JetBrains Mono',monospace; color:#c9cdd6; background:#07070d; border-radius:8px; padding:12px; max-height:260px; overflow:auto; }
+/* V10.4 · justification dialog (replaces window.prompt) */
+.dlg-backdrop { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(3,5,12,.72); backdrop-filter:blur(3px); }
+.dlg { width:min(480px,100%); display:flex; flex-direction:column; gap:10px; padding:18px; border-radius:12px; background:#0d0d15; border:1px solid rgba(201,162,39,.6); box-shadow:0 20px 60px rgba(0,0,0,.6); }
+.dlg h3 { margin:0; font:600 15px 'Space Grotesk',sans-serif; color:#f3d27a; }
+.dlg textarea { width:100%; resize:vertical; border-radius:8px; padding:10px; background:#07070d; color:#e6e8ee; border:1px solid rgba(255,255,255,.18); font:14px/1.45 inherit; }
+.dlg textarea:focus { outline:2px solid #45c9ec; outline-offset:1px; }
+.dlg-hint { margin:0; font-size:12px; color:#9aa0ad; }
+.dlg-actions { display:flex; justify-content:flex-end; gap:10px; }
+.dlg-actions button { padding:9px 16px; border-radius:8px; font-weight:600; cursor:pointer; }
+.dlg-actions .primary { color:#0b0b10; background:linear-gradient(135deg,#f3d27a,#c9a227); border:0; }
+.dlg-actions .primary:disabled { opacity:.5; cursor:not-allowed; }
+.dlg-actions .ghost { color:#8fe3ff; background:transparent; border:1px solid rgba(69,201,236,.55); }
