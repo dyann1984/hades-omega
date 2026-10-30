@@ -12,3 +12,21 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const actual=await derive(password,salt!)
   return timingSafeEqual(actual,Buffer.from(encoded!,'hex'))
 }
+
+const COMMON = new Set(['password','passwordpassword','123456789012','qwertyuiopas','administrator','adminadminadmin','letmeinletmein','hadeshades1234','iloveyou1234'])
+/**
+ * Password policy: accepts memorable passphrases (several words) or 12-128 character passwords.
+ * Returns an error code or null. Never logs the value.
+ */
+export function validatePasswordPolicy(password: string, username?: string): string | null {
+  if (typeof password !== 'string' || password.length < 12) return 'PASSWORD_TOO_SHORT'
+  if (password.length > 128 || Buffer.byteLength(password, 'utf8') > 1024) return 'PASSWORD_TOO_LONG'
+  const lower = password.toLowerCase().replace(/\s+/g, '')
+  if (COMMON.has(lower)) return 'PASSWORD_TOO_COMMON'
+  if (username && username.length >= 3 && lower.includes(username.toLowerCase())) return 'PASSWORD_CONTAINS_USERNAME'
+  if (new Set(password).size < 6) return 'PASSWORD_LOW_VARIETY'
+  const words = password.trim().split(/[\s._-]+/).filter(w => w.length >= 3)
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(password)).length
+  if (words.length >= 3 || password.length >= 20) return null // passphrase
+  return classes >= 3 ? null : 'PASSWORD_TOO_WEAK'
+}

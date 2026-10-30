@@ -10,6 +10,7 @@ import { SqliteRepository } from './sqlite.js'
 import { registerSecurity } from './security.js'
 import { approvalRoutes } from './routes/approvals.js'
 import { localMissionRoutes } from './routes/local-missions.js'
+import { demoRoutes, resolveDemoSession } from './demo.js'
 import { authRoutes } from './auth.js'
 import { setupRoutes, generateSetupToken } from './setup.js'
 import { documentRoutes } from './routes/documents.js'
@@ -34,6 +35,7 @@ async function bootstrap(): Promise<void> {
   app.addHook('onClose', async () => { repository.close() })
   await registerSecurity(app, repository)
   await authRoutes(app, repository)
+  await demoRoutes(app)
   const unsubscribeAudit = bus.subscribe(event => {
     if (event.type === 'CERBERUS_DECISION') {
       const record = event.payload.auditRecord
@@ -70,7 +72,7 @@ async function bootstrap(): Promise<void> {
   }, { prefix: '/api/v1' })
 
   // WebSocket
-  setupWebSocket(app, repository, sid => repository.getActiveSession(sid))
+  setupWebSocket(app, repository, sid => repository.getActiveSession(sid) ?? resolveDemoSession(sid))
 
   // Heartbeat every 30s
   setInterval(() => {

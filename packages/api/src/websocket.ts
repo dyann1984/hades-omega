@@ -8,7 +8,7 @@ import type { JsonRepository } from './persistence.js'
 interface Claims { sub?: unknown; roles?: unknown; exp?: unknown; sid?: unknown }
 interface WSClient { socket: WebSocket; token: string; sid?: string }
 const clients = new Map<string, WSClient>()
-const allowedRoles = new Set(['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'])
+const allowedRoles = new Set(['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER', 'DEMO'])
 
 export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository, resolveSession?: (sid: string) => {sub:string;roles:string[]} | undefined): void {
   app.get('/ws', { websocket: true }, (socket, request) => {
@@ -67,6 +67,8 @@ export function setupWebSocket(app: FastifyInstance, repository?: JsonRepository
 
 // All broadcasts must pass through the per-client authorization in the bus subscriber.
 export function broadcastEvent(event: ServerEvent): void { bus.publish(event) }
+/** Delivers an event only to the sockets of one session (used by the isolated DEMO engine). */
+export function sendToSession(sid: string, event: ServerEvent): void { for (const client of clients.values()) if (client.sid === sid && client.socket.readyState === 1) client.socket.send(JSON.stringify(event)) }
 export function closeSessionSockets(sid: string): void { for (const client of clients.values()) if (client.sid === sid) client.socket.close(1008, 'Session revoked') }
 export function getConnectedClientsCount(): number { return clients.size }
 

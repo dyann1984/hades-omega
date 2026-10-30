@@ -19,6 +19,8 @@ export interface ExecutionEvent {
 /** SQLite-backed repository. Legacy JSON is imported once, after a separate backup. */
 export class SqliteRepository extends JsonRepository {
   private db!: Database.Database
+  /** Where execution events are delivered. Defaults to the global bus; isolated demo repositories override it. */
+  eventSink: (event: {type:'EXECUTION_EVENT'; payload: any}) => void = event => bus.publish(event as any)
   constructor(private readonly databasePath: string, private readonly legacyPath: string, private readonly policyGuard = guard) { super(legacyPath) }
   override async init(): Promise<void> {
     await mkdir(dirname(this.databasePath), { recursive: true })
@@ -351,7 +353,7 @@ export class SqliteRepository extends JsonRepository {
       .run(missionId,eventId,missionId,task?.id ?? null,task?.assignedTo ?? null,type,status,Date.now(),missionId)
   }
   private publishSince(missionId: string, cursor: number): void {
-    for (const event of this.listExecutionEvents(missionId,cursor)) bus.publish({type:'EXECUTION_EVENT',payload:event})
+    for (const event of this.listExecutionEvents(missionId,cursor)) this.eventSink({type:'EXECUTION_EVENT',payload:event})
   }
   private claimTaskLease(missionId: string, taskId: string, processId: string, ttlMs = 30_000): string | null {
     return this.db.transaction(() => {
@@ -626,7 +628,25 @@ export class SqliteRepository extends JsonRepository {
   findUser(username: string): {id:string; password_hash:string; role:string; active:number} | undefined {
     return this.db.prepare('SELECT id,password_hash,role,active FROM users WHERE username=?').get(username.toLowerCase()) as {id:string;password_hash:string;role:string;active:number} | undefined
   }
-  resetPassword(username: string, passwordHash: string): boolean {
+  getUserById(id: string): {id:string; username:string; password_hash:string; role:string; active:number} | undefined {
+    return this.db.prepare('SELECT id,username,password_hash,role,active FROM users WHERE id=?').get(id) as {id:string;username:string;password_hash:string;role:string;active:number} | undefined
+  }
+  /** Updates the password (and optionally the username) atomically and revokes every session except `keepSid`. */
+  updateCredentials(userId: string, passwordHash: string, newUsername: string | undefined, keepSid: string | undefined): void {
+    this.db.transaction(() => {
+      if (newUsername) {
+        if (!/^[a-zA-Z0-9._-]{3,64}$/.test(newUsername)) throw new Error('INVALID_USER')
+        const clash = this.db.prepare('SELECT id FROM users WHERE username=? AND id<>?').get(newUsername.toLowerCase(), userId)
+        if (clash) throw new Error('USERNAME_TAKEN')
+        this.db.prepare('UPDATE users SET username=? WHERE id=?').run(newUsername.toLowerCase(), userId)
+      }
+      this.db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash, userId)
+      this.db.prepare('UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL AND id<>?').run(Date.now(), userId, keepSid ?? '')
+      const event = { id: randomUUID(), type: 'CREDENTIALS_CHANGED', actor: userId, timestamp: Date.now(), payload: { userId, usernameChanged: !!newUsername } }
+      this.db.prepare('INSERT INTO events VALUES (?,?)').run(event.id, JSON.stringify(event))
+      this.recordAuditEvent({ actor: userId, action: 'CREDENTIALS_CHANGED', result: 'SUCCESS' })
+    })()
+  }  resetPassword(username: string, passwordHash: string): boolean {
     return this.db.transaction(() => {
       const user=this.db.prepare('SELECT id FROM users WHERE username=?').get(username.toLowerCase()) as {id:string} | undefined
       if (!user) return false
