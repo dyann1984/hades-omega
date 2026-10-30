@@ -79,3 +79,12 @@ SQLite en `./data/hades.sqlite` sobre disco efímero: sobrevive a reinicios del 
 3. Sin verificar: selección de agentes por clic, táctil, fallback WebGL, rendimiento, regla R-008, login/cabecera con logo nuevo.
 4. El timeout de 30 s en tests de API enmascara posible lentitud bajo carga (hash de contraseñas).
 5. Estado "PARTIAL_COMPLETE" cubre varios significados; la UI debería mostrar el motivo (el resumen del informe ya lo hace).
+
+## Anexo — Despliegue controlado de Vercel (2026-10-30)
+- Repo `dyann1984/hades-omega`: PRIVATE. Escaneo de secretos del diff: sin hallazgos. 3 commits locales listos.
+- **Push a GitHub NO ejecutado**: `render.yaml` no define `buildFilter`/rutas ignoradas y los commits tocan `packages/api` y `packages/core`; un push a `main` podría redeployar Render y borrar SQLite. Pendiente aislar el despliegue de Render (configurar filtro de rutas en el panel de Render o `buildFilter`) antes de publicar.
+- Vercel: `VITE_WS_URL` reemplazada por `wss://hades-omega.onrender.com/ws`; `VITE_API_URL` verificada en el bundle como `https://hades-omega.onrender.com`. Desplegado con `vercel deploy --prod` desde el directorio local (no toca Render). Bundle nuevo `index-Cqzav0qj.js` contiene ambas URLs, sin `/ws` duplicado.
+- Verificado desde el origen de Vercel: conexión `wss://.../ws` abre; con token inválido el servidor cierra (1006). Logo en producción con alfa 0 en la esquina (transparente).
+- BLOCKED (sin credenciales de producción): dashboard autenticado, sidebar, rotación/zoom/reset/pausa en producción, WebSocket autenticado y telemetría real. Selección de agentes, táctil, fallback WebGL y rendimiento: no verificados.
+- Tests: 49 + 75 + 5 = 129 PASS antes del despliegue.
+- V10.4 NO está completamente terminada.
