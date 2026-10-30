@@ -18,7 +18,7 @@ export const DEMO_MAX_SESSIONS = 40
 export const DEMO_MAX_RUNS = 5
 
 type Lang = 'es' | 'en'
-interface DemoSession { sid: string; sub: string; expiresAt: number; repo?: SqliteRepository; runs: number; lang: Lang }
+interface DemoSession { sid: string; sub: string; expiresAt: number; repo?: SqliteRepository; runs: number; lang: Lang; escalationIds?: Set<string> }
 const sessions = new Map<string, DemoSession>()
 
 export function isDemoSession(sid: unknown): boolean { return typeof sid === 'string' && sessions.has(sid) }
@@ -170,6 +170,52 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
     demo.get('/audit/events', async request => {
       const s = currentSession(request)
       return { success: true, data: s.repo ? s.repo.listAuditEvents({ limit: 100, offset: 0 }) : [] }
+    })
+
+    // Illustrative sample data for the sections of the platform. Decisions come from a real,
+    // session-local CERBERUS guard evaluating FICTIONAL proposals; missions are labelled as examples.
+    demo.get('/seed', async request => {
+      const s = currentSession(request), lang = langOf(request)
+      const guard = new CerberusGUARD()
+      const now = Date.now()
+      const proposals: Array<{ agent: 'CHARON' | 'PERSEPHONE' | 'TARTARUS' | 'ELYSIUM' | 'MINOS'; op: string; payload: Record<string, unknown>; ctx: Record<string, unknown> }> = [
+        { agent: 'CHARON', op: 'PURCHASE_ORDER', payload: { totalAmount: 20000, currency: 'MXN', vendorId: 'inframax' }, ctx: { budgetLimit: 50000, vendorAllowlist: ['inframax'] } },
+        { agent: 'CHARON', op: 'PURCHASE_ORDER', payload: { totalAmount: 78500, currency: 'MXN', vendorId: 'cloudpro-premium' }, ctx: { budgetLimit: 50000, vendorAllowlist: ['cloudpro-premium'] } },
+        { agent: 'CHARON', op: 'PURCHASE_ORDER', payload: { totalAmount: 42000, currency: 'MXN', vendorId: 'cloudpro-standard' }, ctx: { budgetLimit: 50000, vendorAllowlist: ['cloudpro-standard'] } },
+        { agent: 'TARTARUS', op: 'ANOMALY_REPORT', payload: { severity: 'LOW' }, ctx: {} },
+        { agent: 'ELYSIUM', op: 'CRYPTO_HASH', payload: { algorithm: 'sha256' }, ctx: {} },
+      ]
+      const auditRecords: unknown[] = [], escalations: unknown[] = []
+      s.escalationIds = new Set()
+      proposals.forEach((p, i) => {
+        const decision = guard.evaluate({ id: randomUUID(), agentId: `agent:${p.agent.toLowerCase()}:001`, agentName: p.agent, operationType: p.op, payload: p.payload, missionId: `demo-m${(i % 3) + 1}`, taskId: randomUUID(), requestedAt: now } as never, p.ctx as never)
+        auditRecords.push({ id: decision.auditId, timestamp: now - (i + 1) * 90_000, agentName: p.agent, operationType: p.op, guardDecision: decision.outcome, ruleMatched: decision.ruleMatched, reason: decision.reason, nearTxHash: null, nearExplorerUrl: null, executionMode: 'simulation', payload: p.payload })
+        if (decision.outcome === 'ESCALATE') {
+          s.escalationIds!.add(decision.auditId)
+          escalations.push({ id: decision.auditId, fromAgent: p.agent, operationType: p.op, reason: decision.reason ?? 'Requires human review', priority: 'MEDIUM', createdAt: now - (i + 1) * 90_000, status: 'PENDING', context: { demo: true } })
+        }
+      })
+      const tag = lang === 'en' ? '[DEMO] ' : '[DEMO] '
+      const mk = (n: number, es: string, en: string, status: string, progress: number, tasks: Array<[string, string, string]>) => ({
+        id: `demo-m${n}`, title: tag + (lang === 'en' ? en : es), description: lang === 'en' ? 'Illustrative example mission (fictional data).' : 'Misión de ejemplo ilustrativa (datos ficticios).',
+        status, progress, createdAt: now - n * 3_600_000,
+        tasks: tasks.map(([agent, title, st], i) => ({ id: `demo-m${n}-t${i + 1}`, title, assignedTo: agent, status: st, result: { success: st === 'EXECUTED' || st === 'COMPLETED', summary: lang === 'en' ? 'Example result' : 'Resultado de ejemplo' } })),
+      })
+      const missions = [
+        mk(1, 'Comparar propuestas de proveedores', 'Compare vendor proposals', 'COMPLETED', 100, [['CHARON', 'Extraer documentos', 'EXECUTED'], ['MINOS', 'Validar documentos', 'EXECUTED'], ['PERSEPHONE', 'Comparar importes', 'EXECUTED']]),
+        mk(2, 'Revisión de presupuesto trimestral', 'Quarterly budget review', 'IN_PROGRESS', 50, [['PERSEPHONE', 'Consolidar gastos', 'EXECUTED'], ['MINOS', 'Verificar políticas', 'IN_PROGRESS']]),
+        mk(3, 'Orden de compra sobre el límite', 'Over-limit purchase order', 'FAILED', 100, [['CHARON', 'Preparar orden', 'EXECUTED'], ['ELYSIUM', 'Ejecutar orden', 'FAILED']]),
+      ]
+      return { success: true, data: { label: 'REAL', note: lang === 'en' ? 'Decisions are produced by the real CERBERUS policy on fictional operations; missions are illustrative examples.' : 'Las decisiones las produce la política real de CERBERUS sobre operaciones ficticias; las misiones son ejemplos ilustrativos.', auditRecords, escalations, missions, nearTxs: [] } }
+    })
+    demo.post('/approvals/:id/decision', async (request, reply) => {
+      const s = currentSession(request)
+      const id = (request.params as { id: string }).id
+      const body = request.body as { status?: unknown; justification?: unknown } | undefined
+      if (!s.escalationIds?.has(id)) return reply.code(404).send({ success: false, error: { code: 'APPROVAL_NOT_FOUND' } })
+      if ((body?.status !== 'APPROVED' && body?.status !== 'REJECTED') || typeof body.justification !== 'string' || body.justification.trim().length < 3) return reply.code(400).send({ success: false, error: { code: 'VALIDATION_ERROR' } })
+      s.escalationIds.delete(id)
+      return { success: true, data: { id, status: body.status, demo: true, label: 'SIMULADA', note: 'Decisión demostrativa: no ejecuta ninguna operación real.' } }
     })
     demo.get('/documents/results', async () => ({ success: true, data: [] }))
     demo.get('/cerberus/policy', async request => {

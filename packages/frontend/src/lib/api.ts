@@ -26,7 +26,26 @@ export function getStoredSession(): StoredSession | null { return readStored() }
 export function websocketToken(): string | undefined { return sessionToken }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const API_BASE = ((import.meta as any).env?.VITE_API_URL as string | undefined) ?? ''
-export function apiPath(path: string): string { return `${API_BASE}${path}` }
+
+/** True when the stored token belongs to a DEMO session (the server still enforces the role). */
+export function isDemoToken(token: string | undefined = sessionToken): boolean {
+  if (!token) return false
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/')))
+    return Array.isArray(payload.roles) && payload.roles.includes('DEMO')
+  } catch { return false }
+}
+/**
+ * In DEMO mode every data call under /api/v1 (except auth) is served by the isolated
+ * /api/v1/demo/* routes. Routes without a demo equivalent answer 403 NOT_AVAILABLE_IN_DEMO.
+ */
+export function apiPath(path: string): string {
+  if (isDemoToken() && path.startsWith('/api/v1/') && !path.startsWith('/api/v1/auth/') && !path.startsWith('/api/v1/demo/')) {
+    return `${API_BASE}/api/v1/demo/${path.slice('/api/v1/'.length)}`
+  }
+  return `${API_BASE}${path}`
+}
+export function demoPath(path: string): string { return `${API_BASE}/api/v1/demo${path}` }
 export function apiHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return { ...extra, ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}) }
 }

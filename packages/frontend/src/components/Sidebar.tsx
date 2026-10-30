@@ -1,6 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
 import { useHadesStore } from '../store/index.js'
+import { useT, type TKey } from '../lib/i18n.js'
+import { isDemoToken } from '../lib/api.js'
 
 const NAV_ITEMS = [
   { path: '/',            icon: '⬡', label: 'Dashboard',   shortLabel: 'HQ'   },
@@ -25,6 +27,8 @@ interface Props {
 
 export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
   const { wsConnected, escalations, theme, setTheme } = useHadesStore()
+  const t = useT()
+  const items = isDemoToken() ? [{ path: '/demo', icon: '★', label: 'Demo', shortLabel: 'DEMO' }, ...NAV_ITEMS] : [...NAV_ITEMS, { path: '/account', icon: '⚙', label: 'Account', shortLabel: 'ACC' }]
 
   return (
     <aside className={clsx(
@@ -46,12 +50,12 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
 
       {/* Navigation */}
       <nav className="flex-1 py-3 flex flex-col gap-1 px-2 overflow-y-auto">
-        {NAV_ITEMS.map(item => (
+        {items.map(item => { const label = item.label === 'Demo' ? t('nav.demo') : item.label === 'Account' ? t('acct.nav') : t(('nav.' + item.label) as TKey); return (
           <NavLink
             key={item.path}
             to={item.path}
-            aria-label={item.label}
-            title={item.label}
+            aria-label={label}
+            title={label}
             end={item.path === '/'}
             className={({ isActive }) => clsx(
               'flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors font-mono text-[13px]',
@@ -61,14 +65,14 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
             )}
           >
             <span className="text-base flex-shrink-0 w-5 text-center">{item.icon}</span>
-            {!collapsed && <span>{item.label}</span>}
+            {!collapsed && <span>{label}</span>}
             {!collapsed && item.path === '/judgment' && escalations.filter(e => e.status === 'PENDING').length > 0 && (
               <span className="ml-auto bg-escalate text-black text-[9px] font-bold px-1.5 py-0.5 rounded-full">
                 {escalations.filter(e => e.status === 'PENDING').length}
               </span>
             )}
           </NavLink>
-        ))}
+        )})}
       </nav>
 
       {/* Status & theme */}
@@ -77,7 +81,7 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
           <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', wsConnected ? 'bg-permit animate-pulse' : 'bg-gray-600')} />
           {!collapsed && (
             <span className="font-mono text-[11px] text-gray-300">
-              {wsConnected ? 'WebSocket OK' : 'Sin conexión'}
+              {wsConnected ? t('nav.wsOk') : t('nav.wsOff')}
             </span>
           )}
         </div>
@@ -86,7 +90,7 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             className="text-[11px] font-mono text-gray-400 hover:text-gray-200 text-left"
           >
-            {theme === 'dark' ? '☀ Modo claro' : '☾ Modo oscuro'}
+            {theme === 'dark' ? t('nav.light') : t('nav.dark')}
           </button>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { apiPath, setSessionToken } from '../lib/api.js'
 import { clearPrivateState } from '../store/index.js'
+import { useT, useLang, setLang } from '../lib/i18n.js'
 
 function EyeIcon({ open }: { open: boolean }): JSX.Element {
   return open ? (
@@ -17,7 +18,20 @@ function EyeIcon({ open }: { open: boolean }): JSX.Element {
   )
 }
 
+export function LanguageSwitch(): JSX.Element {
+  const lang = useLang()
+  const t = useT()
+  return (
+    <div className="lang-switch" role="group" aria-label={t('lang.label')}>
+      <button type="button" className={lang === 'es' ? 'active' : ''} aria-pressed={lang === 'es'} onClick={() => setLang('es')}>ES</button>
+      <button type="button" className={lang === 'en' ? 'active' : ''} aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
+    </div>
+  )
+}
+
 export default function LoginPanel({ onLogin }: { onLogin: (role: string, expiresAt: number) => void }): JSX.Element {
+  const t = useT()
+  const lang = useLang()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -40,9 +54,9 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
       })
       if (!response.ok) {
         const code = response.status
-        if (code === 429) throw new Error('Demasiados intentos. Espere 1 minuto e inténtelo de nuevo. [HTTP 429]')
-        if (code === 503) throw new Error('El servidor no está disponible. Espere unos segundos y reintente. [HTTP 503]')
-        throw new Error(`Credenciales inválidas. [HTTP ${code}]`)
+        if (code === 429) throw new Error(`${t('login.locked')} [HTTP 429]`)
+        if (code === 503) throw new Error(`${t('login.down')} [HTTP 503]`)
+        throw new Error(`${t('login.bad')} [HTTP ${code}]`)
       }
       const body = await response.json()
       clearPrivateState()
@@ -50,7 +64,34 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
       setPassword('')
       onLogin(body.data.role, body.data.expiresAt)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sin conexión con el servidor. Reintente en 30 segundos.')
+      setError(cause instanceof Error ? cause.message : t('login.offline'))
+    } finally {
+      clearTimeout(slowTimer)
+      setSlowWarning(false)
+      setBusy(false)
+    }
+  }
+
+  // "Explore Demo": no credentials. The server issues a temporary, isolated DEMO session.
+  async function startDemo(): Promise<void> {
+    setBusy(true)
+    setError('')
+    const slowTimer = setTimeout(() => setSlowWarning(true), 5000)
+    try {
+      const response = await fetch(apiPath('/api/v1/demo/session'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lang }),
+      })
+      if (response.status === 503) throw new Error(t('demo.capacity'))
+      if (!response.ok) throw new Error(`${t('demo.error')} [HTTP ${response.status}]`)
+      const body = await response.json()
+      clearPrivateState()
+      setSessionToken(body.data.token, body.data.expiresAt)
+      try { window.history.replaceState(null, '', '/demo') } catch { /* ignore */ }
+      onLogin(body.data.role, body.data.expiresAt)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('demo.error'))
     } finally {
       clearTimeout(slowTimer)
       setSlowWarning(false)
@@ -61,13 +102,14 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
   return (
     <main className="login-shell">
       <form onSubmit={submit} className="login-card">
+        <LanguageSwitch />
         <img className="login-logo" src="/hades-logo.png" alt="HADES — Agent Orchestration System" />
-        <p className="login-intro">Centro de inteligencia y operaciones</p>
+        <p className="login-intro">{t('login.intro')}</p>
         <div className="login-divider" />
-        <h2>Bienvenido</h2>
-        <p className="login-copy">Accede al centro de comando</p>
+        <h2>{t('login.welcome')}</h2>
+        <p className="login-copy">{t('login.sub')}</p>
         <label>
-          Usuario
+          {t('login.user')}
           <input
             autoComplete="username"
             value={username}
@@ -76,7 +118,7 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
           />
         </label>
         <label>
-          Contraseña
+          {t('login.password')}
           <div className="login-pw-wrap">
             <input
               type={showPw ? 'text' : 'password'}
@@ -89,23 +131,28 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
               type="button"
               className="login-eye-btn"
               onClick={() => setShowPw(v => !v)}
-              aria-label={showPw ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              aria-label={showPw ? t('login.hide') : t('login.show')}
             >
               <EyeIcon open={showPw} />
             </button>
           </div>
         </label>
         {slowWarning && !error && (
-          <p role="status" className="login-error" style={{color:'#f0a500'}}>
-            El servicio puede tardar hasta 50 s en despertar del modo inactivo. Por favor espere…
-          </p>
+          <p role="status" className="login-error" style={{color:'#f0a500'}}>{t('login.slow')}</p>
         )}
         {error && <p role="alert" className="login-error">{error}</p>}
         <button type="submit" className="login-submit" disabled={busy}>
-          {busy ? 'Ingresando…' : 'Ingresar al sistema'}
+          {busy ? t('login.busy') : t('login.submit')}
           <span aria-hidden="true">→</span>
         </button>
-        <p className="login-foot">HADES · ACCESO SEGURO</p>
+        <div className="login-demo">
+          <span className="login-demo-or">{t('demo.or')}</span>
+          <button type="button" className="login-demo-btn" onClick={() => void startDemo()} disabled={busy}>
+            {t('demo.button')}
+          </button>
+          <p className="login-demo-sub">{t('demo.subtitle')}</p>
+        </div>
+        <p className="login-foot">{t('login.foot')}</p>
       </form>
     </main>
   )

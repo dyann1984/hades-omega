@@ -171,3 +171,35 @@ body { background: #05080d; color: #e7eef7; }
 .mission-hash button { border:1px solid #3c6175; border-radius:5px; padding:2px 7px; color:#d2eaf5; }
 .hash-full { overflow-wrap:anywhere; }
 @media (min-width:1280px) and (max-height:900px) { .command-center .min-h-\[360px\] { min-height:300px; } }
+
+/* V10.4 · Demo mode, language switch */
+.lang-switch { display:flex; gap:4px; justify-content:flex-end; margin-bottom:4px; }
+.lang-switch button { font:600 11px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#c9cdd6; background:transparent; border:1px solid rgba(255,255,255,.18); border-radius:6px; padding:5px 9px; cursor:pointer; }
+.lang-switch button.active { color:#0b0b10; background:linear-gradient(135deg,#f3d27a,#c9a227); border-color:#c9a227; }
+.login-demo { display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:6px; }
+.login-demo-or { font:11px 'JetBrains Mono',monospace; color:#9aa0ad; letter-spacing:.2em; text-transform:uppercase; }
+.login-demo-btn { width:100%; padding:11px 14px; border-radius:10px; font:600 14px/1 inherit; color:#8fe3ff; background:rgba(69,201,236,.08); border:1px solid rgba(69,201,236,.55); cursor:pointer; transition:background .15s, box-shadow .15s; }
+.login-demo-btn:hover:not(:disabled) { background:rgba(69,201,236,.18); box-shadow:0 0 18px rgba(69,201,236,.25); }
+.login-demo-btn:disabled { opacity:.6; cursor:wait; }
+.login-demo-sub { margin:0; text-align:center; font-size:12px; line-height:1.45; color:#b4b9c5; max-width:30ch; }
+.demo-banner { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:8px 16px; background:linear-gradient(90deg,rgba(201,162,39,.22),rgba(69,201,236,.14)); border-bottom:1px solid rgba(201,162,39,.6); }
+.demo-banner strong { font:700 12px 'JetBrains Mono',monospace; letter-spacing:.2em; color:#f3d27a; }
+.demo-banner span { font-size:12px; color:#d6d9e0; }
+.demo-banner button { margin-left:auto; font-size:12px; color:#f3d27a; border:1px solid rgba(243,210,122,.6); border-radius:6px; padding:4px 10px; background:transparent; cursor:pointer; }
+.tour { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+.tour h2 { font:700 22px 'Space Grotesk',sans-serif; color:#f3d27a; margin:0; }
+.tour h3 { font:600 13px 'JetBrains Mono',monospace; letter-spacing:.14em; text-transform:uppercase; color:#8fe3ff; margin:0 0 10px; }
+.tour .tour-card { border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:16px; background:rgba(13,13,21,.8); }
+.tour p { color:#d0d4dc; font-size:14px; line-height:1.55; margin:0; }
+.tour-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
+.tour-chip { display:inline-block; font:700 10px 'JetBrains Mono',monospace; letter-spacing:.08em; padding:3px 8px; border-radius:999px; border:1px solid currentColor; }
+.tour-chip.REAL { color:#3ddc97; } .tour-chip.DETERMINISTA { color:#8fe3ff; } .tour-chip.SIMULADA { color:#f0a500; } .tour-chip.NO_DISPONIBLE { color:#9aa0ad; }
+.tour-arch { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.tour-arch span.step { padding:8px 12px; border:1px solid rgba(201,162,39,.5); border-radius:8px; font:12px 'JetBrains Mono',monospace; color:#f3d27a; }
+.tour-arch span.arrow { color:#8fe3ff; }
+.tour button.primary { padding:10px 16px; border-radius:8px; font-weight:600; color:#0b0b10; background:linear-gradient(135deg,#f3d27a,#c9a227); border:0; cursor:pointer; }
+.tour button.primary:disabled { opacity:.55; cursor:not-allowed; }
+.tour button.ghost { padding:9px 14px; border-radius:8px; color:#8fe3ff; background:transparent; border:1px solid rgba(69,201,236,.55); cursor:pointer; }
+.tour table { width:100%; border-collapse:collapse; font-size:13px; }
+.tour td, .tour th { text-align:left; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.08); color:#d0d4dc; }
+.tour pre { white-space:pre-wrap; word-break:break-word; font:12px/1.5 'JetBrains Mono',monospace; color:#c9cdd6; background:#07070d; border-radius:8px; padding:12px; max-height:260px; overflow:auto; }

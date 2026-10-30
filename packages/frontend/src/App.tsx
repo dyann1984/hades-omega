@@ -20,6 +20,11 @@ import { useApiStatus } from './hooks/useApiStatus.js'
 import { useHadesStore, clearPrivateState } from './store/index.js'
 import { apiHeaders, apiPath, setSessionToken, getStoredSession } from './lib/api.js'
 import LoginPanel from './components/LoginPanel.js'
+import DemoTour from './pages/DemoTour.js'
+import AccountPanel from './pages/AccountPanel.js'
+import { isDemoToken, demoPath } from './lib/api.js'
+import { useT, useLang } from './lib/i18n.js'
+import { LanguageSwitch } from './components/LoginPanel.js'
 
 // Visual preview labs — dev only, do NOT affect dashboard
 const NeuralLabPage   = lazy(() => import('./pages/NeuralLabPage.js'))
@@ -28,9 +33,22 @@ const HadesCoreLab    = lazy(() => import('./pages/HadesCoreLab.js'))
 const PremiumCoreLab  = lazy(() => import('./pages/PremiumCoreLab.js'))
 
 function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
+  const t = useT()
+  const demo = isDemoToken()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   useWebSocket()
   useApiStatus()
+  const lang = useLang()
+  // DEMO: load illustrative sample data (real CERBERUS decisions on fictional operations) into the in-memory store.
+  useEffect(() => {
+    if (!demo) return
+    let cancelled = false
+    fetch(demoPath('/seed?lang=' + lang), { headers: apiHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(body => { if (body?.data && !cancelled) useHadesStore.setState({ missions: body.data.missions, auditRecords: body.data.auditRecords, escalations: body.data.escalations, nearTxs: body.data.nearTxs }) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [demo, lang])
 
   useEffect(() => {
     const saved = localStorage.getItem('hades-theme') as 'dark' | 'light' | null
@@ -42,14 +60,18 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(c => !c)} />
 
       <main className="flex-1 flex flex-col overflow-hidden">
+        {demo && (
+          <div className="demo-banner" role="status" data-testid="demo-banner">
+            <strong>{t('demo.banner')}</strong><span>{t('demo.bannerSub')}</span>
+            <button onClick={onLogout}>{t('demo.exit')}</button>
+          </div>
+        )}
         {/* Top bar */}
         <header className="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-obsidian-700 flex-shrink-0">
-          <h1 className="font-display font-semibold text-sm text-gray-300">
-            HADES — Centro de Comando IA
-          </h1>
+          <h1 className="font-display font-semibold text-sm text-gray-300">{t('app.title')}</h1>
           <div className="ml-auto flex items-center gap-2">
             <span className="badge-demo">NEAR: consultar estado</span>
-            <button onClick={onLogout} className="text-xs text-gray-300 border border-white/20 rounded px-2 py-1">Cerrar sesión</button>
+            <LanguageSwitch /><button onClick={onLogout} className="text-xs text-gray-300 border border-white/20 rounded px-2 py-1">{demo ? t('demo.exit') : t('app.logout')}</button>
           </div>
         </header>
 
@@ -57,6 +79,8 @@ function AppShell({ onLogout }: { onLogout: () => void }): JSX.Element {
         <div className="flex-1 overflow-auto p-4 sm:p-6 animate-fade-in">
           <Routes>
             <Route path="/"            element={<Dashboard />} />
+            <Route path="/demo"        element={<DemoTour />} />
+            <Route path="/account"     element={demo ? <DemoTour /> : <AccountPanel />} />
             <Route path="/throne"      element={<ThronePanel />} />
             <Route path="/pantheon"    element={<PantheonPanel />} />
             <Route path="/dominion"    element={<DominionPanel />} />
@@ -106,6 +130,7 @@ export default function App(): JSX.Element {
       } catch { /* ignore network errors on logout */ }
     }
     setSessionToken(undefined, undefined); clearPrivateState(); setRole(null); setExpiresAt(null); setLogoutError('')
+    try { window.history.replaceState(null, '', '/') } catch { /* ignore */ }
   }
 
   // Clear stale session automatically if the server rejects our token
