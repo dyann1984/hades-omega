@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { apiPath, setSessionToken } from '../lib/api.js'
 import { clearPrivateState } from '../store/index.js'
-import { useT, useLang, setLang } from '../lib/i18n.js'
+import { useT, useLang, setLang, getLang } from '../lib/i18n.js'
+import DemoWelcome from './DemoWelcome.js'
+import { prefetchDemoSeed, warmBackend, type DemoSessionData } from '../lib/demoStart.js'
 
 function EyeIcon({ open }: { open: boolean }): JSX.Element {
   return open ? (
@@ -31,7 +33,6 @@ export function LanguageSwitch(): JSX.Element {
 
 export default function LoginPanel({ onLogin }: { onLogin: (role: string, expiresAt: number) => void }): JSX.Element {
   const t = useT()
-  const lang = useLang()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -72,32 +73,24 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
     }
   }
 
-  // "Explore Demo": no credentials. The server issues a temporary, isolated DEMO session.
-  async function startDemo(): Promise<void> {
-    setBusy(true)
-    setError('')
-    const slowTimer = setTimeout(() => setSlowWarning(true), 5000)
-    try {
-      const response = await fetch(apiPath('/api/v1/demo/session'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lang }),
-      })
-      if (response.status === 503) throw new Error(t('demo.capacity'))
-      if (!response.ok) throw new Error(`${t('demo.error')} [HTTP ${response.status}]`)
-      const body = await response.json()
-      clearPrivateState()
-      setSessionToken(body.data.token, body.data.expiresAt)
-      try { window.history.replaceState(null, '', '/demo') } catch { /* ignore */ }
-      onLogin(body.data.role, body.data.expiresAt)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('demo.error'))
-    } finally {
-      clearTimeout(slowTimer)
-      setSlowWarning(false)
-      setBusy(false)
-    }
-  }
+  // Preload the app (not the heavy 3D) while the user is on the login screen, only when the browser is idle.
+  useEffect(() => {
+    void warmBackend()
+    const idle = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 600))
+    idle(() => { void import('../AppShell.js') })
+  }, [])
+
+  // "Explore Demo": no credentials. The server issues a temporary, isolated DEMO session (see DemoWelcome / demoStart).
+  const [demoOpen, setDemoOpen] = useState(false)
+  const onDemoSession = useCallback(async (s: DemoSessionData): Promise<void> => {
+    clearPrivateState()
+    setSessionToken(s.token, s.expiresAt)
+    prefetchDemoSeed(s.token, getLang())
+    await import('../AppShell.js')   // already cached when idle-preloaded
+    try { window.history.replaceState(null, '', '/demo') } catch { /* ignore */ }
+    onLogin(s.role, s.expiresAt)
+  }, [onLogin])
+  if (demoOpen) return <DemoWelcome onSession={onDemoSession} onCancel={() => setDemoOpen(false)} />
 
   return (
     <main className="login-shell">
@@ -147,7 +140,7 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
         </button>
         <div className="login-demo">
           <span className="login-demo-or">{t('demo.or')}</span>
-          <button type="button" className="login-demo-btn" onClick={() => void startDemo()} disabled={busy}>
+          <button type="button" className="login-demo-btn" onClick={() => setDemoOpen(true)} onPointerEnter={() => void import('../AppShell.js')} disabled={busy}>
             {t('demo.button')}
           </button>
           <p className="login-demo-sub">{t('demo.subtitle')}</p>

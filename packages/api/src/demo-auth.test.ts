@@ -12,7 +12,7 @@ import { registerSecurity } from './security.js'
 import { authRoutes } from './auth.js'
 import { demoRoutes, expireDemoSessionForTest, resetDemoSessions, DEMO_MAX_RUNS, DEMO_MAX_SESSIONS, DEMO_MAX_SESSIONS_PER_IP, DEMO_TTL_MS } from './demo.js'
 import { setupWebSocket } from './websocket.js'
-import { resolveDemoSession } from './demo.js'
+import { resolveDemoSession, activeDemoSessions } from './demo.js'
 import { missionRoutes } from './routes/missions.js'
 import { agentRoutes } from './routes/agents.js'
 import { cerberusRoutes } from './routes/cerberus.js'
@@ -257,6 +257,21 @@ describe('DEMO abuse limits (Render Free protection)', () => {
       const exp = app.jwt.decode<{ exp: number }>(data.token)!.exp
       expect(exp * 1000).toBeLessThanOrEqual(before + DEMO_TTL_MS + 2000)
       expect(exp * 1000).toBeGreaterThan(before + DEMO_TTL_MS - 5000)
+    } finally { await cleanup() }
+  })
+  it('a retried POST with the same Idempotency-Key returns the same session (no duplicate); other keys/IPs get their own', async () => {
+    const { app, cleanup } = await build()
+    try {
+      const post = (ip: string, key?: string) => app.inject({ method: 'POST', url: '/api/v1/demo/session', remoteAddress: ip, headers: key ? { 'idempotency-key': key } : {}, payload: {} })
+      const key = '0f8fad5b-d9cb-469f-a165-70867728950e'
+      const a = (await post('10.0.2.1', key)).json().data, b = (await post('10.0.2.1', key)).json().data
+      expect(app.jwt.decode<{ sid: string }>(b.token)!.sid).toBe(app.jwt.decode<{ sid: string }>(a.token)!.sid)
+      expect(b.expiresAt).toBe(a.expiresAt)
+      expect(activeDemoSessions()).toBe(1)
+      await post('10.0.2.1', '1f8fad5b-d9cb-469f-a165-70867728950e')
+      await post('10.0.2.2', key)                       // same key from another IP must not hijack the session
+      await post('10.0.2.1', 'short')                    // malformed key is ignored, behaves like no key
+      expect(activeDemoSessions()).toBe(4)
     } finally { await cleanup() }
   })
   it('caps concurrent sessions per IP and in total', async () => {

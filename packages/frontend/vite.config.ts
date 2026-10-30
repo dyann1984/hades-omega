@@ -20,7 +20,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          three: ['three', '@react-three/fiber', '@react-three/drei'],
+          // `three` is intentionally NOT a manual chunk: it must only be fetched with the lazy 3D core,
+          // not modulepreloaded from index.html on the login screen.
           vendor: ['react', 'react-dom', 'react-router-dom', 'framer-motion', 'zustand'],
         },
       },

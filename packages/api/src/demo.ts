@@ -19,8 +19,11 @@ export const DEMO_MAX_RUNS = 5
 export const DEMO_MAX_SESSIONS_PER_IP = 5
 
 type Lang = 'es' | 'en'
-interface DemoSession { sid: string; sub: string; expiresAt: number; repo?: SqliteRepository; runs: number; lang: Lang; ip: string; escalationIds?: Set<string> }
+interface DemoSession { sid: string; sub: string; expiresAt: number; repo?: SqliteRepository; runs: number; lang: Lang; ip: string; escalationIds?: Set<string>; idemKey?: string }
 const sessions = new Map<string, DemoSession>()
+/** Client-generated retry key → sid, scoped by IP, so a retried POST returns the same session instead of a duplicate. */
+const idempotency = new Map<string, string>()
+const IDEM_KEY = /^[A-Za-z0-9-]{16,64}$/
 
 export function isDemoSession(sid: unknown): boolean { return typeof sid === 'string' && sessions.has(sid) }
 export function resolveDemoSession(sid: string): { sub: string; roles: string[] } | undefined {
@@ -32,6 +35,7 @@ export function resolveDemoSession(sid: string): { sub: string; roles: string[] 
 export function revokeDemoSession(sid: string): void {
   const s = sessions.get(sid)
   sessions.delete(sid)
+  if (s?.idemKey) idempotency.delete(s.idemKey)
   try { s?.repo?.close() } catch { /* already closed */ }
   closeSessionSockets(sid)
 }
@@ -111,6 +115,15 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
   // Public: creates a temporary, signed, isolated DEMO session. No credentials are requested.
   app.post('/api/v1/demo/session', { bodyLimit: 1024, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     purgeExpiredDemoSessions()
+    const rawKey = request.headers['idempotency-key']
+    const idemKey = typeof rawKey === 'string' && IDEM_KEY.test(rawKey) ? `${request.ip}|${rawKey}` : undefined
+    const existing = idemKey ? sessions.get(idempotency.get(idemKey) ?? '') : undefined
+    if (existing) {
+      // Retry of a request whose response was lost: re-issue a token for the SAME session; no new session is created.
+      reply.header('Cache-Control', 'no-store')
+      const token = app.jwt.sign({ sub: existing.sub, roles: ['DEMO'], sid: existing.sid, demo: true, exp: Math.floor(existing.expiresAt / 1000) })
+      return { success: true, data: { token, expiresAt: existing.expiresAt, role: 'DEMO', demo: true } }
+    }
     if (sessions.size >= DEMO_MAX_SESSIONS) return reply.code(503).send({ success: false, error: { code: 'DEMO_CAPACITY' } })
     const ip = request.ip
     let fromIp = 0; for (const s of sessions.values()) if (s.ip === ip) fromIp++
@@ -118,7 +131,8 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body as { lang?: unknown } | undefined
     const sid = `demo-${randomUUID()}`, sub = `demo:${randomUUID()}`
     const expiresAt = Date.now() + DEMO_TTL_MS
-    sessions.set(sid, { sid, sub, expiresAt, runs: 0, lang: body?.lang === 'en' ? 'en' : 'es', ip })
+    sessions.set(sid, { sid, sub, expiresAt, runs: 0, lang: body?.lang === 'en' ? 'en' : 'es', ip, idemKey })
+    if (idemKey) idempotency.set(idemKey, sid)
     const token = app.jwt.sign({ sub, roles: ['DEMO'], sid, demo: true, exp: Math.floor(expiresAt / 1000) })
     reply.header('Cache-Control', 'no-store')
     return { success: true, data: { token, expiresAt, role: 'DEMO', demo: true } }

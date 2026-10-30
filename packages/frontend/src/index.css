@@ -181,7 +181,22 @@ body { background: #05080d; color: #e7eef7; }
 .login-demo-btn { width:100%; padding:11px 14px; border-radius:10px; font:600 14px/1 inherit; color:#8fe3ff; background:rgba(69,201,236,.08); border:1px solid rgba(69,201,236,.55); cursor:pointer; transition:background .15s, box-shadow .15s; }
 .login-demo-btn:hover:not(:disabled) { background:rgba(69,201,236,.18); box-shadow:0 0 18px rgba(69,201,236,.25); }
 .login-demo-btn:disabled { opacity:.6; cursor:wait; }
-.login-demo-sub { margin:0; text-align:center; font-size:12px; line-height:1.45; color:#b4b9c5; max-width:30ch; }
+.demo-steps { list-style:none; margin:14px 0 10px; padding:0; display:grid; gap:8px; }
+.demo-step { display:flex; align-items:center; gap:10px; font-size:13px; color:#7d8794; }
+.demo-step.active { color:#8fe3ff; } .demo-step.done { color:#9fd8b0; } .demo-step.fail { color:#ff8a9b; }
+.demo-dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex:none; }
+.demo-step.active .demo-dot { animation:demo-pulse 1s ease-in-out infinite; }
+@keyframes demo-pulse { 50% { opacity:.25; transform:scale(.7); } }
+.demo-progress { height:4px; border-radius:4px; background:rgba(255,255,255,.08); overflow:hidden; }
+.demo-progress > span { display:block; height:100%; background:#45c9ec; transition:width .4s ease; }
+.demo-elapsed { margin:8px 0 0; font:12px 'JetBrains Mono',monospace; color:#b4b9c5; }
+.demo-intro { display:grid; gap:12px; margin:18px 0 6px; }
+.demo-intro h3 { margin:0 0 2px; font-size:13px; color:#dfc48d; font-weight:600; }
+.demo-intro p { margin:0; font-size:12px; line-height:1.5; color:#b4b9c5; }
+.demo-actions { display:flex; gap:10px; margin-top:14px; }
+.demo-cancel { flex:none; padding:11px 14px; border-radius:10px; font:600 13px/1 inherit; color:#b4b9c5; background:transparent; border:1px solid rgba(255,255,255,.2); cursor:pointer; }
+@media (prefers-reduced-motion: reduce) { .demo-step.active .demo-dot { animation:none; } }
+.login-demo-sub {margin:0; text-align:center; font-size:12px; line-height:1.45; color:#b4b9c5; max-width:30ch; }
 .demo-banner { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:8px 16px; background:linear-gradient(90deg,rgba(201,162,39,.22),rgba(69,201,236,.14)); border-bottom:1px solid rgba(201,162,39,.6); }
 .demo-banner strong { font:700 12px 'JetBrains Mono',monospace; letter-spacing:.2em; color:#f3d27a; }
 .demo-banner span { font-size:12px; color:#d6d9e0; }
