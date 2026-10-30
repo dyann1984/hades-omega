@@ -1,6 +1,6 @@
-import { useRef, useMemo } from 'react'
+﻿import { useRef, useMemo, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { PerformanceMonitor, Line } from '@react-three/drei'
+import { PerformanceMonitor, Line, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName } from '../store/index.js'
@@ -494,9 +494,28 @@ interface Props {
   paused?: boolean
   missionActive?: boolean
   lowPower?: boolean
+  resetSignal?: number
 }
 
-export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {}, paused = false, missionActive = false, lowPower = false }: Props) {
+function ViewControls({ resetSignal }: { resetSignal: number }) {
+  const ref = useRef<any>(null)
+  useEffect(() => { ref.current?.reset() }, [resetSignal])
+  return (
+    <OrbitControls
+      ref={ref}
+      makeDefault
+      enableDamping
+      dampingFactor={0.08}
+      enableZoom
+      enablePan
+      minDistance={3}
+      maxDistance={9}
+      rotateSpeed={0.7}
+    />
+  )
+}
+
+export default function HolographicCore3D({ selectedAgent = null, onAgentSelect = () => {}, paused = false, missionActive = false, lowPower = false, resetSignal = 0 }: Props) {
   const agents       = useHadesStore(s => s.agents)
 
   const anyActive   = missionActive || Object.values(agents).some(a => a.status !== 'IDLE')
@@ -517,6 +536,7 @@ export default function HolographicCore3D({ selectedAgent = null, onAgentSelect 
       style={{ background: 'transparent' }}
     >
       <PerformanceMonitor onDecline={() => {}} />
+      <ViewControls resetSignal={resetSignal} />
 
       <ambientLight intensity={0.10} color="#1A2244" />
       <pointLight position={[0,  5,  3]}  color="#FFD700" intensity={1.8} decay={2} />
@@ -548,3 +568,4 @@ export default function HolographicCore3D({ selectedAgent = null, onAgentSelect 
     </Canvas>
   )
 }
+

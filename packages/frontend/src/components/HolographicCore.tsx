@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy } from 'react'
+﻿import { Component, Suspense, lazy } from 'react'
 import { useHadesStore } from '../store/index.js'
 import type { SubAgent } from './HolographicCore3D.js'
 
@@ -82,9 +82,10 @@ interface Props {
   paused?: boolean
   missionActive?: boolean
   lowPower?: boolean
+  resetSignal?: number
 }
 
-export default function HolographicCore({ selectedAgent, onAgentSelect, paused, missionActive, lowPower }: Props = {}): JSX.Element {
+export default function HolographicCore({ selectedAgent, onAgentSelect, paused, missionActive, lowPower, resetSignal }: Props = {}): JSX.Element {
   const prefersReducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -93,7 +94,8 @@ export default function HolographicCore({ selectedAgent, onAgentSelect, paused, 
 
   return (
     <CoreErrorBoundary><Suspense fallback={<FallbackCore />}>
-      <ThreeDCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} missionActive={missionActive} lowPower={lowPower} />
+      <ThreeDCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} missionActive={missionActive} lowPower={lowPower} resetSignal={resetSignal} />
     </Suspense></CoreErrorBoundary>
   )
 }
+

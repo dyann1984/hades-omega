@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import HolographicCore from '../components/HolographicCore.js'
@@ -653,6 +653,7 @@ function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryA
   auditRecords: AuditRecord[]
 }): JSX.Element {
   const [lowPower, setLowPower] = useState(false)
+  const [resetSignal, setResetSignal] = useState(0)
   const systemState  = !telemetryAvailable ? 'SIN TELEMETRÍA' : pendingCount > 0 ? 'BAJO REVISIÓN'
     : anyActive ? 'MISIÓN ACTIVA'
     : 'OPERATIVO'
@@ -670,6 +671,7 @@ function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryA
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setLowPower(value => !value)} aria-pressed={lowPower} className="font-mono text-[10px] text-gray-400 border border-white/10 px-2 py-1 rounded">{lowPower ? 'Ahorro activo' : 'Ahorro de energía'}</button>
+          <button onClick={() => setResetSignal(n => n + 1)} className="font-mono text-[10px] text-gray-400 hover:text-electric border border-white/10 px-2 py-1 rounded transition-colors" aria-label="Restablecer vista">Restablecer vista</button>
           <button
             onClick={onTogglePaused}
             className="font-mono text-[9px] text-gray-500 hover:text-electric border border-white/10 px-2 py-1 rounded transition-colors"
@@ -686,7 +688,7 @@ function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryA
           background: 'radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0,212,255,0.04) 0%, rgba(255,215,0,0.02) 35%, transparent 70%)',
         }}
       >
-        {telemetryAvailable ? <HolographicCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} missionActive={missionActive} lowPower={lowPower} /> : <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-500">Telemetría de agentes no disponible</div>}
+        {telemetryAvailable ? <HolographicCore selectedAgent={selectedAgent} onAgentSelect={onAgentSelect} paused={paused} missionActive={missionActive} lowPower={lowPower} resetSignal={resetSignal} /> : <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-500">Telemetría de agentes no disponible</div>}
 
         {/* Grid overlay */}
         <div
@@ -1025,3 +1027,4 @@ function StatusChip({ label, color, dot }: { label: string; color: 'electric' | 
     </div>
   )
 }
+
