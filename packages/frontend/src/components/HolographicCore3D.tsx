@@ -4,6 +4,7 @@ import { PerformanceMonitor, Line, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName } from '../store/index.js'
+import { AGENT_COLOR } from '../lib/agentColors.js'
 
 export type SubAgent = Exclude<AgentName, 'HADES'>
 
@@ -25,15 +26,7 @@ const ORBIT_POSITIONS: Record<SubAgent, [number, number, number]> = Object.fromE
   ])
 ) as Record<SubAgent, [number, number, number]>
 
-const AGENT_COLOR: Record<AgentName, string> = {
-  HADES:      '#FFD700',
-  CHARON:     '#00D4FF',
-  PERSEPHONE: '#00CCEE',
-  MINOS:      '#00BBDD',
-  CERBERUS:   '#FFB800',
-  ELYSIUM:    '#00D4FF',
-  TARTARUS:   '#0099CC',
-}
+// Per-agent identity colors live in lib/agentColors.ts (shared with the monitor panel).
 
 const AGENT_SYMBOL: Record<SubAgent, string> = {
   CHARON:     '⚡',
@@ -354,17 +347,29 @@ interface AgentNodeProps {
   onSelect: () => void
 }
 
+const DRAG_TOLERANCE_PX = 6      // a pointer that travelled farther than this was a camera drag, not a tap
+
 function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
   const ref    = useRef<THREE.Mesh>(null)
   const ringRef = useRef<THREE.Mesh>(null)
+  const flashRef = useRef<THREE.Mesh>(null)
+  const sparkRef = useRef<THREE.Points>(null)
+  const flashStart = useRef(-1)
+  const wasSelected = useRef(false)
   const agent  = useHadesStore(s => s.agents[name])
   const active  = agent?.status !== 'IDLE'
   const isError = agent?.status === 'ERROR'
   const isWait  = agent?.status === 'WAITING'
-  const hex     = isError ? '#FF3366' : isWait ? '#FFB800' : AGENT_COLOR[name]
-  const color   = new THREE.Color(hex)
+  const hex     = AGENT_COLOR[name]                       // identity color never changes with status
+  const statusHex = isError ? '#FF3366' : isWait ? '#FFB800' : hex
+  const color   = useMemo(() => new THREE.Color(hex), [hex])
+  const sparks  = useMemo(() => {
+    const arr = new Float32Array(8 * 3)
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; arr[i*3] = Math.cos(a) * 0.24; arr[i*3+1] = Math.sin(a) * 0.24; arr[i*3+2] = (i % 2 ? 0.06 : -0.06) }
+    return arr
+  }, [])
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, invalidate }) => {
     const t = clock.getElapsedTime()
     if (ref.current && active) {
       ref.current.rotation.y = t * 2.2
@@ -375,6 +380,16 @@ function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
       ;(ringRef.current.material as THREE.MeshBasicMaterial).opacity = op
       ringRef.current.rotation.z = t * 1.2
     }
+    if (sparkRef.current) sparkRef.current.rotation.z = t * 0.9
+    // Temporary node flash when it becomes selected.
+    if (selected && !wasSelected.current) flashStart.current = t
+    wasSelected.current = selected
+    if (flashRef.current) {
+      const mat = flashRef.current.material as THREE.MeshBasicMaterial
+      const e = flashStart.current < 0 ? 9 : t - flashStart.current
+      if (e < 0.9) { const p = e / 0.9; flashRef.current.scale.setScalar(0.6 + p * 1.6); mat.opacity = (1 - p) * 0.55; invalidate() }
+      else mat.opacity = 0
+    }
   })
 
   return (
@@ -382,7 +397,7 @@ function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
       {/* Clickable main sphere */}
       <mesh
         ref={ref}
-        onClick={e => { e.stopPropagation(); onSelect() }}
+        onClick={e => { e.stopPropagation(); if (e.delta > DRAG_TOLERANCE_PX) return; onSelect() }}
         onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer' }}
         onPointerOut={e => { e.stopPropagation(); document.body.style.cursor = 'default' }}
       >
@@ -390,11 +405,32 @@ function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={selected ? 1.4 : active ? 0.90 : 0.08}
+          emissiveIntensity={selected ? 1.4 : active ? 0.90 : 0.35}
           metalness={0.35}
           roughness={0.55}
         />
       </mesh>
+      {/* Larger invisible hit area: comfortable for touch, same pick logic */}
+      <mesh
+        onClick={e => { e.stopPropagation(); if (e.delta > DRAG_TOLERANCE_PX) return; onSelect() }}
+        onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer' }}
+        onPointerOut={e => { e.stopPropagation(); document.body.style.cursor = 'default' }}
+      >
+        <sphereGeometry args={[0.26, 8, 8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      {/* Selection flash */}
+      <mesh ref={flashRef} scale={0.6}>
+        <sphereGeometry args={[0.2, 12, 12]} />
+        <meshBasicMaterial color={hex} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      {/* Agent-colored particles around the node */}
+      <points ref={sparkRef}>
+        <bufferGeometry><bufferAttribute attach="attributes-position" array={sparks} count={8} itemSize={3} /></bufferGeometry>
+        <pointsMaterial color={hex} size={0.035} transparent opacity={selected ? 0.9 : active ? 0.6 : 0.3} sizeAttenuation depthWrite={false} />
+      </points>
+      {/* Status indicator (separate from identity color) */}
+      {(isError || isWait) && <mesh position={[0.17, 0.17, 0]}><sphereGeometry args={[0.035, 8, 8]} /><meshBasicMaterial color={statusHex} /></mesh>}
       {/* Selection ring */}
       {selected && <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[selected ? 0.34 : 0.26, 0.014, 4, 32]} />
@@ -417,6 +453,69 @@ function AgentNode({ name, position, selected, onSelect }: AgentNodeProps) {
           <meshBasicMaterial color={hex} transparent opacity={0.55} depthWrite={false} />
         </mesh>
       )}
+    </group>
+  )
+}
+
+// ─── ENERGY BEAM (selected agent → HADES core) ───────────────────────────────
+// Real WebGL animation: additive core + glow cylinders along the connection and three light pulses
+// travelling node→core. Fades in on select, relaxes to a calm glow after a few seconds, fades out on deselect.
+// Purely visual: it never claims a task ran.
+
+function EnergyBeam({ name, to, active }: { name: SubAgent; to: [number, number, number]; active: boolean }) {
+  const hex = AGENT_COLOR[name]
+  const groupRef = useRef<THREE.Group>(null)
+  const coreRef  = useRef<THREE.Mesh>(null)
+  const glowRef  = useRef<THREE.Mesh>(null)
+  const pulseRefs = useRef<Array<THREE.Mesh | null>>([])
+  const level = useRef(0)
+  const since = useRef(-1)
+  const geo = useMemo(() => {
+    const dir = new THREE.Vector3(...to)
+    const len = dir.length()
+    dir.normalize()
+    return { len, mid: dir.clone().multiplyScalar(len / 2), quat: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir), dir }
+  }, [to])
+
+  useFrame(({ clock, invalidate }, dt) => {
+    const t = clock.getElapsedTime()
+    if (active && since.current < 0) since.current = t
+    if (!active) since.current = -1
+    const target = active ? (t - since.current < 5 ? 1 : 0.4) : 0
+    level.current += (target - level.current) * Math.min(1, dt * (active ? 8 : 5))
+    const g = groupRef.current
+    if (!g) return
+    if (level.current < 0.01) { g.visible = false; return }
+    g.visible = true
+    invalidate()                                   // keep animating even when the orbit is paused (frameloop="demand")
+    const flicker = 0.85 + Math.sin(t * 38) * 0.08 + Math.sin(t * 13) * 0.07
+    if (coreRef.current) (coreRef.current.material as THREE.MeshBasicMaterial).opacity = 0.9 * level.current * flicker
+    if (glowRef.current) (glowRef.current.material as THREE.MeshBasicMaterial).opacity = 0.22 * level.current
+    pulseRefs.current.forEach((m, i) => {
+      if (!m) return
+      const p = (t * 0.85 + i / 3) % 1                // 0 at node → 1 at core
+      m.position.copy(geo.dir).multiplyScalar(geo.len * (1 - p))
+      m.scale.setScalar(0.6 + Math.sin(p * Math.PI) * 0.9)
+      ;(m.material as THREE.MeshBasicMaterial).opacity = level.current * Math.sin(p * Math.PI)
+    })
+  })
+
+  return (
+    <group ref={groupRef} visible={false}>
+      <mesh ref={coreRef} position={geo.mid} quaternion={geo.quat} scale={[1, geo.len, 1]}>
+        <cylinderGeometry args={[0.010, 0.010, 1, 6, 1, true]} />
+        <meshBasicMaterial color={hex} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      <mesh ref={glowRef} position={geo.mid} quaternion={geo.quat} scale={[1, geo.len, 1]}>
+        <cylinderGeometry args={[0.04, 0.04, 1, 8, 1, true]} />
+        <meshBasicMaterial color={hex} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      {[0, 1, 2].map(i => (
+        <mesh key={i} ref={el => { pulseRefs.current[i] = el }}>
+          <sphereGeometry args={[0.05, 10, 10]} />
+          <meshBasicMaterial color={hex} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
+      ))}
     </group>
   )
 }
@@ -445,19 +544,21 @@ function OrbitalSystem({ speedMult, selectedAgent, onAgentSelect }: OrbitalSyste
     <group ref={groupRef} rotation={[0.44, 0, 0.06]}>
       {/* Connection lines — inside group so they rotate with agents */}
       {(Object.entries(ORBIT_POSITIONS) as [SubAgent, [number, number, number]][]).map(([name, pos]) => {
-        const active = false // A visible agent status does not prove communication.
+        const sel = selectedAgent === name
         return (
-          <Line
-            key={name}
-            points={[CENTER, pos]}
-            color={selectedAgent === name ? AGENT_COLOR[name] : active ? AGENT_COLOR[name] : '#1A1A2E'}
-            lineWidth={selectedAgent === name ? 2.2 : active ? 1.6 : 0.45}
-            opacity={selectedAgent === name ? 1.0 : active ? 0.82 : 0.18}
-            transparent
-            dashed={!active && selectedAgent !== name}
-            dashSize={0.14}
-            gapSize={0.14}
-          />
+          <group key={name}>
+            <Line
+              points={[CENTER, pos]}
+              color={AGENT_COLOR[name]}
+              lineWidth={sel ? 2.2 : 0.6}
+              opacity={sel ? 1.0 : 0.30}
+              transparent
+              dashed={!sel}
+              dashSize={0.14}
+              gapSize={0.14}
+            />
+            <EnergyBeam name={name} to={pos} active={sel} />
+          </group>
         )
       })}
       {/* Agent nodes */}

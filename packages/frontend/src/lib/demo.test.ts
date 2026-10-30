@@ -6,6 +6,17 @@ import { translateForTest } from './domTranslate.js'
 const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const token = (roles: string[]) => `${b64({ alg: 'HS256' })}.${b64({ sub: 'x', roles })}.sig`
 
+describe('Command Center translations', () => {
+  it('translates the previously missing labels and dynamic aria-labels', () => {
+    expect(translateForTest('EN COLA')).toBe('QUEUED')
+    expect(translateForTest('OTRO ESTADO')).toBe('OTHER STATUS')
+    expect(translateForTest('⏸ PAUSAR')).toBe('⏸ PAUSE')
+    expect(translateForTest('TODAS (3)')).toBe('ALL (3)')
+    expect(translateForTest('Ampliar Monitor de agentes')).toBe('Expand Agent monitor')
+    expect(translateForTest('Reducir HADES Core')).toBe('Collapse HADES Core')
+  })
+})
+
 describe('demo helpers', () => {
   it('detects DEMO tokens only by role claim', () => {
     expect(isDemoToken(token(['DEMO']))).toBe(true)

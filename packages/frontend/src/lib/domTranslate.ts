@@ -111,6 +111,8 @@ const PAIRS: Array<[string, string]> = [
   ['HADES calcula el hash de la entrada solo después de aprobación ADMIN. La entrada se guarda en la base local para la revisión.', 'HADES computes the input hash only after ADMIN approval. The input is stored in the local database for review.'],
   ['Operación local verificable', 'Verifiable local operation'], ['Operación local verificable · SHA-256', 'Verifiable local operation · SHA-256'], ['Reasignar ejecutor compatible (cap:crypto:hash@1.0.0)', 'Reassign compatible executor (cap:crypto:hash@1.0.0)'],
   ['Pegar contenido', 'Paste content'],
+  ['⏸ Pausar', '⏸ Pause'], ['▶ Reanudar', '▶ Resume'], ['○ En espera', '○ Waiting'], ['En cola', 'Queued'], ['Otro estado', 'Other status'], ['Todas', 'All'], ['Todos', 'All'],
+  ['Solo selección visual — la demo no ejecuta tareas.', 'Visual selection only — no task is executed in the demo.'],
   // Table / metric labels
   ['Hora', 'Time'], ['Agente', 'Agent'], ['Agentes', 'Agents'], ['Operación', 'Operation'], ['Decisión', 'Decision'], ['Decisiones', 'Decisions'], ['Regla', 'Rule'], ['Modo', 'Mode'], ['Motor', 'Engine'], ['Estado', 'Status'],
   ['Título', 'Title'], ['Misión', 'Mission'], ['Misiones', 'Missions'], ['Misiones totales', 'Total missions'], ['Total Misiones', 'Total Missions'], ['Total Decisiones', 'Total Decisions'], ['Entrada', 'Input'], ['Acción', 'Action'], ['Actividad', 'Activity'],
@@ -137,6 +139,8 @@ const MAP = new Map<string, string>(PAIRS.map(([es, en]) => [es.toLowerCase(), e
 const PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^(misiones|auditoría|near txs|escalaciones|registros|documentos) \((\d+)\)$/i, m => `${({ misiones: 'Missions', 'auditoría': 'Audit', 'near txs': 'NEAR TXs', escalaciones: 'Escalations', registros: 'Records', documentos: 'Documents' } as Record<string, string>)[m[1]!.toLowerCase()]} (${m[2]})`],
   [/^(\d+)% aprobación$/i, m => `${m[1]}% approval`],
+  [/^(todas|todos) \((\d+)\)$/i, m => `All (${m[2]})`],
+  [/^(ampliar|reducir) (.+)$/i, m => { const d = MAP.get(m[2]!.trim().toLowerCase()); return `${m[1]!.toLowerCase() === 'ampliar' ? 'Expand' : 'Collapse'} ${d ?? m[2]}` }],
   [/^capacidad (\S+) ejecutada por adaptador determinista$/i, m => `Capability ${m[1]} executed by deterministic adapter`],
   [/^regla (R-\d+): (.*)$/i, m => { const d = MAP.get(m[2]!.trim().toLowerCase()); return `Rule ${m[1]}: ${d ?? m[2]}` }],
   [/^Pipeline real \(sin simulación\):(.*)Formatos:(.*)$/i, m => `Real pipeline (no simulation):${m[1]}Formats:${m[2]}`],

@@ -8,7 +8,9 @@ import PersistentAudit from '../components/PersistentAudit.js'
 import { useHadesStore } from '../store/index.js'
 import type { AgentName, AgentState, AuditRecord } from '../store/index.js'
 import type { SubAgent } from '../components/HolographicCore3D.js'
-import { apiHeaders, apiPath } from '../lib/api.js'
+import { apiHeaders, apiPath, isDemoToken } from '../lib/api.js'
+import { useLang } from '../lib/i18n.js'
+import { AGENT_COLOR, AGENT_ROLE, AGENT_STATUS_LABEL } from '../lib/agentColors.js'
 import { TASK_COLUMNS, taskColumn, isPendingReview, taskDescription } from '../lib/commandCenter.js'
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -175,15 +177,16 @@ function AgentMonitorPanel({ agents, apiAgents }: {
           const isActive = ['THINKING','EXECUTING','WAITING','ERROR'].includes(status)
           const isError  = status === 'ERROR'
 
-          const dotColor = isError ? 'bg-deny' : isActive ? (name === 'HADES' ? 'bg-gold' : 'bg-electric') : 'bg-gray-700'
-          const labelColor = isError ? 'text-deny' : isActive ? meta.color : 'text-gray-600'
+          const dotColor = isError ? 'bg-deny' : isActive ? '' : 'bg-gray-700'
+          const labelColor = isError ? 'text-deny' : 'text-gray-400'
+          const idColor = AGENT_COLOR[name]
 
           return (
             <div key={name} className={`flex items-start gap-2 py-1.5 px-2 rounded transition-all ${isActive ? 'bg-electric/5 border border-electric/10' : 'border border-transparent'}`}>
-              <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor} ${isActive ? 'animate-pulse' : ''}`} />
+              <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor} ${isActive ? 'animate-pulse' : ''}`} style={isActive && !isError ? { background: idColor, boxShadow: `0 0 6px ${idColor}` } : undefined} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <span className={`font-mono text-[10px] font-semibold ${labelColor}`}>
+                  <span className="font-mono text-[10px] font-semibold" style={{ color: isError ? undefined : idColor }}>
                     {meta.symbol} {name}
                   </span>
                   <span className={`font-mono text-[9px] ${labelColor}`}>
@@ -641,6 +644,28 @@ function DocumentsAuditPanel({ docResults }: {
   )
 }
 
+// ─── SELECTED AGENT DETAIL (overlay on the hologram) ─────────────────────────
+
+function AgentDetail({ name }: { name: SubAgent }): JSX.Element {
+  const lang = useLang()
+  const agent = useHadesStore(s => s.agents[name])
+  const status = agent?.status ?? 'UNKNOWN'
+  const color = AGENT_COLOR[name]
+  const demo = isDemoToken()
+  return (
+    <div className="absolute bottom-3 left-3 max-w-[260px] rounded-lg border bg-black/70 backdrop-blur px-3 py-2 pointer-events-none" style={{ borderColor: color + '88', boxShadow: `0 0 18px ${color}33` }} data-testid="agent-detail">
+      <div className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+        <span className="font-mono text-[11px] font-bold tracking-widest" style={{ color }} data-no-translate>{name}</span>
+        <span className="font-mono text-[9px] text-gray-400 ml-auto">{AGENT_STATUS_LABEL[status]?.[lang] ?? status}</span>
+      </div>
+      <p className="text-[10px] text-gray-300 mt-1">{AGENT_ROLE[name][lang]}</p>
+      {agent?.currentTask && <p className="text-[9px] text-gray-400 mt-0.5 truncate">{agent.currentTask}</p>}
+      {demo && <p className="text-[8px] text-gray-500 mt-1">{lang === 'en' ? 'Visual selection only — no task is executed in the demo.' : 'Solo selección visual — la demo no ejecuta tareas.'}</p>}
+    </div>
+  )
+}
+
 // ─── HOLOGRAPHIC NUCLEUS PANEL (Etapa 4) ─────────────────────────────────────
 
 function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryAvailable, paused, onTogglePaused, selectedAgent, onAgentSelect, auditRecords }: {
@@ -717,6 +742,7 @@ function HolographicNucleus({ anyActive, missionActive, pendingCount, telemetryA
             Haz clic en un agente para ver su estado
           </p>
         )}
+        {selectedAgent && <AgentDetail name={selectedAgent} />}
 
         {/* Recent CERBERUS decisions overlay */}
         {auditRecords.length > 0 && (
