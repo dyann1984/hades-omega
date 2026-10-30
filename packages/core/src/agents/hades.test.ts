@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+﻿import { describe, it, expect, vi } from 'vitest'
 import { HadesOrchestrator } from './hades.js'
 import { CerberusGUARD } from '../cerberus/guard.js'
 import { CerberusAUDIT } from '../cerberus/audit.js'
@@ -25,13 +25,16 @@ describe('mission dependency safety', () => {
     expect(agent.receiveTask).toHaveBeenCalledTimes(1)
     expect(mission.tasks.every(t => t.missionId === mission.id)).toBe(true)
     expect(mission.tasks.map(t => t.status)).toEqual(['FAILED', 'ASSIGNED'])
-    expect(mission.status).toBe('PARTIAL_COMPLETE')
+    expect(mission.status).toBe('FAILED')
+    expect(mission.tasks[1]!.result?.success).toBe(false)
   })
   it('does not retry a simulated result or execute its dependents', async () => {
     const { hades, agent } = setup({ success: true, data: { simulated: true } })
     const mission = await hades.createMission('Test mission', 'Test description')
     expect(agent.receiveTask).toHaveBeenCalledTimes(1)
     expect(mission.tasks.map(t => t.status)).toEqual(['SUSPENDED', 'ASSIGNED'])
+    expect(mission.tasks[0]!.result?.success).toBe(false)
     expect(mission.status).toBe('PARTIAL_COMPLETE')
   })
 })
+

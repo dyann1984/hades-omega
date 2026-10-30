@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+﻿import { useEffect, useRef } from 'react'
 import { useHadesStore } from '../store/index.js'
 import { websocketToken } from '../lib/api.js'
 
@@ -7,15 +7,37 @@ const VITE_WS_URL = (import.meta as any).env?.VITE_WS_URL as string | undefined
 const IS_LOCAL = typeof window !== 'undefined'
   && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 
-// Only attempt WS if on localhost or an explicit WS URL is configured
-const SHOULD_CONNECT = IS_LOCAL || !!VITE_WS_URL
-// Use Vite's same-origin proxy so REST and WebSocket reach the same API.
-const WS_URL = VITE_WS_URL ?? (typeof window === 'undefined' ? '' : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const VITE_API_URL = (import.meta as any).env?.VITE_API_URL as string | undefined
 
+// Explicit WS URL wins; otherwise derive wss://<api-host>/ws from the configured API (Vercel -> Render).
+function resolveWsUrl(): string {
+  if (VITE_WS_URL) {
+    try {
+      // The Fastify socket lives at /ws; tolerate a host-only VITE_WS_URL.
+      const u = new URL(VITE_WS_URL)
+      if (u.pathname === '/' || u.pathname === '') u.pathname = '/ws'
+      return u.toString()
+    } catch { return VITE_WS_URL }
+  }
+  if (VITE_API_URL) {
+    try {
+      const u = new URL(VITE_API_URL)
+      return `${u.protocol === 'https:' ? 'wss:' : 'ws:'}//${u.host}/ws`
+    } catch { /* fall through */ }
+  }
+  // Same-origin (Vite proxy in local dev)
+  return typeof window === 'undefined' ? '' : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+}
+
+const WS_URL = resolveWsUrl()
+// Attempt WS on localhost, or when an explicit WS/API URL points at a real backend.
+const SHOULD_CONNECT = IS_LOCAL || !!VITE_WS_URL || !!VITE_API_URL
 export function useWebSocket(): void {
   const store     = useHadesStore()
   const wsRef     = useRef<WebSocket | null>(null)
   const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pingRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!SHOULD_CONNECT) {
@@ -28,6 +50,7 @@ export function useWebSocket(): void {
     return () => {
       stopped = true
       if (timerRef.current) clearTimeout(timerRef.current)
+      if (pingRef.current) clearTimeout(pingRef.current)
       wsRef.current?.close()
     }
   }, [])
@@ -69,7 +92,8 @@ export function useWebSocket(): void {
   }
 
   function pingInterval(): void {
-    timerRef.current = setTimeout(() => {
+    if (pingRef.current) clearTimeout(pingRef.current)
+    pingRef.current = setTimeout(() => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'PING' }))
         pingInterval()
@@ -170,3 +194,4 @@ export function useWebSocket(): void {
     }
   }
 }
+

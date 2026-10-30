@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid'
+﻿import { v4 as uuidv4 } from 'uuid'
 import type {
   Mission,
   Task,
@@ -201,9 +201,9 @@ export class HadesOrchestrator extends AgentBase {
 
       if (isSimulated) {
         task.status = 'SUSPENDED' // El resultado simulado no satisface dependencias
-        // Agregar nota de simulación al resultado
+        // Un resultado simulado no es un éxito real: success=false evita estados contradictorios (SUSPENDED + success)
         if (typeof task.result === 'object' && task.result !== null) {
-          Object.assign(task.result, { simulated: true, note: 'Resultado simulado - requiere ejecución real' })
+          Object.assign(task.result, { success: false, simulated: true, note: 'Resultado simulado - requiere ejecución real' })
         }
       } else {
         task.status = (result.data as { pendingApproval?: boolean })?.pendingApproval
@@ -235,15 +235,31 @@ export class HadesOrchestrator extends AgentBase {
   }
 
   private generateReport(mission: Mission): void {
-    const success = mission.tasks.filter(t => t.status === 'EXECUTED').length
-    const failed  = mission.tasks.filter(t => t.status === 'FAILED').length
-    const pending = mission.tasks.filter(t => !['EXECUTED', 'FAILED'].includes(t.status)).length
+    const success   = mission.tasks.filter(t => t.status === 'EXECUTED').length
+    const failed    = mission.tasks.filter(t => t.status === 'FAILED').length
+    const awaiting  = mission.tasks.filter(t => t.status === 'CERBERUS_REVIEW').length
+    const simulated = mission.tasks.filter(t => t.status === 'SUSPENDED').length
+    const blocked   = mission.tasks.filter(t => t.status === 'ASSIGNED').length
+    const pending   = mission.tasks.filter(t => !['EXECUTED', 'FAILED'].includes(t.status)).length
+
+    // Tareas que nunca se ejecutaron (dependencia fallida/suspendida/pendiente) reciben un resultado explícito, no vacío.
+    for (const t of mission.tasks) {
+      if (t.status === 'ASSIGNED' && !t.result) {
+        t.result = { taskId: t.id, success: false, summary: 'No ejecutada: una dependencia no se completó', data: { blocked: true, executed: false }, cerberusIds: [] }
+      }
+    }
+
+    const parts: string[] = []
+    if (awaiting)  parts.push(`${awaiting} esperando aprobación`)
+    if (simulated) parts.push(`${simulated} con resultado SIMULADO (no real)`)
+    if (blocked)   parts.push(`${blocked} bloqueada(s) por dependencias`)
+    if (failed)    parts.push(`${failed} fallida(s)`)
 
     mission.report = {
       missionId:    mission.id,
-      summary:      pending
-        ? `Misión incompleta: ${pending} tarea(s) pendientes o suspendidas; no se autorizaron dependencias.`
-        : `Misión ${failed ? 'fallida' : 'completada'}: ${success}/${mission.tasks.length} tareas exitosas.`,
+      summary:      pending || failed
+        ? `Misión incompleta: ${success}/${mission.tasks.length} tareas exitosas; ${parts.join(', ')}.`
+        : `Misión completada: ${success}/${mission.tasks.length} tareas exitosas.`,
       tasksTotal:   mission.tasks.length,
       tasksSuccess: success,
       tasksFailed:  failed,
@@ -252,13 +268,13 @@ export class HadesOrchestrator extends AgentBase {
       generatedAt:  Date.now(),
     }
 
-    mission.status      = pending ? 'PARTIAL_COMPLETE' : failed ? 'FAILED' : 'COMPLETED'
+    // Aprobación humana pendiente => PARTIAL_COMPLETE (reanudable). Sin aprobación pendiente, un fallo es FAILED.
+    mission.status      = awaiting ? 'PARTIAL_COMPLETE' : failed ? 'FAILED' : pending ? 'PARTIAL_COMPLETE' : 'COMPLETED'
     mission.updatedAt   = Date.now()
-    mission.completedAt = pending ? null : Date.now()
+    mission.completedAt = mission.status === 'COMPLETED' || mission.status === 'FAILED' ? Date.now() : null
 
     bus.publish({ type: 'MISSION_PROGRESS', payload: { missionId: mission.id, status: mission.status, progress: this.calculateProgress(mission) } })
   }
-
   getMission(id: string): Mission | null  { return this.missions.get(id) ?? null }
   getAllMissions(): Mission[]              { return Array.from(this.missions.values()) }
   registerMission(mission: Mission): void  { this.missions.set(mission.id, mission) }
@@ -281,3 +297,4 @@ export class HadesOrchestrator extends AgentBase {
 function delay(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms))
 }
+

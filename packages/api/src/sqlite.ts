@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'
+﻿import Database from 'better-sqlite3'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
@@ -264,7 +264,7 @@ export class SqliteRepository extends JsonRepository {
                 data: {
                   executor: 'local-rule-engine', intendedAgent: nextTask.assignedTo,
                   mode: 'RULE_BASED',
-                  simulated: true, executionMode: 'DEMO',
+                  simulated: false, executionMode: 'LOCAL_RULE_ENGINE', agentDispatch: 'NOT_IMPLEMENTED',
                   reportMarkdown,
                   generatedAt: Date.now(),
                 },
@@ -280,7 +280,7 @@ export class SqliteRepository extends JsonRepository {
                 summary: 'Hash local del informe calculado; despacho de TARTARUS no implementado',
                 data: {
                   executor: 'local-rule-engine', intendedAgent: nextTask.assignedTo,
-                  simulated: true, executionMode: 'DEMO',
+                  simulated: false, executionMode: 'LOCAL_RULE_ENGINE', agentDispatch: 'NOT_IMPLEMENTED',
                   sha256: deliverableHash,
                   sealedAt: Date.now(),
                 },
@@ -552,7 +552,7 @@ export class SqliteRepository extends JsonRepository {
       const mission=this.getMission(missionId)!, task=mission.tasks[3]!, now=Date.now()
       const approval: StoredApproval={id:randomUUID(),escalationId:id,status:decision,justification,decidedBy:actor,decidedAt:now,executionAuthorized:decision==='APPROVED'}
       this.db.prepare('INSERT INTO approvals VALUES (?,?,?)').run(approval.id,id,JSON.stringify(approval)); this.workflowEvent(missionId,actor,decision)
-      if (decision === 'REJECTED') { task.status='BLOCKED'; task.completedAt=now; mission.status='FAILED'; mission.completedAt=now; this.db.prepare("UPDATE local_operations SET state='CANCELLED' WHERE id=?").run(id); this.putMission(mission); this.emitExecution(missionId,task,'mission.failed','REJECTED') }
+      if (decision === 'REJECTED') { task.status='BLOCKED'; task.completedAt=now; task.result={taskId:task.id,success:false,summary:'Operación rechazada por administrador',data:{rejected:true,executed:false},cerberusIds:[]}; for (const downstream of mission.tasks.slice(4)) { if (downstream.status==='QUEUED') { downstream.status='BLOCKED'; downstream.completedAt=now; downstream.result={taskId:downstream.id,success:false,summary:'No ejecutada: la operación previa fue rechazada',data:{executed:false,blockedBy:task.id},cerberusIds:[]} } } mission.status='FAILED'; mission.completedAt=now; this.db.prepare("UPDATE local_operations SET state='CANCELLED' WHERE id=?").run(id); this.putMission(mission); this.emitExecution(missionId,task,'mission.failed','REJECTED') }
       else { task.status='QUEUED'; mission.status='IN_PROGRESS'; this.db.prepare("UPDATE local_operations SET state='APPROVED' WHERE id=?").run(id); this.putMission(mission) }
     })()
     this.publishSince(missionId,cursor)
