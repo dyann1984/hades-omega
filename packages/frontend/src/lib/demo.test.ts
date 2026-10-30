@@ -3,7 +3,7 @@ import { apiPath, isDemoToken, demoPath } from './api.js'
 import { translate } from './i18n.js'
 import { translateForTest } from './domTranslate.js'
 
-const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url')
+const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const token = (roles: string[]) => `${b64({ alg: 'HS256' })}.${b64({ sub: 'x', roles })}.sig`
 
 describe('demo helpers', () => {
