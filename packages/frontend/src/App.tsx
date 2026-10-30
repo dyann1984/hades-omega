@@ -99,13 +99,22 @@ export default function App(): JSX.Element {
     const timer = setTimeout(() => { setSessionToken(undefined); clearPrivateState(); setRole(null); setExpiresAt(null) }, remaining)
     return () => clearTimeout(timer)
   }, [expiresAt])
-  async function logout(): Promise<void> {
-    try {
-      const response = await fetch(apiPath('/api/v1/auth/logout'), { method:'POST', headers:apiHeaders() })
-      if (!response.ok) throw new Error('No se pudo revocar la sesión. Compruebe la conexión y vuelva a intentarlo.')
-      setSessionToken(undefined, undefined); clearPrivateState(); setRole(null); setExpiresAt(null); setLogoutError('')
-    } catch (error) { setLogoutError(error instanceof Error ? error.message : 'Error de conexión') }
+  async function logout(force = false): Promise<void> {
+    if (!force) {
+      try {
+        await fetch(apiPath('/api/v1/auth/logout'), { method:'POST', headers:apiHeaders() })
+      } catch { /* ignore network errors on logout */ }
+    }
+    setSessionToken(undefined, undefined); clearPrivateState(); setRole(null); setExpiresAt(null); setLogoutError('')
   }
+
+  // Clear stale session automatically if the server rejects our token
+  useEffect(() => {
+    if (!role) return
+    fetch(apiPath('/api/v1/agents'), { headers: apiHeaders() })
+      .then(r => { if (r.status === 401) logout(true) })
+      .catch(() => {})
+  }, [role]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!role) return <LoginPanel onLogin={(nextRole, expiry) => { setExpiresAt(expiry); setRole(nextRole) }} />
   return (
     <BrowserRouter>

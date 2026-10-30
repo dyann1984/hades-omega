@@ -40,9 +40,9 @@ export default function LoginPanel({ onLogin }: { onLogin: (role: string, expire
       })
       if (!response.ok) {
         const code = response.status
-        if (code === 429) throw new Error('Demasiados intentos. Espere 1 minuto e inténtelo de nuevo.')
-        if (code === 503) throw new Error('El servidor no está disponible. Espere unos segundos y reintente.')
-        throw new Error('Credenciales inválidas.')
+        if (code === 429) throw new Error('Demasiados intentos. Espere 1 minuto e inténtelo de nuevo. [HTTP 429]')
+        if (code === 503) throw new Error('El servidor no está disponible. Espere unos segundos y reintente. [HTTP 503]')
+        throw new Error(`Credenciales inválidas. [HTTP ${code}]`)
       }
       const body = await response.json()
       clearPrivateState()
