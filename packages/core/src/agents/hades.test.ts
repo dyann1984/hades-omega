@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { HadesOrchestrator } from './hades.js'
 import { CerberusGUARD } from '../cerberus/guard.js'
 import { CerberusAUDIT } from '../cerberus/audit.js'

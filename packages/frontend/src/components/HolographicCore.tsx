@@ -1,4 +1,4 @@
-﻿import { Component, Suspense, lazy } from 'react'
+import { Component, Suspense, lazy } from 'react'
 import { useHadesStore } from '../store/index.js'
 import type { SubAgent } from './HolographicCore3D.js'
 

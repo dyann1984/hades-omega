@@ -1,4 +1,4 @@
-﻿import Database from 'better-sqlite3'
+import Database from 'better-sqlite3'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'

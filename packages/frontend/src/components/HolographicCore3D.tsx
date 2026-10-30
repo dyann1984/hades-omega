@@ -1,4 +1,4 @@
-﻿import { useRef, useMemo, useEffect } from 'react'
+import { useRef, useMemo, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { PerformanceMonitor, Line, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
@@ -533,7 +533,7 @@ export default function HolographicCore3D({ selectedAgent = null, onAgentSelect 
         toneMapping:         THREE.ACESFilmicToneMapping,
         toneMappingExposure: 1.25,
       }}
-      style={{ background: 'transparent' }}
+      style={{ background: 'transparent', touchAction: 'pan-y' }}
     >
       <PerformanceMonitor onDecline={() => {}} />
       <ViewControls resetSignal={resetSignal} />

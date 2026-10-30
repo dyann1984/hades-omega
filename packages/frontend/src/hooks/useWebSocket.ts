@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useHadesStore } from '../store/index.js'
 import { websocketToken } from '../lib/api.js'
 

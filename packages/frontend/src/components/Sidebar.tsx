@@ -37,7 +37,7 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
         {collapsed && <span className="text-gold text-xs font-bold" aria-label="HADES">H</span>}
         <button
           onClick={onToggle}
-          className="ml-auto text-gray-600 hover:text-gray-400 text-xs"
+          className="ml-auto text-gray-400 hover:text-gray-200 text-xs"
           aria-label="Toggle sidebar"
         >
           {collapsed ? '▶' : '◀'}
@@ -54,7 +54,7 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
             title={item.label}
             end={item.path === '/'}
             className={({ isActive }) => clsx(
-              'flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors font-mono text-xs',
+              'flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors font-mono text-[13px]',
               isActive
                 ? 'bg-electric/15 text-gray-100 border border-electric/40 shadow-[inset_3px_0_0_#45c9ec]'
                 : 'text-gray-300 hover:text-white hover:bg-obsidian-700',
@@ -76,7 +76,7 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
         <div className="flex items-center gap-2">
           <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', wsConnected ? 'bg-permit animate-pulse' : 'bg-gray-600')} />
           {!collapsed && (
-            <span className="font-mono text-[10px] text-gray-500">
+            <span className="font-mono text-[11px] text-gray-300">
               {wsConnected ? 'WebSocket OK' : 'Sin conexión'}
             </span>
           )}
@@ -84,7 +84,7 @@ export default function Sidebar({ collapsed, onToggle }: Props): JSX.Element {
         {!collapsed && (
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="text-[10px] font-mono text-gray-500 hover:text-gray-400 text-left"
+            className="text-[11px] font-mono text-gray-400 hover:text-gray-200 text-left"
           >
             {theme === 'dark' ? '☀ Modo claro' : '☾ Modo oscuro'}
           </button>
