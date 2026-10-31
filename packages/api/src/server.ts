@@ -14,7 +14,7 @@ import { demoRoutes, resolveDemoSession } from './demo.js'
 import { authRoutes } from './auth.js'
 import { setupRoutes, generateSetupToken } from './setup.js'
 import { documentRoutes } from './routes/documents.js'
-import { createDurableFromEnv } from './durable.js'
+import { createDurableFromEnv, registerDurableGuard } from './durable.js'
 
 const PORT = Number(process.env['PORT'] ?? 3001)
 const HOST = process.env['HOST'] ?? '0.0.0.0'
@@ -45,6 +45,7 @@ async function bootstrap(): Promise<void> {
   app.addHook('onClose', async () => { if (durable) await durable.stop(repository); repository.close() })
   for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void app.close().finally(() => process.exit(0)) })
   await registerSecurity(app, repository)
+  if (durable) registerDurableGuard(app, durable, repository)
   await authRoutes(app, repository, durable)
   await demoRoutes(app)
   const unsubscribeAudit = bus.subscribe(event => {

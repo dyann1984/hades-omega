@@ -691,7 +691,7 @@ export class SqliteRepository extends JsonRepository {
     return rows.map(r => ({ id: r.id, filename: r.filename, status: r.status, createdAt: r.created_at, data: JSON.parse(r.data) }))
   }
   /** Durable mirroring (see durable.ts): full image of the live database, and a monotonic change counter. */
-  serialize(): Buffer { return this.db.serialize() }
+  serialize(): Buffer { return this.db.transaction(() => this.db.serialize())() }   // one read transaction => consistent image incl. WAL content
   changeCount(): number { return (this.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n }
   close(): void { this.db.close() }
 }
