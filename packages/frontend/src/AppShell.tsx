@@ -21,6 +21,7 @@ import { useHadesStore } from './store/index.js'
 import DemoTour from './pages/DemoTour.js'
 import AccountPanel from './pages/AccountPanel.js'
 import JustificationHost from './components/JustificationDialog.js'
+import HadesGuide from './components/HadesGuide.js'
 import { startDomTranslation } from './lib/domTranslate.js'
 import { isDemoToken, demoPath, apiHeaders, websocketToken } from './lib/api.js'
 import { takePrefetchedSeed } from './lib/demoStart.js'
@@ -98,6 +99,7 @@ export default function AppShell({ onLogout }: { onLogout: () => void }): JSX.El
 
       <NotificationToast />
       <JustificationHost />
+      <HadesGuide />
     </div>
   )
 }
