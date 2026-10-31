@@ -690,5 +690,8 @@ export class SqliteRepository extends JsonRepository {
     const rows = this.db.prepare('SELECT id,filename,status,created_at,data FROM document_results WHERE owner_id=? ORDER BY created_at DESC LIMIT ?').all(ownerId, limit) as Array<{id:string;filename:string;status:string;created_at:number;data:string}>
     return rows.map(r => ({ id: r.id, filename: r.filename, status: r.status, createdAt: r.created_at, data: JSON.parse(r.data) }))
   }
+  /** Durable mirroring (see durable.ts): full image of the live database, and a monotonic change counter. */
+  serialize(): Buffer { return this.db.serialize() }
+  changeCount(): number { return (this.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n }
   close(): void { this.db.close() }
 }

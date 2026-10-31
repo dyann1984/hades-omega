@@ -13,7 +13,7 @@ export async function registerSecurity(app: FastifyInstance, repository?: Sqlite
   // onRequest: authentication and DEMO default-deny run before body parsing/schema validation.
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0]!
-    if (!request.url.startsWith('/api/v1') || path === '/api/v1/auth/login' || path === '/api/v1/setup/init' || path === '/api/v1/demo/session') return
+    if (!request.url.startsWith('/api/v1') || path === '/api/v1/auth/login' || path === '/api/v1/setup/init' || path === '/api/v1/auth/recover' || path === '/api/v1/demo/session') return
     try {
       const claims = await request.jwtVerify<{ sub?: unknown; roles?: unknown; exp?: unknown; sid?: unknown }>()
       if (typeof claims.sub !== 'string' || !claims.sub.trim() || !Array.isArray(claims.roles) || !claims.roles.some(r => ['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER', 'DEMO'].includes(r)) || typeof claims.exp !== 'number' || claims.exp <= Date.now() / 1000) throw new Error('Invalid claims')

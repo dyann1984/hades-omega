@@ -14,6 +14,7 @@ import { demoRoutes, resolveDemoSession } from './demo.js'
 import { authRoutes } from './auth.js'
 import { setupRoutes, generateSetupToken } from './setup.js'
 import { documentRoutes } from './routes/documents.js'
+import { createDurableFromEnv } from './durable.js'
 
 const PORT = Number(process.env['PORT'] ?? 3001)
 const HOST = process.env['HOST'] ?? '0.0.0.0'
@@ -34,11 +35,17 @@ async function bootstrap(): Promise<void> {
 
   await app.register(websocketPlugin)
   const legacyPath = process.env['HADES_DATA_FILE'] ?? './data/hades.json'
-  const repository = new SqliteRepository(process.env['HADES_DB_FILE'] ?? `${legacyPath}.sqlite`, legacyPath)
+  const dbPath = process.env['HADES_DB_FILE'] ?? `${legacyPath}.sqlite`
+  // Optional durable mirror (PostgreSQL) so the admin and data survive Render Free spin-downs. Off unless configured.
+  const durable = await createDurableFromEnv(process.env, app.log)
+  if (durable) app.log.info({ outcome: await durable.restoreIfMissing(dbPath) }, 'Durable storage boot')
+  const repository = new SqliteRepository(dbPath, legacyPath)
   await repository.init()
-  app.addHook('onClose', async () => { repository.close() })
+  durable?.start(repository)
+  app.addHook('onClose', async () => { if (durable) await durable.stop(repository); repository.close() })
+  for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void app.close().finally(() => process.exit(0)) })
   await registerSecurity(app, repository)
-  await authRoutes(app, repository)
+  await authRoutes(app, repository, durable)
   await demoRoutes(app)
   const unsubscribeAudit = bus.subscribe(event => {
     if (event.type === 'CERBERUS_DECISION') {
