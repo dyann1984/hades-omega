@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
-import { CerberusGUARD } from '@hades/core'
+import { CerberusGUARD, NEAR_SUBMIT_TOOL } from '@hades/core'
+import type { CerberusGate } from './cerberus-gate.js'
 
 export type NearState = 'DRAFT'|'PENDING_APPROVAL'|'APPROVED'|'SIGNING'|'BROADCAST_PENDING'|'BROADCASTED'|'CONFIRMED'|'FAILED'|'REJECTED'|'CANCELLED'|'RECONCILIATION_REQUIRED'
 const TRANSITIONS: Record<NearState, readonly NearState[]> = {
@@ -27,11 +28,18 @@ export function canonicalIntent(input: unknown): {params:AuditIntent; hash:strin
 
 /** Durable approval gate only; no signer or broadcaster is connected to this store. */
 export class NearIntentStore {
-  constructor(private db:Database.Database, private guard:CerberusGUARD) {
+  constructor(private db:Database.Database, private guard:CerberusGUARD, private gate:CerberusGate) {
     db.exec(`CREATE TABLE IF NOT EXISTS near_intents (id TEXT PRIMARY KEY, params TEXT NOT NULL, hash TEXT NOT NULL, status TEXT NOT NULL, policy_hash TEXT NOT NULL, created_at INTEGER NOT NULL, approval_id TEXT UNIQUE, approved_by TEXT, approved_at INTEGER, expires_at INTEGER, consumed_at INTEGER);
       CREATE TABLE IF NOT EXISTS near_security (id INTEGER PRIMARY KEY CHECK(id=1), stopped INTEGER NOT NULL);
       INSERT OR IGNORE INTO near_security VALUES (1,0);
       CREATE TABLE IF NOT EXISTS near_intent_events (id TEXT PRIMARY KEY, intent_id TEXT, actor TEXT NOT NULL, action TEXT NOT NULL, timestamp INTEGER NOT NULL);`)
+    // Link to the CERBERUS gate approval that actually authorizes execution of this intent.
+    if (!(db.prepare('PRAGMA table_info(near_intents)').all() as Array<{name:string}>).some(c=>c.name==='gate_approval_id')) db.exec('ALTER TABLE near_intents ADD COLUMN gate_approval_id TEXT')
+  }
+  private gateApprovalId(id:string):string|null { return (this.db.prepare('SELECT gate_approval_id AS g FROM near_intents WHERE id=?').get(id) as {g:string|null}|undefined)?.g ?? null }
+  // The routes that reach this store are ADMIN-only; the gate still enforces tool, agent, params and recipient rules.
+  private gateRequest(item:NearIntent, actor:string, source:'NEAR'|'API', approvalId?:string) {
+    return {tool:NEAR_SUBMIT_TOOL,agent:'HADES',role:'ADMIN' as const,source,params:item.params as unknown as Record<string,unknown>,actor,correlationId:item.id,...(approvalId?{approvalId}:{})}
   }
   private event(id:string|null,actor:string,action:string):void { this.db.prepare('INSERT INTO near_intent_events VALUES (?,?,?,?,?)').run(randomUUID(),id,actor,action,Date.now()) }
   get(id:string):NearIntent | undefined {
@@ -44,11 +52,15 @@ export class NearIntentStore {
     return this.get(id)!
   }
   requestApproval(id:string,actor:string):NearIntent {
+    const pre=this.get(id); if(!pre || pre.status!=='DRAFT') throw new Error('INVALID_STATE')
+    const d=this.guard.evaluate({id:randomUUID(),agentId:'agent:hades',agentName:'HADES',operationType:'NEAR_TRANSACTION',payload:pre.params,missionId:id,taskId:id,requestedAt:Date.now()})
+    if(d.outcome!=='ESCALATE') throw new Error('POLICY_DENIED')
+    // Outside the state transaction on purpose: a denial must stay recorded in the gate's decision log.
+    const g=this.gate.authorize(this.gateRequest(pre,actor,'NEAR'))
+    if(g.outcome!=='ESCALATE' || !g.approvalId) throw new Error(`POLICY_DENIED:${g.code}`)
     return this.db.transaction(()=>{
       const item=this.get(id); if(!item || item.status!=='DRAFT') throw new Error('INVALID_STATE')
-      const d=this.guard.evaluate({id:randomUUID(),agentId:'agent:hades',agentName:'HADES',operationType:'NEAR_TRANSACTION',payload:item.params,missionId:id,taskId:id,requestedAt:Date.now()})
-      if(d.outcome!=='ESCALATE') throw new Error('POLICY_DENIED')
-      this.db.prepare("UPDATE near_intents SET status='PENDING_APPROVAL',policy_hash=? WHERE id=?").run(this.guard.getPolicyHash(),id)
+      this.db.prepare("UPDATE near_intents SET status='PENDING_APPROVAL',policy_hash=?,gate_approval_id=? WHERE id=?").run(this.guard.getPolicyHash(),g.approvalId,id)
       this.event(id,actor,'PENDING_APPROVAL');return this.get(id)!
     })()
   }
@@ -58,6 +70,8 @@ export class NearIntentStore {
       if(!item || item.status!=='PENDING_APPROVAL') throw new Error('INVALID_STATE')
       if(item.hash!==expectedHash || canonicalIntent(item.params).hash!==item.hash || item.policyHash!==this.guard.getPolicyHash()) throw new Error('INTENT_CHANGED')
       if(!Number.isSafeInteger(expiresAt) || expiresAt<=now || expiresAt>now+15*60*1000) throw new Error('INVALID_EXPIRY')
+      const gateApproval=this.gateApprovalId(id); if(!gateApproval) throw new Error('INVALID_STATE')
+      this.gate.decide(gateApproval,'APPROVED',actor,`NEAR intent ${id} approved for hash ${expectedHash.slice(0,12)}`,expiresAt-now)
       this.db.prepare("UPDATE near_intents SET status='APPROVED',approval_id=?,approved_by=?,approved_at=?,expires_at=? WHERE id=?").run(randomUUID(),actor,now,expiresAt,id)
       this.event(id,actor,'APPROVED');return this.get(id)!
     })()
@@ -71,18 +85,26 @@ export class NearIntentStore {
       this.event(id,actor,outcome);return this.get(id)!
     })()
   }
-  setEmergency(stopped:boolean,actor:string):void { this.db.transaction(()=>{this.db.prepare('UPDATE near_security SET stopped=? WHERE id=1').run(stopped?1:0);this.event(null,actor,stopped?'EMERGENCY_STOP':'EMERGENCY_CLEAR')})() }
-  /** Atomically consumes an approval; callers must still enforce stop and intent checks before any transmission. */
-  claimForSigning(id:string,expectedHash:string,actor:string):NearIntent {
+  setEmergency(stopped:boolean,actor:string):void { this.db.transaction(()=>{this.gate.setStopped(stopped,actor);this.event(null,actor,stopped?'EMERGENCY_STOP':'EMERGENCY_CLEAR')})() }
+  /**
+   * Atomically consumes an approval and returns the intent plus the single-use grant the executor must present to
+   * the NEAR bridge. Every check is repeated here and again by the gate, so no stale approval can be replayed.
+   */
+  claimForSigning(id:string,expectedHash:string,actor:string):NearIntent & {grantId:string} {
+    const pre=this.get(id), now=Date.now()
+    if(this.gate.isStopped()) throw new Error('EMERGENCY_STOP')
+    if(!pre || pre.status!=='APPROVED' || pre.consumedAt!==null) throw new Error('INVALID_STATE')
+    if(pre.expiresAt===null || pre.expiresAt<=now) throw new Error('APPROVAL_EXPIRED')
+    if(pre.hash!==expectedHash || canonicalIntent(pre.params).hash!==pre.hash || pre.policyHash!==this.guard.getPolicyHash()) throw new Error('INTENT_CHANGED')
+    const gateApproval=this.gateApprovalId(id); if(!gateApproval) throw new Error('INVALID_STATE')
+    // Consumes the gate approval (one use, expiry, params hash, policy hash) and logs the decision, including denials.
+    const g=this.gate.authorize(this.gateRequest(pre,actor,'NEAR',gateApproval))
+    if(g.outcome!=='PERMIT' || !g.grantId) throw new Error(g.code==='APPROVAL_EXPIRED'?'APPROVAL_EXPIRED':g.code==='EMERGENCY_STOP'?'EMERGENCY_STOP':`POLICY_DENIED:${g.code}`)
+    const grantId=g.grantId
     return this.db.transaction(()=>{
-      const item=this.get(id), now=Date.now()
-      if((this.db.prepare('SELECT stopped FROM near_security WHERE id=1').get() as {stopped:number}).stopped) throw new Error('EMERGENCY_STOP')
-      if(!item || item.status!=='APPROVED' || item.consumedAt!==null) throw new Error('INVALID_STATE')
-      if(item.expiresAt===null || item.expiresAt<=now) throw new Error('APPROVAL_EXPIRED')
-      if(item.hash!==expectedHash || canonicalIntent(item.params).hash!==item.hash || item.policyHash!==this.guard.getPolicyHash()) throw new Error('INTENT_CHANGED')
       const changed=this.db.prepare("UPDATE near_intents SET status='SIGNING',consumed_at=? WHERE id=? AND status='APPROVED' AND consumed_at IS NULL").run(now,id)
       if(changed.changes!==1) throw new Error('INVALID_STATE')
-      this.event(id,actor,'SIGNING');return this.get(id)!
+      this.event(id,actor,'SIGNING');return {...this.get(id)!,grantId}
     })()
   }
 }

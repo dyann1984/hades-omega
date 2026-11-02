@@ -3,7 +3,8 @@ import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { AuditRecord, Mission, Task, AgentName } from '@hades/core'
-import { defaultCapabilityRegistry, bus } from '@hades/core'
+import { defaultCapabilityRegistry, bus, createDefaultToolRegistry } from '@hades/core'
+import { CerberusGate } from './cerberus-gate.js'
 import { JsonRepository, type StoredApproval, type SystemEvent } from './persistence.js'
 import { analyzeDocuments } from './document-analysis.js'
 import { dispatchCapability } from './capability-dispatcher.js'
@@ -23,6 +24,9 @@ export class SqliteRepository extends JsonRepository {
   private db!: Database.Database
   private nearIntents!: NearIntentStore
   private chronosService!: ChronosService
+  private gateInstance!: CerberusGate
+  /** The single authorization boundary for external effects. */
+  get gate(): CerberusGate { return this.gateInstance }
   get chronos(): ChronosService { return this.chronosService }
   /** Second service over the same database with its own clock; used by tests to simulate time and extra processes. */
   createChronos(clock: () => number): ChronosService { return new ChronosService(this.db, this, clock) }
@@ -103,7 +107,8 @@ export class SqliteRepository extends JsonRepository {
       })()
     }
     this.chronosService = new ChronosService(this.db, this)
-    this.nearIntents = new NearIntentStore(this.db, this.policyGuard)
+    this.gateInstance = new CerberusGate(this.db, createDefaultToolRegistry(), { policyHash: () => this.policyGuard.getPolicyHash(), audit: e => { this.recordAuditEvent(e) } })
+    this.nearIntents = new NearIntentStore(this.db, this.policyGuard, this.gateInstance)
     this.reconcileOnStartup()
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined

@@ -10,6 +10,7 @@ describe('SQLite migration and persistence', () => {
     try {
       const first=new SqliteRepository(db,json); await first.init()
       const store=first.getNearIntentStore()
+      first.gate.addRecipient('near.audit_hash_submit','audit.testnet','admin')
       const draft=store.create({network:'testnet',signerId:'source.testnet',receiverId:'audit.testnet',type:'AUDIT_HASH',amountYocto:'0',auditId:'audit-1',contentHash:'a'.repeat(64),operationType:'PLANNING',agentName:'HADES',decision:'PERMIT',timestampMs:1700000000000,gas:'30000000000000'},'operator')
       store.requestApproval(draft.id,'operator');store.approve(draft.id,draft.hash,'admin',Date.now()+60000);store.setEmergency(true,'admin');first.close()
       const second=new SqliteRepository(db,json);await second.init()

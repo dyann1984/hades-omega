@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import type { SqliteRepository } from '../sqlite.js'
 import { requireRole } from '../security.js'
 import { ChronosError, JOB_REGISTRY } from '../chronos/chronos.js'
@@ -8,6 +9,27 @@ const STATUS: Record<ChronosError['code'], number> = { VALIDATION_ERROR: 400, UN
 function fail(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof ChronosError) return reply.code(STATUS[error.code]).send({ success: false, error: { code: error.code, message: error.message } })
   throw error
+}
+
+/**
+ * Externally triggered scheduler pass for hosts that sleep or are serverless. Outside /api/v1 so it uses its own
+ * shared-secret auth rather than user sessions. Not registered at all unless the secret is at least 32 characters.
+ */
+export function registerChronosTick(app: FastifyInstance, repository: SqliteRepository, secret: string | undefined): boolean {
+  if (!secret || secret.length < 32) return false
+  const expected = Buffer.from(secret)
+  const handler = async (req: { headers: Record<string, unknown> }, reply: FastifyReply) => {
+    const header = req.headers['authorization']
+    const supplied = Buffer.from(typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '')
+    // Hash both sides so the comparison is constant-time regardless of the supplied length.
+    const a = createHash('sha256').update(supplied).digest(), b = createHash('sha256').update(expected).digest()
+    if (!timingSafeEqual(a, b)) return reply.code(401).send({ success: false, error: { code: 'UNAUTHENTICATED' } })
+    const { started, retried, executed } = repository.chronos.tick()
+    return { success: true, data: { started, retried, runs: executed.map(r => ({ id: r.id, taskId: r.taskId, status: r.status })) } }
+  }
+  app.post('/internal/chronos/tick', handler)
+  app.get('/internal/chronos/tick', handler)
+  return true
 }
 
 export async function chronosRoutes(app: FastifyInstance, repository: SqliteRepository): Promise<void> {

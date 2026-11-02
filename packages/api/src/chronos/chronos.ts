@@ -25,6 +25,8 @@ interface JobDefinition {
   /** Idempotent jobs are the only ones eligible for automatic retry. */
   idempotent: true
   agent: string
+  /** CERBERUS tool id. Effect class, permissions and limits come from the tool registry, not from this file. */
+  tool: string
   validate(params: Record<string, unknown>): Record<string, unknown>
   run(ctx: JobContext): unknown
 }
@@ -39,13 +41,13 @@ function intParam(params: Record<string, unknown>, key: string, def: number, min
 export const JOB_REGISTRY: Record<string, JobDefinition> = {
   AUDIT_CHAIN_VERIFY: {
     description: 'Recomputes the SHA-256 audit hash chain and reports whether it is intact.',
-    effect: 'READ_ONLY', idempotent: true, agent: 'CERBERUS',
+    effect: 'READ_ONLY', idempotent: true, agent: 'CERBERUS', tool: 'chronos.audit_chain_verify',
     validate: params => { if (Object.keys(params).length) throw new Error('AUDIT_CHAIN_VERIFY takes no parameters'); return {} },
     run: ({ repository }) => repository.verifyAuditIntegrity(),
   },
   CERBERUS_DECISION_REPORT: {
     description: 'Counts CERBERUS policy decisions recorded in the audit log over a time window.',
-    effect: 'READ_ONLY', idempotent: true, agent: 'CERBERUS',
+    effect: 'READ_ONLY', idempotent: true, agent: 'CERBERUS', tool: 'chronos.cerberus_decision_report',
     validate: params => ({ windowHours: intParam(params, 'windowHours', 24, 1, 720) }),
     run: ({ repository, now, params }) => {
       const since = now - (params['windowHours'] as number) * 3_600_000
@@ -57,7 +59,7 @@ export const JOB_REGISTRY: Record<string, JobDefinition> = {
   },
   APPROVALS_DIGEST: {
     description: 'Summarizes recorded human approval decisions by status.',
-    effect: 'READ_ONLY', idempotent: true, agent: 'HADES',
+    effect: 'READ_ONLY', idempotent: true, agent: 'HADES', tool: 'chronos.approvals_digest',
     validate: params => { if (Object.keys(params).length) throw new Error('APPROVALS_DIGEST takes no parameters'); return {} },
     run: ({ repository }) => {
       const approvals = repository.listApprovals()
@@ -65,6 +67,8 @@ export const JOB_REGISTRY: Record<string, JobDefinition> = {
     },
   },
 }
+
+class CerberusDenied extends Error { constructor(readonly code: string, message: string) { super(message) } }
 
 export class ChronosError extends Error {
   constructor(readonly code: 'VALIDATION_ERROR' | 'UNREGISTERED_JOB_KIND' | 'NOT_FOUND' | 'INVALID_STATE', message: string) { super(message) }
@@ -102,6 +106,8 @@ export class ChronosService {
     if (!job) throw new ChronosError('UNREGISTERED_JOB_KIND', 'kind is not a registered CHRONOS job; unknown operations are denied')
     const rawParams = input.params ?? {}
     if (typeof rawParams !== 'object' || rawParams === null || Array.isArray(rawParams)) throw new ChronosError('VALIDATION_ERROR', 'params must be an object')
+    // Scheduled automation may only drive tools CERBERUS classifies as READ; anything else needs a human-approved flow.
+    if (this.repository.gate.tools.get(job.tool)?.effect !== 'READ') throw new ChronosError('UNREGISTERED_JOB_KIND', 'job is not backed by a READ tool; scheduled automation cannot trigger sensitive effects')
     let params: Record<string, unknown>
     try { params = job.validate(rawParams as Record<string, unknown>) } catch (e) { throw new ChronosError('VALIDATION_ERROR', (e as Error).message) }
     if (typeof input.cron !== 'string') throw new ChronosError('VALIDATION_ERROR', 'cron is required')
@@ -178,13 +184,17 @@ export class ChronosService {
     this.db.prepare("UPDATE chronos_runs SET status = 'RUNNING', attempt = ?, started_at = COALESCE(started_at, ?), retry_at = NULL WHERE id = ?").run(attempt, startedAt, runId)
     try {
       if (!job) throw new Error('job kind is no longer registered')
+      // Mandatory CERBERUS check on every run, so a task created earlier cannot outlive a policy change or emergency stop.
+      const verdict = this.repository.gate.authorize({ tool: job.tool, agent: job.agent, role: 'SYSTEM', source: 'CHRONOS', params: task.params, actor: `chronos:${task.id}`, correlationId: runId })
+      if (verdict.outcome !== 'PERMIT') throw new CerberusDenied(verdict.code, verdict.reason)
       const result = job.run({ repository: this.repository, now: startedAt, params: task.params })
       this.db.prepare("UPDATE chronos_runs SET status = 'SUCCEEDED', finished_at = ?, result = ?, error = NULL WHERE id = ?").run(this.clock(), JSON.stringify(result), runId)
       this.db.prepare('UPDATE chronos_tasks SET last_run_at = ? WHERE id = ?').run(startedAt, task.id)
       this.audit(`chronos:${task.agent ?? 'HADES'}`, 'CHRONOS_RUN', `SUCCEEDED:${task.kind}:${task.id}`, runId)
     } catch (e) {
-      const message = (e as Error).message.slice(0, 500)
-      const retry = !!job && job.idempotent && attempt < task.maxAttempts && task.status !== 'CANCELLED'
+      const message = (e instanceof CerberusDenied ? `CERBERUS_DENIED:${e.code}: ${e.message}` : (e as Error).message).slice(0, 500)
+      // A CERBERUS denial is a decision, not a transient failure: never retried.
+      const retry = !(e instanceof CerberusDenied) && !!job && job.idempotent && attempt < task.maxAttempts && task.status !== 'CANCELLED'
       if (retry) this.db.prepare("UPDATE chronos_runs SET status = 'RETRYING', error = ?, retry_at = ? WHERE id = ?").run(message, this.clock() + BACKOFF_MS[Math.min(attempt - 1, BACKOFF_MS.length - 1)]!, runId)
       else this.db.prepare("UPDATE chronos_runs SET status = 'FAILED', finished_at = ?, error = ? WHERE id = ?").run(this.clock(), message, runId)
       this.db.prepare('UPDATE chronos_tasks SET last_run_at = ? WHERE id = ?').run(startedAt, task.id)

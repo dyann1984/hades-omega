@@ -16,13 +16,15 @@ export async function missionRoutes(app: FastifyInstance, repository?: JsonRepos
     if (typeof title !== 'string' || title.trim().length < 3 || typeof description !== 'string' || description.trim().length < 3 || (budgetLimit !== undefined && (!Number.isFinite(Number(budgetLimit)) || Number(budgetLimit) < 0))) {
       return reply.code(400).send(err('VALIDATION_ERROR', 'title y description son requeridos'))
     }
-    const fingerprint = createHash('sha256').update(JSON.stringify({ title, description, budgetLimit: budgetLimit ?? 50000 })).digest('hex')
+    // Validation used Number(); propagate that same numeric value rather than the raw (possibly string) input.
+    const budget = budgetLimit === undefined ? 50000 : Number(budgetLimit)
+    const fingerprint = createHash('sha256').update(JSON.stringify({ title, description, budgetLimit: budget })).digest('hex')
     const idempotencyKey = req.headers['idempotency-key']
     if (typeof idempotencyKey === 'string' && repository) {
       const prior = repository.getIdempotent(JSON.stringify([actor, idempotencyKey]), fingerprint)
       if (prior) return { ...ok(prior), auditRecords: [], nearTxs: [], meta: { ...ok(prior).meta, idempotentReplay: true } }
     }
-    const mission      = await hades.createMission(title.trim(), description.trim(), budgetLimit ?? 50000, actor)
+    const mission      = await hades.createMission(title.trim(), description.trim(), budget, actor)
     const auditRecords = audit.query({})
     const nearTxs      = near.getAllTransactions()
     if (repository) {

@@ -18,7 +18,13 @@ describe('NEAR intent API', () => {
       const create=(role:string)=>app.inject({method:'POST',url:'/api/v1/near/intents',headers:auth(role),payload})
       expect((await create('VIEWER')).statusCode).toBe(403)
       const result=await create('ADMIN');expect(result.statusCode).toBe(201);const intent=result.json().data
-      const request=await app.inject({method:'POST',url:`/api/v1/near/intents/${intent.id}/request-approval`,headers:auth('ADMIN')}); expect(request.json().data.status).toBe('PENDING_APPROVAL')
+      const ask=()=>app.inject({method:'POST',url:`/api/v1/near/intents/${intent.id}/request-approval`,headers:auth('ADMIN')})
+      // Default-deny: an unlisted receiver cannot even reach the approval stage, and the denial is logged.
+      expect((await ask()).statusCode).toBe(409)
+      expect(repo.gate.listDecisions(5)).toContainEqual(expect.objectContaining({tool:'near.audit_hash_submit',outcome:'DENY',code:'RECIPIENT_NOT_ALLOWED'}))
+      expect((await app.inject({method:'POST',url:'/api/v1/cerberus/gate/recipients/add',headers:auth('VIEWER'),payload:{tool:'near.audit_hash_submit',recipient:'audit.testnet'}})).statusCode).toBe(403)
+      expect((await app.inject({method:'POST',url:'/api/v1/cerberus/gate/recipients/add',headers:auth('ADMIN'),payload:{tool:'near.audit_hash_submit',recipient:'audit.testnet'}})).statusCode).toBe(200)
+      const request=await ask(); expect(request.json().data.status).toBe('PENDING_APPROVAL')
       const approve=(hash:string)=>app.inject({method:'POST',url:`/api/v1/near/intents/${intent.id}/approve`,headers:auth('ADMIN'),payload:{hash,expiresAt:Date.now()+60000}})
       expect((await approve('0'.repeat(64))).statusCode).toBe(409)
       expect((await approve(intent.hash)).json().data.status).toBe('APPROVED')

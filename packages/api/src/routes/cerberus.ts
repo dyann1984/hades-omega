@@ -4,6 +4,7 @@ import { guard, audit, near } from '../runtime.js'
 import type { AuditFilter, GUARDOutcome, AgentName } from '@hades/core'
 import type { SqliteRepository } from '../sqlite.js'
 import { readTestnetAccount } from '../near-testnet.js'
+import { GateError } from '../cerberus-gate.js'
 
 export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRepository): Promise<void> {
   app.addHook('preHandler', async req => requireRole(req, ['ADMIN']))
@@ -80,6 +81,10 @@ export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRe
 
   app.get('/near/testnet/account/:accountId', async (req, reply) => {
     const { accountId } = req.params as { accountId: string }
+    if (repository) {
+      const verdict = repository.gate.authorize({ tool: 'near.account_view', agent: 'HADES', role: 'ADMIN', source: 'API', params: { accountId }, actor: (req.user as { sub: string }).sub })
+      if (verdict.outcome !== 'PERMIT') return reply.code(verdict.code === 'INVALID_PARAMS' ? 400 : 403).send(err(verdict.code === 'INVALID_PARAMS' ? 'INVALID_TESTNET_ACCOUNT' : 'CERBERUS_DENIED', verdict.reason))
+    }
     try { return ok(await readTestnetAccount(accountId)) }
     catch (error) {
       if ((error as Error).message === 'INVALID_TESTNET_ACCOUNT') return reply.code(400).send(err('INVALID_TESTNET_ACCOUNT', 'Cuenta testnet inválida'))
@@ -120,13 +125,58 @@ export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRe
     try { return ok(repository.getNearIntentStore().resolve((req.params as {id:string}).id,body.outcome,(req.user as {sub:string}).sub)) }
     catch { return reply.code(409).send(err('INVALID_STATE', 'No se puede resolver la operación en su estado actual')) }
   })
-  app.post('/near/emergency-stop', async (req, reply) => {
+  // One persistent switch for every sensitive action (NEAR, financial, external). Reads keep working.
+  const emergencyStop = async (req: { body?: unknown; user?: unknown }, reply: { code(n: number): { send(b: unknown): unknown } }) => {
     if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
     const body=req.body as {stopped?:unknown} | undefined
     if (typeof body?.stopped!=='boolean') return reply.code(400).send(err('VALIDATION_ERROR','Estado requerido'))
     repository.getNearIntentStore().setEmergency(body.stopped,(req.user as {sub:string}).sub)
     return ok({stopped:body.stopped})
+  }
+  app.post('/near/emergency-stop', emergencyStop)
+  app.post('/cerberus/emergency-stop', emergencyStop)
+  app.get('/cerberus/emergency-stop', async (_req, reply) => repository ? ok({ stopped: repository.gate.isStopped() }) : reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible')))
+
+  // Authorization gate administration.
+  app.get('/cerberus/gate/tools', async (_req, reply) => repository ? ok(repository.gate.listTools()) : reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible')))
+  app.get('/cerberus/gate/decisions', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    const limit = Math.min(Math.max(Number((req.query as { limit?: string }).limit ?? 50) || 50, 1), 200)
+    return ok(repository.gate.listDecisions(limit))
   })
+  app.get('/cerberus/gate/approvals', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    const status = (req.query as { status?: string }).status
+    return ok(repository.gate.listApprovals(status && ['PENDING', 'APPROVED', 'REJECTED'].includes(status) ? status : undefined))
+  })
+  app.post('/cerberus/gate/approvals/:id/decision', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    const b = req.body as { status?: unknown; justification?: unknown; ttlMs?: unknown } | undefined
+    if ((b?.status !== 'APPROVED' && b?.status !== 'REJECTED') || typeof b.justification !== 'string') return reply.code(400).send(err('VALIDATION_ERROR', 'status y justificación requeridos'))
+    try {
+      repository.gate.decide((req.params as { id: string }).id, b.status, (req.user as { sub: string }).sub, b.justification, typeof b.ttlMs === 'number' ? b.ttlMs : undefined)
+      return ok({ decided: b.status, warning: 'La aprobación autoriza una única ejecución con estos parámetros exactos; no ejecuta nada por sí misma.' })
+    } catch (e) {
+      if (e instanceof GateError) return reply.code(e.code === 'APPROVAL_NOT_FOUND' ? 404 : 409).send(err(e.code, e.message))
+      throw e
+    }
+  })
+  app.get('/cerberus/gate/recipients', async (req, reply) => repository ? ok(repository.gate.listRecipients((req.query as { tool?: string }).tool)) : reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible')))
+  for (const action of ['add', 'remove'] as const) {
+    app.post(`/cerberus/gate/recipients/${action}`, async (req, reply) => {
+      if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+      const b = req.body as { tool?: unknown; recipient?: unknown } | undefined
+      if (typeof b?.tool !== 'string' || typeof b.recipient !== 'string') return reply.code(400).send(err('VALIDATION_ERROR', 'tool y recipient requeridos'))
+      try {
+        const actor = (req.user as { sub: string }).sub
+        if (action === 'add') repository.gate.addRecipient(b.tool, b.recipient, actor); else repository.gate.removeRecipient(b.tool, b.recipient, actor)
+        return ok({ tool: b.tool, recipient: b.recipient, action })
+      } catch (e) {
+        if (e instanceof GateError) return reply.code(400).send(err(e.code, e.message))
+        throw e
+      }
+    })
+  }
 }
 
 function ok<T>(data: T) {

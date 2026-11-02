@@ -1,7 +1,10 @@
 import Database from 'better-sqlite3'
 import { describe, it, expect } from 'vitest'
-import { CerberusGUARD } from '@hades/core'
+import { CerberusGUARD, createDefaultToolRegistry } from '@hades/core'
+import { CerberusGate } from './cerberus-gate.js'
 import { NearIntentStore, canonicalIntent, isAllowedNearTransition } from './near-intents.js'
+// Store wired to a real gate on the same database; the receiver must be on the recipient allowlist.
+const mk=(db:Database.Database,guard:CerberusGUARD)=>{const gate=new CerberusGate(db,createDefaultToolRegistry(),{policyHash:()=>guard.getPolicyHash(),audit:()=>{}});gate.addRecipient('near.audit_hash_submit','audit.testnet','admin');return new NearIntentStore(db,guard,gate)}
 const params={network:'testnet',signerId:'source.testnet',receiverId:'audit.testnet',type:'AUDIT_HASH',amountYocto:'0',auditId:'a-1',contentHash:'a'.repeat(64),operationType:'PLANNING',agentName:'HADES',decision:'PERMIT',timestampMs:1700000000000,gas:'30000000000000'} as const
 
 describe('persistent NEAR intent approval',()=>{
@@ -18,13 +21,13 @@ describe('persistent NEAR intent approval',()=>{
     for (const input of [{...params,type:'TRANSFER'},{...params,network:'mainnet'},{...params,amountYocto:'1'},{...params,extra:'ignored'}]) expect(()=>canonicalIntent(input)).toThrow('INVALID_INTENT')
   })
   it('records a one-use approval, rejects modification and survives a store restart',()=>{
-    const db=new Database(':memory:'), guard=new CerberusGUARD(); let store=new NearIntentStore(db,guard)
+    const db=new Database(':memory:'), guard=new CerberusGUARD(); let store=mk(db,guard)
     const draft=store.create(params,'operator'); expect(draft.status).toBe('DRAFT')
     expect(()=>store.claimForSigning(draft.id,draft.hash,'executor')).toThrow('INVALID_STATE')
     store.requestApproval(draft.id,'operator')
     expect(()=>store.approve(draft.id,'0'.repeat(64),'admin',Date.now()+60000)).toThrow('INTENT_CHANGED')
     const approved=store.approve(draft.id,draft.hash,'admin',Date.now()+60000);expect(approved.approvedBy).toBe('admin')
-    store=new NearIntentStore(db,guard)
+    store=mk(db,guard)
     expect(store.get(draft.id)?.approvalId).toBe(approved.approvalId)
     expect(()=>store.claimForSigning(draft.id,'b'.repeat(64),'executor')).toThrow('INTENT_CHANGED')
     expect(store.claimForSigning(draft.id,draft.hash,'executor').status).toBe('SIGNING')
@@ -32,7 +35,7 @@ describe('persistent NEAR intent approval',()=>{
     db.close()
   })
   it('blocks expired approvals, policy changes and emergency stop',()=>{
-    const db=new Database(':memory:'),guard=new CerberusGUARD(),store=new NearIntentStore(db,guard)
+    const db=new Database(':memory:'),guard=new CerberusGUARD(),store=mk(db,guard)
     const make=()=>{const d=store.create(params,'operator');store.requestApproval(d.id,'operator');return d}
     const a=make();store.approve(a.id,a.hash,'admin',Date.now()+60000);store.setEmergency(true,'admin')
     expect(()=>store.claimForSigning(a.id,a.hash,'executor')).toThrow('EMERGENCY_STOP')
@@ -44,14 +47,14 @@ describe('persistent NEAR intent approval',()=>{
     db.close()
   })
   it('detects stored parameter tampering after approval',()=>{
-    const db=new Database(':memory:'),store=new NearIntentStore(db,new CerberusGUARD())
+    const db=new Database(':memory:'),store=mk(db,new CerberusGUARD())
     const draft=store.create(params,'operator');store.requestApproval(draft.id,'operator');store.approve(draft.id,draft.hash,'admin',Date.now()+60000)
     db.prepare('UPDATE near_intents SET params=? WHERE id=?').run(JSON.stringify({...params,receiverId:'other.testnet'}),draft.id)
     expect(()=>store.claimForSigning(draft.id,draft.hash,'executor')).toThrow('INTENT_CHANGED')
     db.close()
   })
   it('cancels or rejects without allowing a later approval or claim',()=>{
-    const db=new Database(':memory:'),store=new NearIntentStore(db,new CerberusGUARD())
+    const db=new Database(':memory:'),store=mk(db,new CerberusGUARD())
     const draft=store.create(params,'operator');store.requestApproval(draft.id,'operator')
     expect(store.resolve(draft.id,'REJECTED','admin').status).toBe('REJECTED')
     expect(()=>store.approve(draft.id,draft.hash,'admin',Date.now()+60000)).toThrow('INVALID_STATE')
