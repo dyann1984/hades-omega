@@ -101,8 +101,26 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
     expect(s.explorerUrl).toBe(`https://testnet.nearblocks.io/txns/${s.txHash}`)
   })
 
-  it('confirms only from a final on-chain outcome and verifies the recorded hash against contract state', async () => {
-    const i = approvedIntent(); const { submission } = await svc.submit(i.id, 'admin')
+  it('works with a least-privilege FunctionCall key (store_audit_hash on the audit contract only), never needing FullAccess', async () => {
+    rpc.keys.set(`${SIGNER}|${signer.publicKey}`, { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['store_audit_hash'] })
+    const i = approvedIntent()
+    const r = await svc.submit(i.id, 'admin')
+    expect(r.error).toBeNull(); expect(r.intent.status).toBe('BROADCASTED')
+    expect(r.submission!.payload).toMatchObject({ nonce: 8 })
+    expect(r.submission!.payload.actions).toHaveLength(1) // a restricted key could not authorize anything else anyway
+  })
+
+  it('refuses a FunctionCall key that is not limited to the audit method of the audit contract (approval stays unspent)', async () => {
+    for (const k of [{ receiverId: CONTRACT, methodNames: ['other_method'] }, { receiverId: 'someone.testnet', methodNames: ['store_audit_hash'] }]) {
+      rpc.keys.set(`${SIGNER}|${signer.publicKey}`, { nonce: 7, fullAccess: false, ...k })
+      const i = approvedIntent()
+      await expect(svc.submit(i.id, 'admin')).rejects.toMatchObject({ code: 'SIGNER_KEY_NOT_PERMITTED' })
+      expect(repo.getNearIntentStore().get(i.id)!.status).toBe('APPROVED')
+    }
+    expect(rpc.broadcasts).toHaveLength(0)
+  })
+
+  it('confirms only from a final on-chain outcome and verifies the recorded hash against contract state', async () => {    const i = approvedIntent(); const { submission } = await svc.submit(i.id, 'admin')
     expect((await svc.refresh(i.id, 'admin')).intent.status).toBe('BROADCASTED') // still pending
     rpc.finalize(submission!.txHash, true)
     const done = await svc.refresh(i.id, 'admin')

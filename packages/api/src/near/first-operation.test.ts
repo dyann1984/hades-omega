@@ -7,10 +7,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { SqliteRepository } from '../sqlite.js'
 import { canonicalIntent } from '../near-intents.js'
 
-// The first on-chain operation (docs/near-testnet-preparacion.md §5), rehearsed with placeholder accounts.
+// The first on-chain operation (docs/near-testnet-preparacion.md §5), rehearsed against the real testnet account names.
 // Nothing is signed or sent: there is no signer and no network in this test.
 const att = JSON.parse(readFileSync(resolve(__dirname, '..', '..', '..', '..', 'docs', 'contract-attestation.json'), 'utf8')) as { wasmSha256: string; sourceCommit: string; version: string }
-const SIGNER = 'hades-example.testnet', CONTRACT = 'audit.hades-example.testnet'
+const SIGNER = 'hades-omega.testnet', CONTRACT = 'audit.hades-omega.testnet' // the real, deployed accounts (testnet)
 const record = { auditId: 'hades-attest-0001', contract: `hades-audit-registry@${att.version}`, kind: 'CONTRACT_WASM_ATTESTATION', sourceCommit: att.sourceCommit, wasmSha256: att.wasmSha256 }
 const canon = JSON.stringify(Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1))))
 const CONTENT_HASH = createHash('sha256').update(canon).digest('hex')

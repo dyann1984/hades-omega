@@ -33,7 +33,7 @@ El ensayo de la primera operación (`first-operation.test.ts`) valida parámetro
 
 ## C. NO verificado todavía (requiere blockchain y tu autorización)
 
-* Que la cuenta y el contrato existan en testnet; que el despliegue con `new` atómico funcione allí.
+* ~~Cuenta y contrato en testnet~~ **Hecho y verificado por RPC (2026-11-02)**: cuentas `hades-omega.testnet` y `audit.hades-omega.testnet`; despliegue + `new` atómico en la tx `QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj` (código on-chain = `ae9a75ff…f685`, `get_owner` = `hades-omega.testnet`, `get_count` = 0). Pendiente: el primer registro (`docs/near-primera-operacion-propuesta.md`).
 * Que `store_audit_hash` se confirme en cadena y `get_audit_entry` devuelva el hash.
 * Una demostración pública (URL) reproducible por terceros.
 Hasta cerrar estos puntos, NEAR **no está validado**.

@@ -19,5 +19,6 @@
   "hostImports": ["value_return", "read_register", "register_len", "storage_read", "storage_write", "storage_remove", "storage_has_key", "log_utf8", "input", "block_index", "block_timestamp", "attached_deposit", "current_account_id", "predecessor_account_id"],
   "forbiddenHostCalls": "none: no promise_*, transfer, deploy, add/delete key, stake or cross-contract calls",
   "embeddedGuards": ["only the owner may record entries", "doesn't accept deposit", "audit_id already recorded with different content", "content_hash must be 64 lowercase hex characters", "decision must be PERMIT, DENY or ESCALATE"],
+  "deployment": { "network": "testnet", "contractAccount": "audit.hades-omega.testnet", "owner": "hades-omega.testnet", "tx": "QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj", "explorer": "https://explorer.testnet.near.org/transactions/QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj", "codeHashBase58": "CkaYdt6NcWYnwBPPFyPQ2xE1FRSE8nnxa6FC2bUdjyun", "onChainCodeSha256": "ae9a75fff7bb44e00bf3769e10ccc4e855b1f3c249abc768fd275b34dfb9f685", "initializedAtomically": true, "verifiedOn": "2026-11-02", "getOwner": "hades-omega.testnet", "getCount": 0, "auditRecords": 0 },
   "note": "A deployment through `cargo near build` produces a different binary; if used, rebuild this attestation for that artifact before deploying. Nothing has been deployed."
 }

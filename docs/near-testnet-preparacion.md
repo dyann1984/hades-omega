@@ -1,8 +1,25 @@
 # NEAR testnet — preparación segura y primera operación (para autorización)
 
-Estado verificado el 2026-11-02. **Nada de esto se ha ejecutado**: no hay cuenta, ni contrato desplegado, ni transacción.
-Consulta RPC de solo lectura: `hades-omega.testnet` y `audit.hades-omega.testnet` → `UNKNOWN_ACCOUNT` (libres hoy, pero cualquiera
-puede registrarlas antes: elige un nombre propio, p. ej. `hades-<tuusuario>.testnet`).
+## 0. Estado real en testnet (verificado por RPC, 2026-11-02)
+
+Las cuentas y el contrato **ya existen** (operaciones autorizadas una por una por el usuario). Todavía **no hay ningún registro de auditoría** (`get_count` = 0):
+NEAR no está validado de extremo a extremo hasta que `hades-attest-0001` se confirme en cadena. Las secciones 2-6 siguientes conservan el procedimiento genérico
+con `<tuusuario>`; para HADES léase `hades-omega`.
+
+| Elemento | Dato verificado |
+|---|---|
+| Cuenta firmante / propietaria | `hades-omega.testnet`, creada por el faucet: tx `Gax7rfX9iihxMVPWqRMrwuc7ZDiLqz2LbZcBx9oy8fso`; 1 llave FullAccess (`ed25519:BCceDfEWg4Fp71aSqhdTavPMqbaZJoAKhb8XFY7cZoGv`), privada solo en el llavero de Windows |
+| Cuenta del contrato | `audit.hades-omega.testnet`, creada y fondeada con 3 NEAR: tx `DdXYgiCoJZD6tfBNcjRNfhX1RmG4W74xB9Q4Dks7wsbJ`; 1 llave FullAccess (`ed25519:7adw9Xh8kAqYLGBy7vMpwyAzkF7qwCrYDjQFVnMxn1c8`), privada solo en el llavero |
+| **Despliegue + `new` atómico** | tx **`QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj`**, firmada por `audit.hades-omega.testnet`, acciones `DeployContract` + `FunctionCall new`, 100 TGas máx., depósito 0, estado FINAL sin fallos. Explorador: https://explorer.testnet.near.org/transactions/QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj |
+| Código on-chain | `code_hash` `CkaYdt6NcWYnwBPPFyPQ2xE1FRSE8nnxa6FC2bUdjyun` = SHA-256 `ae9a75fff7bb44e00bf3769e10ccc4e855b1f3c249abc768fd275b34dfb9f685`; el código descargado de la cadena (218,046 bytes) tiene ese mismo SHA-256, igual a la atestación |
+| Estado del contrato | `get_owner` = `"hades-omega.testnet"`; `get_count` = `0`; `get_audit_entry("hades-attest-0001")` = `null` |
+| Métodos | escritura: `new` (privado, ya usado), `store_audit_hash` (solo propietario, sin depósito); vistas: `get_audit_entry`, `get_count`, `get_owner` |
+| Saldos | `audit.hades-omega.testnet` 2.99824 NEAR (almacenamiento 218,309 B); `hades-omega.testnet` 6.99289 NEAR |
+| Llaves de servidor | **ninguna creada**; firma automática desactivada (`NEAR_SIGNING_ENABLED` sin definir) |
+
+Variables del servidor (nombres reales leídos del código): `NEAR_EXECUTION_MODE=testnet`, `NEAR_AUDIT_CONTRACT_ID=audit.hades-omega.testnet`,
+`NEAR_SIGNER_ACCOUNT_ID` + `NEAR_SIGNER_PRIVATE_KEY`, o bien `NEAR_SIGNER_KEY_FILE` (JSON con `account_id` y `private_key`), y `NEAR_SIGNING_ENABLED=true` solo en el momento autorizado.
+(`docs/04-near-integration.md` menciona `NEAR_CONTRACT_ID`/`NEAR_ACCOUNT_ID`; el servicio de firma usa los nombres de esta sección.)
 
 ## 1. Artefacto (después de corregir la inicialización)
 
