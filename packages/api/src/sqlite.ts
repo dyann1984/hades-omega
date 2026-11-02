@@ -20,6 +20,8 @@ export interface ExecutionEvent {
   type: string; status: string; timestamp: number; sequence: number; correlationId: string
 }
 
+export interface MissionEvidence { missionId: string; reportSha256: string; reportMarkdown: string; sealedTaskId: string; recordedBy: string; recordedAt: number; nearIntentId: string | null; nearState: string | null; nearNote: string | null; nearUpdatedAt: number | null }
+
 /** SQLite-backed repository. Legacy JSON is imported once, after a separate backup. */
 export class SqliteRepository extends JsonRepository {
   private db!: Database.Database
@@ -113,6 +115,12 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (9)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 10').get()) {
+      this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE mission_evidence (mission_id TEXT PRIMARY KEY, report_sha256 TEXT NOT NULL, report_markdown TEXT NOT NULL, sealed_task_id TEXT NOT NULL, recorded_by TEXT NOT NULL, recorded_at INTEGER NOT NULL, near_intent_id TEXT, near_state TEXT, near_note TEXT, near_updated_at INTEGER);`)
+        this.db.prepare('INSERT INTO schema_migrations VALUES (10)').run()
+      })()
+    }
     this.chronosService = new ChronosService(this.db, this)
     this.gateInstance = new CerberusGate(this.db, createDefaultToolRegistry(), { policyHash: () => this.policyGuard.getPolicyHash(), audit: e => { this.recordAuditEvent(e) } })
     this.nearIntents = new NearIntentStore(this.db, this.policyGuard, this.gateInstance)
@@ -145,6 +153,26 @@ export class SqliteRepository extends JsonRepository {
     for (const task of mission.tasks) this.db.prepare('INSERT INTO tasks VALUES (?,?,?)').run(task.id, mission.id, JSON.stringify(task))
   }
   getNearIntentStore(): NearIntentStore { return this.nearIntents }
+  /** Persistent evidence of a finished audit mission: the report text and its SHA-256, plus the state of the NEAR audit plan. */
+  getMissionEvidence(missionId: string): MissionEvidence | undefined {
+    const r = this.db.prepare('SELECT * FROM mission_evidence WHERE mission_id=?').get(missionId) as { mission_id: string; report_sha256: string; report_markdown: string; sealed_task_id: string; recorded_by: string; recorded_at: number; near_intent_id: string | null; near_state: string | null; near_note: string | null; near_updated_at: number | null } | undefined
+    return r && { missionId: r.mission_id, reportSha256: r.report_sha256, reportMarkdown: r.report_markdown, sealedTaskId: r.sealed_task_id, recordedBy: r.recorded_by, recordedAt: r.recorded_at, nearIntentId: r.near_intent_id, nearState: r.near_state, nearNote: r.near_note, nearUpdatedAt: r.near_updated_at }
+  }
+  /** Insert-only: evidence is never rewritten once recorded. Returns false if it already existed. */
+  saveMissionEvidence(e: { missionId: string; reportSha256: string; reportMarkdown: string; sealedTaskId: string; recordedBy: string }): boolean {
+    return this.db.transaction(() => {
+      const res = this.db.prepare('INSERT OR IGNORE INTO mission_evidence (mission_id,report_sha256,report_markdown,sealed_task_id,recorded_by,recorded_at) VALUES (?,?,?,?,?,?)').run(e.missionId, e.reportSha256, e.reportMarkdown, e.sealedTaskId, e.recordedBy, Date.now())
+      if (res.changes === 1) this.recordAuditEvent({ actor: e.recordedBy, missionId: e.missionId, action: 'MISSION_EVIDENCE_RECORDED', result: e.reportSha256 })
+      return res.changes === 1
+    })()
+  }
+  setMissionNear(missionId: string, state: string, intentId: string | null, note: string | null, actor: string): void {
+    this.db.transaction(() => {
+      this.db.prepare('UPDATE mission_evidence SET near_state=?, near_intent_id=?, near_note=?, near_updated_at=? WHERE mission_id=?').run(state, intentId, note, Date.now(), missionId)
+      this.recordAuditEvent({ actor, missionId, action: 'MISSION_NEAR_AUDIT_PLAN', result: state })
+    })()
+  }
+  getLocalOperationState(missionId: string): string | undefined { return (this.db.prepare('SELECT state FROM local_operations WHERE mission_id=?').get(missionId) as { state: string } | undefined)?.state }
   override listMissions(): Mission[] { return (this.db.prepare('SELECT data FROM missions ORDER BY rowid DESC').all() as Row[]).map(r => JSON.parse(r.data)) }
   override getMission(id: string): Mission | undefined { const row = this.db.prepare('SELECT data FROM missions WHERE id=?').get(id) as Row | undefined; return row && JSON.parse(row.data) }
   listExecutionEvents(missionId: string, after: number, limit = 200): ExecutionEvent[] {

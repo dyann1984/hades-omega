@@ -18,6 +18,8 @@ import { chronosRoutes, registerChronosTick } from './routes/chronos.js'
 import { near } from './runtime.js'
 import { nearTxRoutes } from './routes/near-tx.js'
 import { vaultRoutes } from './routes/vault.js'
+import { auditFlowRoutes } from './routes/audit-flow.js'
+import { AuditFlowService } from './audit-flow.js'
 import { JsonRpcNearRpc } from './near/rpc.js'
 import { loadSignerFromEnv } from './near/signer.js'
 import { nearServiceConfigFromEnv } from './near/submission.js'
@@ -100,6 +102,7 @@ async function bootstrap(): Promise<void> {
     await chronosRoutes(api, repository)
     await api.register(async scoped => nearTxRoutes(scoped, repository, nearService))
     await api.register(async scoped => vaultRoutes(scoped, repository, nearService))
+    await api.register(async scoped => auditFlowRoutes(scoped, repository, new AuditFlowService(repository, nearService)))
   }, { prefix: '/api/v1' })
 
   // CHRONOS scheduler. A long-lived host runs it in-process; serverless/hibernating hosts should instead call the

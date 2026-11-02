@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { SqliteRepository } from '../sqlite.js'
 import { nextCronRun, parseCron } from './cron.js'
 
@@ -64,6 +64,23 @@ export const JOB_REGISTRY: Record<string, JobDefinition> = {
     run: ({ repository }) => {
       const approvals = repository.listApprovals()
       return { total: approvals.length, approved: approvals.filter(a => a.status === 'APPROVED').length, rejected: approvals.filter(a => a.status === 'REJECTED').length }
+    },
+  },
+  MISSION_FOLLOWUP: {
+    description: 'Re-checks a finished audit mission: stored report hash still matches, audit chain intact, state of the NEAR audit plan. Reads only.',
+    effect: 'READ_ONLY', idempotent: true, agent: 'HADES', tool: 'chronos.mission_followup',
+    validate: params => {
+      const keys = Object.keys(params)
+      if (keys.length !== 1 || keys[0] !== 'missionId' || typeof params['missionId'] !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(params['missionId'])) throw new Error('MISSION_FOLLOWUP requires exactly { missionId }')
+      return { missionId: params['missionId'] }
+    },
+    run: ({ repository, params, now }) => {
+      const id = params['missionId'] as string, mission = repository.getMission(id), evidence = repository.getMissionEvidence(id)
+      return {
+        missionId: id, checkedAt: now, missionStatus: mission?.status ?? 'MISSING', evidenceRecorded: !!evidence,
+        evidenceIntact: evidence ? createHash('sha256').update(evidence.reportMarkdown, 'utf8').digest('hex') === evidence.reportSha256 : null,
+        auditChainVerified: repository.verifyAuditIntegrity().verified, nearAuditState: evidence?.nearState ?? null,
+      }
     },
   },
 }

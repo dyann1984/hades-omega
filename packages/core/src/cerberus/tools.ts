@@ -67,6 +67,8 @@ export const DEFAULT_TOOLS: readonly ToolDefinition[] = [
   { id: 'chronos.cerberus_decision_report', description: 'Count CERBERUS decisions in a window', effect: 'READ', agents: ['CERBERUS', 'HADES'], roles: ['ADMIN', 'OPERATOR', 'AUDITOR', 'SYSTEM'], allowedParams: ['windowHours'],
     validate: p => (Number.isInteger(p['windowHours']) && (p['windowHours'] as number) >= 1 && (p['windowHours'] as number) <= 720) ? null : 'windowHours must be an integer 1-720' },
   { id: 'chronos.approvals_digest', description: 'Summarize recorded approval decisions', effect: 'READ', agents: ['CERBERUS', 'HADES'], roles: ['ADMIN', 'OPERATOR', 'AUDITOR', 'SYSTEM'], allowedParams: [] },
+  { id: 'chronos.mission_followup', description: 'Re-check a finished audit mission (reads only)', effect: 'READ', agents: ['CERBERUS', 'HADES'], roles: ['ADMIN', 'OPERATOR', 'AUDITOR', 'SYSTEM'], allowedParams: ['missionId'],
+    validate: p => (typeof p['missionId'] === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(p['missionId'])) ? null : 'missionId must be a mission id' },
   { id: 'near.account_view', description: 'Read-only testnet account lookup', effect: 'READ', agents: ['HADES', 'PERSEPHONE'], roles: ['ADMIN', 'OPERATOR', 'AUDITOR'], allowedParams: ['accountId'],
     validate: p => (typeof p['accountId'] === 'string' && p['accountId'].length <= 64 && TESTNET_ACCOUNT.test(p['accountId'])) ? null : 'accountId must be a .testnet account' },
   { id: 'near.audit_hash_submit', description: 'Store an audit hash on NEAR testnet (zero deposit)', effect: 'BLOCKCHAIN', agents: ['HADES', 'PERSEPHONE'], roles: ['ADMIN', 'OPERATOR', 'SYSTEM'],
