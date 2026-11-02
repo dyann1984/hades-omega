@@ -14,6 +14,8 @@ import { demoRoutes, resolveDemoSession } from './demo.js'
 import { authRoutes } from './auth.js'
 import { setupRoutes, generateSetupToken } from './setup.js'
 import { documentRoutes } from './routes/documents.js'
+import { chronosRoutes } from './routes/chronos.js'
+import { timingSafeEqual } from 'node:crypto'
 import { createDurableFromEnv, registerDurableGuard } from './durable.js'
 
 const PORT = Number(process.env['PORT'] ?? 3001)
@@ -81,7 +83,24 @@ async function bootstrap(): Promise<void> {
     await approvalRoutes(api, repository)
     await localMissionRoutes(api, repository)
     await documentRoutes(api, repository)
+    await chronosRoutes(api, repository)
   }, { prefix: '/api/v1' })
+
+  // CHRONOS scheduler. A long-lived host runs it in-process; serverless/hibernating hosts should instead call the
+  // tick endpoint from an external scheduler (it is only exposed when CHRONOS_TICK_SECRET is configured).
+  if (process.env['CHRONOS_SCHEDULER'] !== 'off') repository.chronos.start(Number(process.env['CHRONOS_TICK_MS'] ?? 30_000))
+  app.addHook('onClose', async () => { repository.chronos.stop() })
+  const tickSecret = process.env['CHRONOS_TICK_SECRET']
+  if (tickSecret && tickSecret.length >= 32) {
+    app.post('/internal/chronos/tick', async (req, reply) => {
+      const header = req.headers['authorization']
+      const supplied = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : ''
+      const a = Buffer.from(supplied), b = Buffer.from(tickSecret)
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return reply.code(401).send({ success: false, error: { code: 'UNAUTHENTICATED' } })
+      const { started, retried, executed } = repository.chronos.tick()
+      return { success: true, data: { started, retried, runs: executed.map(r => ({ id: r.id, taskId: r.taskId, status: r.status })) } }
+    })
+  }
 
   // WebSocket
   setupWebSocket(app, repository, sid => repository.getActiveSession(sid) ?? resolveDemoSession(sid))

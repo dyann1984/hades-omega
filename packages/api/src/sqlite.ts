@@ -9,6 +9,7 @@ import { analyzeDocuments } from './document-analysis.js'
 import { dispatchCapability } from './capability-dispatcher.js'
 import { guard } from './runtime.js'
 import { NearIntentStore } from './near-intents.js'
+import { ChronosService, CHRONOS_MIGRATION_SQL } from './chronos/chronos.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
 type Row = { data: string }
@@ -21,6 +22,10 @@ export interface ExecutionEvent {
 export class SqliteRepository extends JsonRepository {
   private db!: Database.Database
   private nearIntents!: NearIntentStore
+  private chronosService!: ChronosService
+  get chronos(): ChronosService { return this.chronosService }
+  /** Second service over the same database with its own clock; used by tests to simulate time and extra processes. */
+  createChronos(clock: () => number): ChronosService { return new ChronosService(this.db, this, clock) }
   /** Where execution events are delivered. Defaults to the global bus; isolated demo repositories override it. */
   eventSink: (event: {type:'EXECUTION_EVENT'; payload: any}) => void = event => bus.publish(event as any)
   constructor(private readonly databasePath: string, private readonly legacyPath: string, private readonly policyGuard = guard) { super(legacyPath) }
@@ -91,6 +96,13 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (8)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 9').get()) {
+      this.db.transaction(() => {
+        this.db.exec(CHRONOS_MIGRATION_SQL)
+        this.db.prepare('INSERT INTO schema_migrations VALUES (9)').run()
+      })()
+    }
+    this.chronosService = new ChronosService(this.db, this)
     this.nearIntents = new NearIntentStore(this.db, this.policyGuard)
     this.reconcileOnStartup()
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
