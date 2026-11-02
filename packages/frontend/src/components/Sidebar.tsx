@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { path: '/observatory', icon: '◎', label: 'Observatory', shortLabel: 'OBS'  },
   { path: '/documents',   icon: '▤', label: 'Documentos',  shortLabel: 'DOC'  },
   { path: '/command',     icon: '⌘', label: 'Command',      shortLabel: 'CMD'  },
+  { path: '/audit',       icon: '✓', label: 'Auditoria',    shortLabel: 'AUD'  },
   { path: '/near',        icon: '◇', label: 'NEAR',         shortLabel: 'NEAR' },
 ]
 

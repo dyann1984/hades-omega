@@ -1,0 +1,158 @@
+{
+  "generatedAt": "2026-11-02T19:41:28.390Z",
+  "note": "Real API process, throwaway database, NEAR unconfigured; nothing signed or sent.",
+  "missionStatus": "COMPLETED",
+  "stages": [
+    {
+      "id": "request",
+      "agent": "HADES",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "intake",
+      "agent": "CHARON",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "validation",
+      "agent": "MINOS",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "analysis",
+      "agent": "PERSEPHONE",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "cerberus",
+      "agent": "CERBERUS",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "report",
+      "agent": "ELYSIUM",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "seal",
+      "agent": "TARTARUS",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "evidence",
+      "agent": "TARTARUS",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "followup",
+      "agent": "CHRONOS",
+      "status": "DONE",
+      "executed": true
+    },
+    {
+      "id": "near",
+      "agent": "HADES",
+      "status": "CONFIGURATION_PENDING",
+      "executed": false
+    }
+  ],
+  "reportSha256": "8b5977edc99bba2d740b2b20915fb45e884d808040e0bfe5fbd84368d923aaef",
+  "checks": [
+    {
+      "name": "API process is up",
+      "ok": true
+    },
+    {
+      "name": "setup creates the first admin",
+      "ok": true
+    },
+    {
+      "name": "admin can log in",
+      "ok": true
+    },
+    {
+      "name": "Vault: NEAR is \"configuración pendiente\" (no account/contract configured)",
+      "ok": true
+    },
+    {
+      "name": "Vault: database + audit chain verified",
+      "ok": true
+    },
+    {
+      "name": "Vault: no secret value or fixture string in the payload",
+      "ok": true
+    },
+    {
+      "name": "Vault: policy rules and tools come from the server",
+      "ok": true
+    },
+    {
+      "name": "mission created; CHARON, MINOS and PERSEPHONE ran",
+      "ok": true
+    },
+    {
+      "name": "flow: three agent stages completed and executed",
+      "ok": true
+    },
+    {
+      "name": "flow: CERBERUS waits for human approval; report/seal/evidence not executed",
+      "ok": true
+    },
+    {
+      "name": "evidence cannot be recorded before completion (409)",
+      "ok": true
+    },
+    {
+      "name": "ADMIN approval completes the mission (ELYSIUM report + TARTARUS seal)",
+      "ok": true
+    },
+    {
+      "name": "evidence recorded with SHA-256",
+      "ok": true
+    },
+    {
+      "name": "CHRONOS follow-up scheduled (READ-only job)",
+      "ok": true
+    },
+    {
+      "name": "follow-up is scheduled but NOT reported as executed yet",
+      "ok": true
+    },
+    {
+      "name": "follow-up run succeeds and finds intact evidence + intact audit chain",
+      "ok": true
+    },
+    {
+      "name": "NEAR audit stays CONFIGURATION_PENDING: no intent, nothing signed or sent",
+      "ok": true
+    },
+    {
+      "name": "NEAR intents list is empty",
+      "ok": true
+    },
+    {
+      "name": "NEAR submissions list is empty",
+      "ok": true
+    },
+    {
+      "name": "final flow: near stage CONFIGURATION_PENDING and executed=false",
+      "ok": true
+    },
+    {
+      "name": "audit hash chain still verifies",
+      "ok": true
+    },
+    {
+      "name": "emergency stop is reflected in the Vault",
+      "ok": true
+    }
+  ]
+}

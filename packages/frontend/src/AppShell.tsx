@@ -13,6 +13,7 @@ import VaultPanel from './pages/VaultPanel.js'
 import OraclePanel from './pages/OraclePanel.js'
 import ChronosPanel from './pages/ChronosPanel.js'
 import NearPanel from './pages/NearPanel.js'
+import AuditFlowPanel from './pages/AuditFlowPanel.js'
 import DocumentsPanel from './pages/DocumentsPanel.js'
 import CommandCenter from './pages/CommandCenter.js'
 import NotificationToast from './components/NotificationToast.js'
@@ -87,6 +88,7 @@ export default function AppShell({ onLogout }: { onLogout: () => void }): JSX.El
             <Route path="/dominion"    element={<DominionPanel />} />
             <Route path="/chronos"     element={<ChronosPanel />} />
             <Route path="/near"        element={<NearPanel />} />
+            <Route path="/audit"       element={<AuditFlowPanel />} />
             <Route path="/oracle"      element={<OraclePanel />} />
             <Route path="/vault"       element={<VaultPanel />} />
             <Route path="/judgment"    element={<JudgmentPanel />} />

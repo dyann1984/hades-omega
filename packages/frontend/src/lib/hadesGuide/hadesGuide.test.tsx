@@ -24,10 +24,10 @@ describe('knowledge base integrity', () => {
   it('suggested questions exist in both languages and resolve to an entry', () => {
     for (const lang of ['es', 'en'] as const) for (const s of SUGGESTIONS[lang]) { expect(KNOWLEDGE.some(e => e.id === s.id)).toBe(true); expect(ask(s.q, lang).kind).not.toBe('unknown') }
   })
-  it('the 14 sections in the sidebar are all covered', () => {
+  it('the 15 sections in the sidebar are all covered', () => {
     const sidebar = readFileSync(join(ROOT, 'packages/frontend/src/components/Sidebar.tsx'), 'utf8')
     const labels = [...sidebar.matchAll(/label: '([A-Za-zó]+)'/g)].map(m => m[1]!).filter(l => !['Demo', 'Account'].includes(l))
-    expect(labels.length).toBe(14)
+    expect(labels.length).toBe(15)
     const overview = KNOWLEDGE.find(e => e.id === 'sections')!.answer.en.toLowerCase()
     for (const l of labels) expect(overview.includes(l.toLowerCase()) || overview.includes('documents'), l).toBe(true)
     for (const l of labels) expect(ask(`${l}`, 'en').kind, l).not.toBe('unknown')
@@ -41,7 +41,7 @@ describe('documented answers', () => {
     ['explícame MINOS', 'minos'], ['elysium', 'elysium'], ['Tell me about TARTARUS anomalies', 'tartarus'], ['¿Qué es CERBERUS?', 'cerberus'],
     ['¿Qué es el Approval Gate?', 'approval'], ['¿Cómo creo una misión?', 'missions'], ['how do I create a mission', 'missions'],
     ['¿Para qué sirve el holograma?', 'hologram'], ['what is the hologram for', 'hologram'], ['¿NEAR es real?', 'near'], ['is NEAR simulated?', 'near'],
-    ['¿Qué es el modo demo?', 'demo'], ['what sections are there', 'sections'], ['¿Cuáles son las 14 secciones?', 'sections'],
+    ['¿Qué es el modo demo?', 'demo'], ['what sections are there', 'sections'], ['¿Cuáles son las 15 secciones?', 'sections'],
   ])('%s -> %s', (q, id) => { expect(ask(q).entryId).toBe(id) })
 
   it('replies in the selected language', () => {
