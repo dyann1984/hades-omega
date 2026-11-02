@@ -2,9 +2,17 @@
 
 ## 0. Estado real en testnet (verificado por RPC, 2026-11-02)
 
-Las cuentas y el contrato **ya existen** (operaciones autorizadas una por una por el usuario). Todavía **no hay ningún registro de auditoría** (`get_count` = 0):
-NEAR no está validado de extremo a extremo hasta que `hades-attest-0001` se confirme en cadena. Las secciones 2-6 siguientes conservan el procedimiento genérico
-con `<tuusuario>`; para HADES léase `hades-omega`.
+Las cuentas y el contrato **existen** y el **primer registro de auditoría está confirmado en cadena** (operaciones autorizadas una por una por el usuario):
+
+* **Registro `hades-attest-0001`**: tx **`BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3`**, estado FINAL sin fallos, una acción `FunctionCall store_audit_hash`, 30 TGas, depósito 0,
+  firmada con la llave limitada `ed25519:Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n`. Explorador: https://explorer.testnet.near.org/transactions/BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3
+* Verificado por RPC independiente: `get_count` = 1; `get_audit_entry("hades-attest-0001")` devuelve `content_hash` `4bb4f2d98d2919b60795a607a2b7150cfaa59e9d77d8367a27ed74bd44fa571b`, `CONTRACT_ATTESTATION`, `HADES`, `PERMIT`,
+  `recorder` `hades-omega.testnet`, bloque 275967539. Costo de la transacción: 0.000195 NEAR (2.175 TGas).
+* CERBERUS: decisión «human approval required before execution» → aprobación humana ligada al hash `b8b542be…`, «approved by a human and consumed» (un solo uso); parada de emergencia desactivada; destinatario único permitido `audit.hades-omega.testnet`.
+* Tras el envío: firma desactivada (`NEAR_SIGNING_ENABLED` solo existió en el proceso local del envío), API local detenido, sin otras transacciones.
+* Alcance de lo validado: un registro en testnet con la cuenta y la llave de HADES. Sigue pendiente la demostración pública reproducible (URL) y la misión completa enlazada al registro.
+
+Las secciones 2-6 siguientes conservan el procedimiento genérico con `<tuusuario>`; para HADES léase `hades-omega`.
 
 | Elemento | Dato verificado |
 |---|---|
@@ -12,7 +20,7 @@ con `<tuusuario>`; para HADES léase `hades-omega`.
 | Cuenta del contrato | `audit.hades-omega.testnet`, creada y fondeada con 3 NEAR: tx `DdXYgiCoJZD6tfBNcjRNfhX1RmG4W74xB9Q4Dks7wsbJ`; 1 llave FullAccess (`ed25519:7adw9Xh8kAqYLGBy7vMpwyAzkF7qwCrYDjQFVnMxn1c8`), privada solo en el llavero |
 | **Despliegue + `new` atómico** | tx **`QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj`**, firmada por `audit.hades-omega.testnet`, acciones `DeployContract` + `FunctionCall new`, 100 TGas máx., depósito 0, estado FINAL sin fallos. Explorador: https://explorer.testnet.near.org/transactions/QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj |
 | Código on-chain | `code_hash` `CkaYdt6NcWYnwBPPFyPQ2xE1FRSE8nnxa6FC2bUdjyun` = SHA-256 `ae9a75fff7bb44e00bf3769e10ccc4e855b1f3c249abc768fd275b34dfb9f685`; el código descargado de la cadena (218,046 bytes) tiene ese mismo SHA-256, igual a la atestación |
-| Estado del contrato | `get_owner` = `"hades-omega.testnet"`; `get_count` = `0`; `get_audit_entry("hades-attest-0001")` = `null` |
+| Estado del contrato | `get_owner` = `"hades-omega.testnet"`; tras el despliegue `get_count` era 0; **hoy `get_count` = 1** y existe `hades-attest-0001` (tx `BGzHzQAr…w1V3`) |
 | Métodos | escritura: `new` (privado, ya usado), `store_audit_hash` (solo propietario, sin depósito); vistas: `get_audit_entry`, `get_count`, `get_owner` |
 | Saldos | `audit.hades-omega.testnet` 2.99824 NEAR (almacenamiento 218,309 B); `hades-omega.testnet` 6.99289 NEAR |
 | Llave de servidor | creada: tx `GBWu3Lu5MeXmGkjYgWnDn9vvvNpdakD6Vm2vuP1SA3o9`, `ed25519:Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n`, FunctionCall solo `store_audit_hash` en `audit.hades-omega.testnet`, allowance 0.25 NEAR (verificada por RPC); privada solo en JSON bajo `%USERPROFILE%\.near-credentials` con ACL restringida (detalle y riesgo de la copia adicional en `docs/near-primera-operacion-propuesta.md` A.3). Firma automática desactivada (`NEAR_SIGNING_ENABLED` sin definir) |
