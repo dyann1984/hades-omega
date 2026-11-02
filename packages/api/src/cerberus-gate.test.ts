@@ -253,7 +253,7 @@ describe('integration: CHRONOS, NEAR and agents all go through the gate', () => 
       await expect(bridge.storeAuditHash(tx, claimed.grantId, claimed.params)).rejects.toThrow('CERBERUS_GATE_REQUIRED')
       bridge.attachGate(repo.gate)
       await expect(bridge.storeAuditHash(tx, claimed.grantId, { ...claimed.params, receiverId: 'evil.testnet' })).rejects.toThrow('GRANT_PARAMS_ALTERED')
-      await expect(bridge.storeAuditHash(tx, claimed.grantId, claimed.params)).rejects.toThrow(/requires credentials/) // passed CERBERUS; no signer exists
+      await expect(bridge.storeAuditHash(tx, claimed.grantId, claimed.params)).rejects.toThrow('NEAR_SUBMITTER_NOT_CONFIGURED') // passed CERBERUS; no submitter/signer attached
       await expect(bridge.storeAuditHash(tx, claimed.grantId, claimed.params)).rejects.toThrow('GRANT_REUSED')
     } finally { if (prior === undefined) delete process.env['NEAR_EXECUTION_MODE']; else process.env['NEAR_EXECUTION_MODE'] = prior }
   })

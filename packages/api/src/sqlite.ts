@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { AuditRecord, Mission, Task, AgentName } from '@hades/core'
 import { defaultCapabilityRegistry, bus, createDefaultToolRegistry } from '@hades/core'
 import { CerberusGate } from './cerberus-gate.js'
+import { NearSubmissionService } from './near/submission.js'
 import { JsonRepository, type StoredApproval, type SystemEvent } from './persistence.js'
 import { analyzeDocuments } from './document-analysis.js'
 import { dispatchCapability } from './capability-dispatcher.js'
@@ -28,6 +29,10 @@ export class SqliteRepository extends JsonRepository {
   /** The single authorization boundary for external effects. */
   get gate(): CerberusGate { return this.gateInstance }
   get chronos(): ChronosService { return this.chronosService }
+  /** Builds the NEAR submission service over this repository's database (kept here so `db` stays private). */
+  createNearSubmissionService(deps: Omit<ConstructorParameters<typeof NearSubmissionService>[0], 'db' | 'repository'>): NearSubmissionService {
+    return new NearSubmissionService({ ...deps, db: this.db, repository: this })
+  }
   /** Second service over the same database with its own clock; used by tests to simulate time and extra processes. */
   createChronos(clock: () => number): ChronosService { return new ChronosService(this.db, this, clock) }
   /** Where execution events are delivered. Defaults to the global bus; isolated demo repositories override it. */

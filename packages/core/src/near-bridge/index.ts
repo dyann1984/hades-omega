@@ -7,12 +7,15 @@ export interface NEARTxRecord {
   blockHeight: number
   timestamp:   number
   mode:        ExecutionMode
+  /** Real submissions only: BROADCASTED until the network reports a final outcome. */
+  status?:     'BROADCASTED' | 'CONFIRMED'
 }
 
 export interface NEARBridgeStatus {
   connected:     boolean
   networkId:     string
-  contractId:    string
+  /** null until NEAR_AUDIT_CONTRACT_ID is configured; configuration alone does not mean the contract was verified. */
+  contractId:    string | null
   mode:          ExecutionMode
   txCount:       number
   lastTxAt:      number | null
@@ -25,13 +28,24 @@ export interface ExecutionGate {
 
 export const NEAR_SUBMIT_TOOL = 'near.audit_hash_submit'
 
+/** Performs the external effect for an already-authorized operation. `intentParams` is the exact approved parameter set. */
+export type NearSubmitter = (intentParams: unknown) => Promise<NEARTxRecord>
+
 // Simulates NEAR Testnet transactions when NEAR_EXECUTION_MODE != 'real'
 export class NEARBridge {
   private mode: ExecutionMode
   private txRecords: Map<string, NEARTxRecord> = new Map()
   private networkId = 'testnet'
-  private contractId = 'audit.hades-omega.testnet'
+  /** Taken from configuration only. The previously hard-coded audit.hades-omega.testnet was checked and does not exist. */
+  private contractId: string | null = process.env['NEAR_AUDIT_CONTRACT_ID'] || null
   private gate: ExecutionGate | undefined
+  private submitter: NearSubmitter | undefined
+
+  /** Installs the component that actually builds/signs/broadcasts. Once only; it runs solely after the gate accepts a grant. */
+  attachSubmitter(submitter: NearSubmitter): void {
+    if (this.submitter && this.submitter !== submitter) throw new Error('NEAR_SUBMITTER_ALREADY_ATTACHED')
+    this.submitter = submitter
+  }
 
   /** The gate can be attached once; it cannot be replaced or removed afterwards. */
   attachGate(gate: ExecutionGate): void {
@@ -41,7 +55,8 @@ export class NEARBridge {
 
   constructor() {
     const configured = process.env['NEAR_EXECUTION_MODE'] ?? 'simulation'
-    if (!['simulation', 'demo', 'real', 'testnet', 'mainnet'].includes(configured.toLowerCase())) throw new Error('Invalid NEAR_EXECUTION_MODE')
+    // Mainnet is deliberately not an accepted value: this project only ever executes on testnet.
+    if (!['simulation', 'demo', 'real', 'testnet'].includes(configured.toLowerCase())) throw new Error('Invalid NEAR_EXECUTION_MODE')
     this.mode = ['simulation', 'demo'].includes(configured.toLowerCase()) ? 'simulation' : 'real'
   }
 
@@ -79,7 +94,10 @@ export class NEARBridge {
       if (!this.gate) throw new Error('CERBERUS_GATE_REQUIRED')
       if (typeof grantId !== 'string' || intentParams === undefined) throw new Error('CERBERUS_GRANT_REQUIRED')
       this.gate.consumeGrant(grantId, NEAR_SUBMIT_TOOL, intentParams)
-      return this.executeRealTransaction(params)
+      if (!this.submitter) throw new Error('NEAR_SUBMITTER_NOT_CONFIGURED')
+      const record = await this.submitter(intentParams)
+      this.txRecords.set(params.auditId, record)
+      return record
     }
     // Simulation has no external effect: it only writes a labelled in-memory record.
     return this.simulateTransaction(params)
@@ -105,12 +123,6 @@ export class NEARBridge {
     }
     this.txRecords.set(params.auditId, record)
     return record
-  }
-
-  private async executeRealTransaction(_params: object): Promise<NEARTxRecord> {
-    // Real NEAR integration requires near-api-js + credentials
-    // For hackathon demo this path needs NEAR_EXECUTION_MODE=real + credentials
-    throw new Error('NEAR real execution requires credentials and near-api-js setup')
   }
 
   private generateSimulatedTxHash(): string {

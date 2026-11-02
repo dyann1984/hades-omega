@@ -123,7 +123,7 @@ describe('NEAR bridge cannot execute without CERBERUS', () => {
     process.env['NEAR_EXECUTION_MODE'] = 'testnet'
     const calls: string[] = [], bridge = new NEARBridge()
     bridge.attachGate(fakeGate(true, calls))
-    await expect(bridge.storeAuditHash(tx, 'g1', { any: 1 })).rejects.toThrow(/requires credentials/)
+    await expect(bridge.storeAuditHash(tx, 'g1', { any: 1 })).rejects.toThrow('NEAR_SUBMITTER_NOT_CONFIGURED')
     expect(calls).toEqual(['g1:near.audit_hash_submit'])
     expect(bridge.getAllTransactions()).toHaveLength(0)
   })

@@ -16,6 +16,10 @@ import { setupRoutes, generateSetupToken } from './setup.js'
 import { documentRoutes } from './routes/documents.js'
 import { chronosRoutes, registerChronosTick } from './routes/chronos.js'
 import { near } from './runtime.js'
+import { nearTxRoutes } from './routes/near-tx.js'
+import { JsonRpcNearRpc } from './near/rpc.js'
+import { loadSignerFromEnv } from './near/signer.js'
+import { nearServiceConfigFromEnv } from './near/submission.js'
 import { createDurableFromEnv, registerDurableGuard } from './durable.js'
 
 const PORT = Number(process.env['PORT'] ?? 3001)
@@ -76,6 +80,14 @@ async function bootstrap(): Promise<void> {
   app.get('/health',     healthResponse)
   app.get('/api/health', healthResponse)
 
+  // NEAR submission. Signing stays off unless NEAR_SIGNING_ENABLED=true AND a signer, a contract and execution mode are set.
+  const nearService = repository.createNearSubmissionService({ bridge: near, rpc: new JsonRpcNearRpc(), signer: loadSignerFromEnv(), config: nearServiceConfigFromEnv() })
+  if (nearService.blockers().length === 0) {
+    void nearService.recoverAll().catch(e => app.log.error({ err: (e as Error).message }, 'NEAR recovery failed'))
+    const timer = setInterval(() => { void nearService.recoverAll().catch(() => undefined) }, 60_000); timer.unref()
+    app.addHook('onClose', async () => { clearInterval(timer) })
+  }
+
   // API routes
   await app.register(async (api) => {
     await missionRoutes(api, repository)
@@ -85,6 +97,7 @@ async function bootstrap(): Promise<void> {
     await localMissionRoutes(api, repository)
     await documentRoutes(api, repository)
     await chronosRoutes(api, repository)
+    await api.register(async scoped => nearTxRoutes(scoped, repository, nearService))
   }, { prefix: '/api/v1' })
 
   // CHRONOS scheduler. A long-lived host runs it in-process; serverless/hibernating hosts should instead call the

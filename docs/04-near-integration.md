@@ -5,6 +5,8 @@
 
 ---
 
+> **Actualización 2026-11-02 (verificada por RPC de solo lectura):** ni `hades-omega.testnet` ni `audit.hades-omega.testnet` existen en testnet. El flujo actual de cuenta, contrato y primera transacción autorizada está en [near-testnet-runbook.md](near-testnet-runbook.md).
+
 ## ⚠ Estado de la cuenta NEAR — NO VERIFICADA
 
 > La cuenta `hades-omega.testnet` **no ha sido creada ni verificada**. Su existencia debe confirmarse el Día 1 del hackathon antes de planificar cualquier trabajo sobre ella.

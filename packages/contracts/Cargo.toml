@@ -1,15 +1,17 @@
 [package]
 name = "hades-audit-registry"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
+description = "Minimal NEAR contract that records SHA-256 audit hashes for HADES OMEGA (testnet)"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 near-sdk = "5.5.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+
+[dev-dependencies]
+near-sdk = { version = "5.5.0", features = ["unit-testing"] }
 
 [profile.release]
 codegen-units = 1

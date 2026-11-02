@@ -46,6 +46,19 @@ export class NearIntentStore {
     const r=this.db.prepare('SELECT * FROM near_intents WHERE id=?').get(id) as Record<string,any>|undefined
     return r && {id:r.id,params:JSON.parse(r.params),hash:r.hash,status:r.status,policyHash:r.policy_hash,createdAt:r.created_at,approvalId:r.approval_id,approvedBy:r.approved_by,approvedAt:r.approved_at,expiresAt:r.expires_at,consumedAt:r.consumed_at}
   }
+  list(limit=50):NearIntent[] {
+    return (this.db.prepare('SELECT id FROM near_intents ORDER BY created_at DESC, rowid DESC LIMIT ?').all(limit) as Array<{id:string}>).map(r=>this.get(r.id)!)
+  }
+  /** Moves an intent along the legal state machine; compare-and-set so concurrent workers cannot both win. */
+  transition(id:string,to:NearState,actor:string):NearIntent {
+    return this.db.transaction(()=>{
+      const item=this.get(id)
+      if(!item || !isAllowedNearTransition(item.status,to)) throw new Error('INVALID_STATE')
+      const changed=this.db.prepare('UPDATE near_intents SET status=? WHERE id=? AND status=?').run(to,id,item.status)
+      if(changed.changes!==1) throw new Error('INVALID_STATE')
+      this.event(id,actor,to);return this.get(id)!
+    })()
+  }
   create(input:unknown,actor:string):NearIntent {
     const {params,hash}=canonicalIntent(input), id=randomUUID(), now=Date.now()
     this.db.transaction(()=>{this.db.prepare('INSERT INTO near_intents (id,params,hash,status,policy_hash,created_at) VALUES (?,?,?,?,?,?)').run(id,JSON.stringify(params),hash,'DRAFT',this.guard.getPolicyHash(),now);this.event(id,actor,'DRAFT')})()

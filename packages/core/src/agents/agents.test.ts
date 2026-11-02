@@ -118,6 +118,7 @@ describe('NEARBridge', () => {
     const bridge  = new NEARBridge()
     const status  = bridge.getStatus()
     expect(status.networkId).toBe('testnet')
-    expect(status.contractId).toBe('audit.hades-omega.testnet')
+    // Not configured => null. The old hard-coded id was verified on testnet RPC to not exist.
+    expect(status.contractId).toBeNull()
   })
 })
