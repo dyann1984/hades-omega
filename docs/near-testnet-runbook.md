@@ -39,6 +39,18 @@ cargo test                      # unit tests in src/lib.rs
 cargo install cargo-near && cargo near build
 ```
 
+Without installing Rust, if Docker Desktop is running, the unit tests can run in a throwaway container that leaves the
+repository untouched (copy first, because Cargo writes a lockfile):
+
+```
+docker run --rm -v "L:\HADES\packages\contracts:/src:ro" rust:1 sh -c "cp -r /src /work && cd /work && cargo test"
+```
+
+What *is* verified without a toolchain (`packages/api/src/near/contract-conformance.test.ts`): the source still exposes
+`store_audit_hash` with the exact argument order the API sends, is owner-only and non-payable, has the duplicate / invalid
+input / permission unit tests, and every intent the API accepts also satisfies the contract's own validation rules
+(randomized, mutation-checked). That is a source-level check, **not** a compilation.
+
 These tests and this build were **not run** by the author (no Rust toolchain on the dev machine). Run them first; if
 the contract does not compile or a test fails, stop and fix before deploying.
 
