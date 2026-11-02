@@ -119,7 +119,8 @@ export default function AuditFlowPanel(): JSX.Element {
         <div className="flex flex-col gap-2">
           <p className="font-mono text-[11px] text-gray-400 tracking-widest">3 · FLUJO · {flow.title} · {flow.missionStatus}</p>
           {flow.stages.map(s => {
-            const b = BADGE[s.status]
+            // A step that is recorded but whose action has not happened (scheduled/prepared) must not read as completed.
+            const b = s.status === 'DONE' && !s.executed ? { text: 'Planificado', cls: 'text-escalate border-escalate/40' } : BADGE[s.status]
             return (
               <div key={s.id} className={`${card} flex flex-col gap-1`} data-stage={s.id}>
                 <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
