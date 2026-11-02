@@ -8,6 +8,12 @@ import type {
 import type { CerberusPolicy, PolicyRule } from './policy.js'
 import { DEFAULT_POLICY } from './policy.js'
 
+const REGISTERED_OPERATIONS = new Set(['PURCHASE_ORDER', 'BUDGET_APPROVAL', 'VENDOR_EVALUATION', 'PLANNING', 'ANOMALY_REPORT', 'CRYPTO_HASH', 'DOCUMENT_INTAKE', 'BATCH_DOCUMENT_INTAKE', 'DOCUMENT_VALIDATION', 'BATCH_DOCUMENT_VALIDATION', 'DOCUMENT_SUMMARY', 'MULTI_DOCUMENT_COMPARISON', 'DOCUMENT_DELIVERABLE', 'DELIVERABLE_GENERATION'])
+
+function hashPolicy(policy: Omit<CerberusPolicy, 'hash'>): string {
+  return createHash('sha256').update(JSON.stringify({ rules: policy.rules, operationPermissions: policy.operationPermissions, vendorAllowlist: policy.vendorAllowlist, budgetCategories: policy.budgetCategories, registeredOperations: [...REGISTERED_OPERATIONS].sort() })).digest('hex')
+}
+
 export interface GUARDContext {
   currentBudget?:  number
   budgetLimit?:    number
@@ -20,10 +26,8 @@ export class CerberusGUARD {
   private evaluationCount = 0
 
   constructor(policy?: Partial<CerberusPolicy>) {
-    const merged = { ...DEFAULT_POLICY, ...policy }
-    this.policyHash = createHash('sha256')
-      .update(JSON.stringify({ rules: merged.rules, operationPermissions: merged.operationPermissions }))
-      .digest('hex')
+    const merged = structuredClone({ ...DEFAULT_POLICY, ...policy })
+    this.policyHash = hashPolicy(merged)
     this.policy = { ...merged, hash: this.policyHash }
   }
 
@@ -44,7 +48,7 @@ export class CerberusGUARD {
       }
     }
 
-    return this.buildDecision(proposal, null, 'PERMIT')
+    return this.buildDecision(proposal, null, 'DENY')
   }
 
   private matchCondition(
@@ -71,6 +75,8 @@ export class CerberusGUARD {
       }
       case 'SENSITIVE_APPROVAL':
         return ['PAYMENT', 'TRANSFER', 'NEAR_TRANSACTION'].includes(proposal.operationType)
+      case 'REGISTERED_OPERATION':
+        return REGISTERED_OPERATIONS.has(proposal.operationType)
       case 'UNAUTHORIZED_TOOL':
         return ['TOOL_EXECUTION', 'SHELL_COMMAND', 'EXTERNAL_REQUEST'].includes(proposal.operationType)
 
@@ -137,7 +143,7 @@ export class CerberusGUARD {
       auditId:     uuidv4(),
       outcome,
       ruleMatched: rule?.id ?? null,
-      reason:      rule ? `Regla ${rule.id}: ${rule.description}` : 'Sin regla coincidente — PERMIT por defecto',
+      reason:      rule ? `Regla ${rule.id}: ${rule.description}` : 'Sin regla coincidente — DENY por defecto',
       escalateTo:  outcome === 'ESCALATE' ? 'MINOS' : outcome === 'DENY' && rule?.id === 'R-007' ? 'TARTARUS' : null,
       decidedAt:   Date.now(),
     }
@@ -146,7 +152,7 @@ export class CerberusGUARD {
   updatePolicy(patch: { vendorAllowlist?: string[]; budgetCategories?: Record<string, number> }): void {
     if (patch.vendorAllowlist) this.policy.vendorAllowlist = [...patch.vendorAllowlist]
     if (patch.budgetCategories) this.policy.budgetCategories = { ...patch.budgetCategories }
-    this.policyHash = createHash('sha256').update(JSON.stringify({ rules: this.policy.rules, operationPermissions: this.policy.operationPermissions })).digest('hex')
+    this.policyHash = hashPolicy(this.policy)
     this.policy.hash = this.policyHash
     this.policy.version = `${this.policy.version.split('.')[0]}.${this.policy.version.split('.')[1]}.${parseInt(this.policy.version.split('.')[2] ?? '0') + 1}`
   }
@@ -154,5 +160,5 @@ export class CerberusGUARD {
   getPolicyVersion(): string { return this.policy.version }
   getPolicyHash(): string    { return this.policyHash }
   getEvaluationCount(): number { return this.evaluationCount }
-  getPolicy(): CerberusPolicy  { return { ...this.policy } }
+  getPolicy(): CerberusPolicy  { return structuredClone(this.policy) }
 }

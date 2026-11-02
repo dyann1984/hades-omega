@@ -5,7 +5,7 @@ HADES OMEGA is a TypeScript multi-agent orchestration prototype with a Fastify A
 ## Verified scope and limitations
 
 - The local multi-document workflow dispatches implemented document and hashing capabilities, records execution events, and can wait for an administrator's decision. Its automated integration tests exercise these paths.
-- CERBERUS evaluates proposals against deterministic rules. Sensitive named operations require human review or are denied; this does not establish a complete security boundary for arbitrary tools or all possible operation names.
+- CERBERUS evaluates proposals against deterministic rules. Unregistered operation names are denied and recognized sensitive operations require human review. This does not yet establish a complete execution boundary, bind approvals to exact transaction parameters, or implement an emergency stop.
 - NEAR transactions are simulated. The existing real transaction path throws an error; no wallet, signing, submission, or on-chain confirmation is implemented. A read-only testnet account check exists in the core bridge, tested with mock RPC responses; it has not been verified against a live account.
 - CHRONOS currently keeps illustrative task state in the frontend; it is not a persistent scheduler and its “run now” control does not execute a backend job.
 - Some Vault information is static and must not be relied on as live configuration. Demo data is isolated and labeled in supported demo flows.
@@ -35,3 +35,4 @@ The API requires environment configuration; consult `.env.example` and the setup
 - `docs`: design and operational documentation; older documents may describe planned rather than implemented behavior.
 
 See [the initial audit](AUDITORIA_HACKATHON_INICIAL.md) for identified gaps. No deployment, actual blockchain transaction, or contest submission is performed by these development commands.
+

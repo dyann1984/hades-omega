@@ -100,10 +100,10 @@ describe('CerberusGUARD', () => {
     expect(decision.decidedAt).toBeLessThanOrEqual(after)
   })
 
-  it('default permit for unknown operation type', () => {
+  it('denies unknown operation types', () => {
     const proposal = makeProposal({ operationType: 'CUSTOM_OPERATION', payload: {} })
     const decision = guard.evaluate(proposal)
-    expect(decision.outcome).toBe('PERMIT')
+    expect(decision.outcome).toBe('DENY')
   })
 
   it('decision has valid auditId', () => {
@@ -144,8 +144,8 @@ describe('R-008 hardening: controls by operation type, amount and permission (no
     expect(propose('CHARON', 'PURCHASE_ORDER', { totalAmount: '90000', vendorId: 'inframax' }).outcome).toBe('DENY')
     expect(() => propose('CHARON', 'CUSTOM_OPERATION', null)).not.toThrow()
   })
-  it('keeps R-008 as the default only for non-sensitive operations, and is deterministic', () => {
-    expect(propose('MINOS', 'CUSTOM_OPERATION', {})).toMatchObject({ outcome: 'PERMIT', ruleMatched: 'R-008' })
+  it('denies unknown operations and is deterministic', () => {
+    expect(propose('MINOS', 'CUSTOM_OPERATION', {})).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-008' })
     expect(propose('TARTARUS', 'CRYPTO_HASH', { algorithm: 'sha256' }).outcome).toBe('PERMIT')
     const a = propose('PERSEPHONE', 'PURCHASE_ORDER', { totalAmount: 42000 }), b = propose('PERSEPHONE', 'PURCHASE_ORDER', { totalAmount: 42000 })
     expect([a.outcome, a.ruleMatched]).toEqual([b.outcome, b.ruleMatched])
@@ -154,6 +154,27 @@ describe('R-008 hardening: controls by operation type, amount and permission (no
   it('includes the permission matrix in the policy hash', () => {
     const custom = new CerberusGUARD({ operationPermissions: { PURCHASE_ORDER: ['CHARON', 'PERSEPHONE'] } })
     expect(custom.getPolicyHash()).not.toBe(new CerberusGUARD().getPolicyHash())
+  })
+})
+
+describe('policy isolation and classification', () => {
+  it('denies unregistered actions', () => {
+    const guard = new CerberusGUARD()
+    for (const operationType of ['SEND_MONEY', 'WIRE_TRANSFER', 'RUN_COMMAND', 'IGNORE_POLICIES']) {
+      expect(guard.evaluate(makeProposal({ operationType, payload: {} }))).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-008' })
+    }
+  })
+  it('hashes configuration changes and isolates mutable state', () => {
+    const guard = new CerberusGUARD()
+    const initial = guard.getPolicyHash()
+    guard.getPolicy().vendorAllowlist.push('attacker')
+    expect(guard.getPolicy().vendorAllowlist).not.toContain('attacker')
+    guard.updatePolicy({ vendorAllowlist: ['approved'] })
+    expect(guard.getPolicyHash()).not.toBe(initial)
+    const updated = guard.getPolicyHash()
+    guard.updatePolicy({ budgetCategories: { SERVICES: 42 } })
+    expect(guard.getPolicyHash()).not.toBe(updated)
+    expect(new CerberusGUARD().getPolicy().vendorAllowlist).not.toContain('approved')
   })
 })
 
