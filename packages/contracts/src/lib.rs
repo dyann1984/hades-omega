@@ -31,7 +31,12 @@ fn valid_id(s: &str, max: usize, allow: impl Fn(char) -> bool) -> bool {
 #[near]
 impl AuditRegistry {
     /// `owner_id` is the only account that may record entries (the dedicated HADES testnet account).
+    ///
+    /// `#[private]`: only the contract's own account may initialize it, i.e. whoever holds the contract account's key and
+    /// signs the deployment. A third party can therefore never claim ownership of a deployed-but-uninitialized contract, even
+    /// if the deploy and the init are not in the same transaction. `#[init]` itself refuses a second initialization.
     #[init]
+    #[private]
     pub fn new(owner_id: AccountId) -> Self {
         Self { entries: LookupMap::new(b"e"), owner: owner_id, count: 0 }
     }
