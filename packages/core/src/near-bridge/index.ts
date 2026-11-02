@@ -31,6 +31,27 @@ export class NEARBridge {
     this.mode = ['simulation', 'demo'].includes(configured.toLowerCase()) ? 'simulation' : 'real'
   }
 
+  /** Read-only checks against the official testnet RPC. Never signs or submits a transaction. */
+  async verifyTestnetAccount(accountId: string, fetcher: typeof fetch = fetch): Promise<{ networkId: 'testnet'; accountId: string; blockHeight: number }> {
+    if (accountId.length > 64 || !/^[a-z0-9]+(?:[._-][a-z0-9]+)*\.testnet$/.test(accountId)) throw new Error('INVALID_TESTNET_ACCOUNT')
+    const call = async (method: string, params: unknown): Promise<any> => {
+      const response = await fetcher('https://rpc.testnet.near.org', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'hades-read-only', method, params }),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!response.ok) throw new Error('NEAR_RPC_HTTP_ERROR')
+      const body = await response.json() as { result?: unknown; error?: unknown }
+      if (body.error || !body.result || typeof body.result !== 'object') throw new Error('NEAR_RPC_ERROR')
+      return body.result
+    }
+    const status = await call('status', [])
+    if (status.chain_id !== 'testnet') throw new Error('NEAR_NETWORK_MISMATCH')
+    const account = await call('query', { request_type: 'view_account', finality: 'final', account_id: accountId })
+    if (!Number.isSafeInteger(account.block_height) || account.block_height < 1 || typeof account.amount !== 'string') throw new Error('NEAR_INVALID_RESPONSE')
+    return { networkId: 'testnet', accountId, blockHeight: account.block_height }
+  }
+
   async storeAuditHash(params: {
     auditId:       string
     contentHash:   string
