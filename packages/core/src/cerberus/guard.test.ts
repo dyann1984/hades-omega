@@ -128,15 +128,15 @@ describe('R-008 hardening: controls by operation type, amount and permission (no
     }
   })
   it('applies the amount limits to any operation type and any agent', () => {
-    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 90000 })).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-010' })
-    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 42000 })).toMatchObject({ outcome: 'ESCALATE', ruleMatched: 'R-011' })
-    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 1000 }).outcome).toBe('PERMIT')
+    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 90000, currency: 'MXN' })).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-010' })
+    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 42000, currency: 'MXN' })).toMatchObject({ outcome: 'ESCALATE', ruleMatched: 'R-011' })
+    expect(propose('PERSEPHONE', 'PAYMENT', { amount: 1000, currency: 'MXN' }).outcome).toBe('ESCALATE')
     expect(propose('ELYSIUM', 'CUSTOM_OPERATION', { totalAmount: 80000 })).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-010' })
   })
   it('requires the permission for sensitive operation types', () => {
     expect(propose('CHARON', 'PAYMENT', { amount: 10 })).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-009' })
     expect(propose('CHARON', 'NEAR_TRANSACTION', {})).toMatchObject({ outcome: 'DENY', ruleMatched: 'R-009' })
-    expect(propose('PERSEPHONE', 'NEAR_TRANSACTION', {}).outcome).toBe('PERMIT')
+    expect(propose('PERSEPHONE', 'NEAR_TRANSACTION', {}).outcome).toBe('ESCALATE')
   })
   it('fails closed on malformed amounts and tolerates a null payload', () => {
     expect(propose('CHARON', 'PURCHASE_ORDER', { totalAmount: 'abc', vendorId: 'inframax' }).outcome).toBe('DENY')
@@ -154,5 +154,19 @@ describe('R-008 hardening: controls by operation type, amount and permission (no
   it('includes the permission matrix in the policy hash', () => {
     const custom = new CerberusGUARD({ operationPermissions: { PURCHASE_ORDER: ['CHARON', 'PERSEPHONE'] } })
     expect(custom.getPolicyHash()).not.toBe(new CerberusGUARD().getPolicyHash())
+  })
+})
+
+describe('sensitive operations fail closed', () => {
+  const guard = new CerberusGUARD()
+  it('denies missing, invalid or unsupported financial amounts', () => {
+    for (const payload of [{}, { amount: 0, currency: 'MXN' }, { amount: '10', currency: 'MXN' }, { amount: 10, currency: 'USD' }]) {
+      expect(guard.evaluate(makeProposal({agentName:'PERSEPHONE', operationType:'PAYMENT', payload}))).toMatchObject({outcome:'DENY', ruleMatched:'R-012'})
+    }
+  })
+  it('requires review of authorized sensitive operations and denies generic tools', () => {
+    expect(guard.evaluate(makeProposal({agentName:'PERSEPHONE', operationType:'TRANSFER', payload:{amount:1,currency:'MXN'}}))).toMatchObject({outcome:'ESCALATE', ruleMatched:'R-013'})
+    expect(guard.evaluate(makeProposal({agentName:'HADES', operationType:'NEAR_TRANSACTION', payload:{}}))).toMatchObject({outcome:'ESCALATE', ruleMatched:'R-013'})
+    expect(guard.evaluate(makeProposal({agentName:'HADES', operationType:'TOOL_EXECUTION', payload:{}}))).toMatchObject({outcome:'DENY', ruleMatched:'R-014'})
   })
 })

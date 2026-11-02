@@ -64,6 +64,16 @@ export class CerberusGUARD {
         return !!allowed && !allowed.includes(proposal.agentName)
       }
 
+      case 'INVALID_FINANCIAL_AMOUNT': {
+        if (!['PAYMENT', 'TRANSFER'].includes(proposal.operationType)) return false
+        const raw = payload.totalAmount ?? payload.amount
+        return typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || payload.currency !== 'MXN'
+      }
+      case 'SENSITIVE_APPROVAL':
+        return ['PAYMENT', 'TRANSFER', 'NEAR_TRANSACTION'].includes(proposal.operationType)
+      case 'UNAUTHORIZED_TOOL':
+        return ['TOOL_EXECUTION', 'SHELL_COMMAND', 'EXTERNAL_REQUEST'].includes(proposal.operationType)
+
       case 'AMOUNT_LIMIT': {
         const raw = payload.totalAmount ?? payload.amount
         if (raw === undefined || raw === null) return false
