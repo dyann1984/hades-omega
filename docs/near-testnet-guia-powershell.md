@@ -13,6 +13,8 @@ irm https://github.com/near/near-cli-rs/releases/latest/download/near-cli-rs-ins
 ```
 Esperado: se descarga e instala `near.exe`. Abre una **PowerShell nueva**.
 
+> **Instalado (2026-11-02, autorizado por el usuario):** near-cli-rs v0.30.1 desde la release oficial de GitHub (`near-cli-rs-x86_64-pc-windows-msvc.tar.gz`, SHA-256 `f5927854d916a6464e0092b379a6e96d54e40bee91e0dbc483786a6f680b4cbc`, coincidente en el `.sha256`, `sha256.sum` y `dist-manifest.json`; el binario no tiene firma Authenticode). Ruta: `%USERPROFILE%\tools\near-cli-rs-0.30.1\near-cli-rs-x86_64-pc-windows-msvc\near.exe` (sin tocar PATH). En esta sesión usa `& $near ...` con ` $near = "$env:USERPROFILE\tools\near-cli-rs-0.30.1\near-cli-rs-x86_64-pc-windows-msvc\near.exe"` donde la guía dice `near`.
+
 ## Paso 2 — Confirmar versión y sintaxis
 
 ```powershell
