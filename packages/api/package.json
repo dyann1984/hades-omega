@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "@hades/api",
   "version": "0.3.0",
   "main": "dist/server.js",
@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

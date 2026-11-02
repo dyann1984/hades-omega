@@ -108,7 +108,7 @@ describe('FASE 8 — Autonomous Intelligence & Capabilities', () => {
   it('executes real multi-document mission, validates reassignment rules, enforces approval, and persists across restart', async () => {
     const old = process.env.JWT_SECRET; process.env.JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'
     const dir = await mkdtemp(join(tmpdir(), 'hades-reassign-')), db = join(dir, 'data.sqlite'), legacy = join(dir, 'none.json')
-    let repo = new SqliteRepository(db, legacy); let app = Fastify()
+    let repo = new SqliteRepository(db, legacy); const app = Fastify()
     try {
       await repo.init()
       const admin = repo.createUser('admin', 'unused', 'ADMIN')
