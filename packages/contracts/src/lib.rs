@@ -169,6 +169,48 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "lowercase hex")]
+    fn rejects_short_hash() {
+        testing_env!(ctx(accounts(0)).build());
+        let mut c = AuditRegistry::new(accounts(0));
+        record(&mut c, "audit-1", &"a".repeat(63));
+    }
+
+    #[test]
+    #[should_panic(expected = "lowercase hex")]
+    fn rejects_non_hex_hash() {
+        testing_env!(ctx(accounts(0)).build());
+        let mut c = AuditRegistry::new(accounts(0));
+        record(&mut c, "audit-1", &format!("{}g", "a".repeat(63)));
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid audit_id")]
+    fn rejects_overlong_id() {
+        testing_env!(ctx(accounts(0)).build());
+        let mut c = AuditRegistry::new(accounts(0));
+        record(&mut c, &"a".repeat(65), &"a".repeat(64));
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid operation_type")]
+    fn rejects_lowercase_operation_type() {
+        testing_env!(ctx(accounts(0)).build());
+        let mut c = AuditRegistry::new(accounts(0));
+        c.store_audit_hash("audit-1".into(), "a".repeat(64), "planning".into(), "HADES".into(), "PERMIT".into(), 0);
+    }
+
+    #[test]
+    fn distinct_ids_are_independent_and_counted() {
+        testing_env!(ctx(accounts(0)).build());
+        let mut c = AuditRegistry::new(accounts(0));
+        record(&mut c, "audit-1", &"a".repeat(64));
+        record(&mut c, "audit-2", &"a".repeat(64)); // same hash under a different id is a different record
+        assert_eq!(c.get_count(), 2);
+        assert_eq!(c.get_owner(), accounts(0));
+    }
+
+    #[test]
     #[should_panic(expected = "invalid audit_id")]
     fn rejects_malformed_ids() {
         testing_env!(ctx(accounts(0)).build());

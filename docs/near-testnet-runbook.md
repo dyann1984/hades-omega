@@ -51,9 +51,16 @@ What *is* verified without a toolchain (`packages/api/src/near/contract-conforma
 input / permission unit tests, and every intent the API accepts also satisfies the contract's own validation rules
 (randomized, mutation-checked). That is a source-level check, **not** a compilation.
 
-These tests and this build were **not run** by the author (no Rust toolchain on the dev machine). Run them first; if
-the contract does not compile or a test fails, stop and fix before deploying.
+**Verified on 2026-11-02** in a throwaway `rust:1` Docker container (cargo 1.99.1, nothing installed on the host, nothing deployed):
 
+- `cargo test`: **12 passed, 0 failed** (owner-only write, idempotent retry, conflicting duplicate, short/uppercase/non-hex hash,
+  malformed/over-long id, lowercase operation type, unknown decision, independent ids).
+- `cargo build --release --target wasm32-unknown-unknown`: OK, `hades_audit_registry.wasm` = 217 149 bytes,
+  SHA-256 `5B1429BB68198957A3FCC87D5E52C5484CB33A654B45F4FA2E69F78A11D0356A`. The binary exports `store_audit_hash`,
+  `get_audit_entry`, `get_count`, `get_owner`, and contains the non-payable guard ("doesn't accept deposit").
+- Dependencies are pinned by the committed `Cargo.lock` (near-sdk resolved to 5.30.0; `Cargo.toml` only says `5.5.0`).
+- That wasm came from plain `cargo build`. Before the real deployment build it with `cargo near build` (the reproducible
+  build) and use *that* artifact; its hash will differ. Not verified on a live network.
 ## 3. Create the contract sub-account and deploy (spends testnet NEAR)
 
 ```
