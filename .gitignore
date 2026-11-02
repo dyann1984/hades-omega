@@ -142,3 +142,6 @@ e2e/artifacts/
 e2e/results.json
 test-results/
 playwright-report/
+
+# Local build artifacts (verified WASM for deployment; never committed)
+artifacts/
