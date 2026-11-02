@@ -3,6 +3,7 @@ import { requireRole } from '../security.js'
 import { guard, audit, near } from '../runtime.js'
 import type { AuditFilter, GUARDOutcome, AgentName } from '@hades/core'
 import type { SqliteRepository } from '../sqlite.js'
+import { readTestnetAccount } from '../near-testnet.js'
 
 export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRepository): Promise<void> {
   app.addHook('preHandler', async req => requireRole(req, ['ADMIN']))
@@ -75,6 +76,15 @@ export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRe
 
   app.get('/near/status', async () => {
     return ok(near.getStatus())
+  })
+
+  app.get('/near/testnet/account/:accountId', async (req, reply) => {
+    const { accountId } = req.params as { accountId: string }
+    try { return ok(await readTestnetAccount(accountId)) }
+    catch (error) {
+      if ((error as Error).message === 'INVALID_TESTNET_ACCOUNT') return reply.code(400).send(err('INVALID_TESTNET_ACCOUNT', 'Cuenta testnet inválida'))
+      return reply.code(502).send(err('NEAR_RPC_UNAVAILABLE', 'No se pudo verificar la cuenta en testnet'))
+    }
   })
 
   app.get('/near/transactions', async () => {

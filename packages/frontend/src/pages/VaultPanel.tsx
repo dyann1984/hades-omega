@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useHadesStore } from '../store/index.js'
+import { apiHeaders, apiPath } from '../lib/api.js'
 
 interface Connection {
   id:     string
@@ -55,6 +56,21 @@ const CERBERUS_POLICIES: PolicyEntry[] = [
 export default function VaultPanel(): JSX.Element {
   const { apiReady, wsConnected, nearTxs } = useHadesStore()
   const [tab, setTab] = useState<'connections' | 'policies' | 'env'>('connections')
+  const [accountId, setAccountId] = useState('')
+  const [accountResult, setAccountResult] = useState<{accountId:string; balanceYocto:string; blockHeight:number} | null>(null)
+  const [accountError, setAccountError] = useState('')
+  const [checkingAccount, setCheckingAccount] = useState(false)
+
+  async function checkAccount(): Promise<void> {
+    setCheckingAccount(true); setAccountError(''); setAccountResult(null)
+    try {
+      const response = await fetch(apiPath(`/api/v1/near/testnet/account/${encodeURIComponent(accountId.trim())}`), {headers:apiHeaders()})
+      const body = await response.json() as {success?:boolean; data?:{accountId:string; balanceYocto:string; blockHeight:number}}
+      if (!response.ok || !body.success || !body.data) throw new Error('unavailable')
+      setAccountResult(body.data)
+    } catch { setAccountError('No se pudo consultar la cuenta. Se requiere una cuenta testnet válida y acceso de administrador.') }
+    finally { setCheckingAccount(false) }
+  }
 
   const enriched: Connection[] = CONNECTIONS.map(c => {
     if (c.id === 'api') return { ...c, status: apiReady ? 'connected' : apiReady === false ? 'offline' : 'pending' }
@@ -121,6 +137,17 @@ export default function VaultPanel(): JSX.Element {
                 )}
                 {c.id === 'near' && nearTxs.length > 0 && (
                   <p className="font-mono text-[10px] text-gold mt-1">{nearTxs.length} tx registrada(s) en simulación</p>
+                )}
+                {c.id === 'near' && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    <label htmlFor="near-testnet-account" className="text-[10px] text-gray-400">Consulta pública de cuenta testnet (solo lectura)</label>
+                    <div className="flex gap-2">
+                      <input id="near-testnet-account" value={accountId} onChange={e => setAccountId(e.target.value)} placeholder="cuenta.testnet" className="min-w-0 flex-1 rounded bg-black border border-white/20 px-2 py-1 text-xs text-gray-200" />
+                      <button type="button" onClick={() => void checkAccount()} disabled={checkingAccount || !accountId.trim()} className="rounded border border-electric/30 px-2 text-xs text-electric disabled:opacity-40">{checkingAccount ? 'Consultando…' : 'Consultar'}</button>
+                    </div>
+                    {accountResult && <p className="text-[10px] text-gray-300 break-all">{accountResult.accountId} · {accountResult.balanceYocto} yoctoNEAR · bloque {accountResult.blockHeight}</p>}
+                    {accountError && <p role="alert" className="text-[10px] text-deny">{accountError}</p>}
+                  </div>
                 )}
               </div>
             </div>
