@@ -1,0 +1,117 @@
+{
+  "network": "testnet",
+  "rpc": "https://test.rpc.fastnear.com/",
+  "checkedAt": "2026-11-02T23:32:51.778Z",
+  "allPassed": true,
+  "results": [
+    {
+      "name": "1. Transacción encontrada",
+      "ok": true,
+      "detail": {
+        "hash": "BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3",
+        "explorer": "https://explorer.testnet.near.org/transactions/BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3"
+      }
+    },
+    {
+      "name": "2. Estado FINAL",
+      "ok": true,
+      "detail": "FINAL"
+    },
+    {
+      "name": "2. Sin errores (SuccessValue, 0 fallos en todos los recibos)",
+      "ok": true,
+      "detail": {
+        "receipts": 3
+      }
+    },
+    {
+      "name": "3. Una sola acción: FunctionCall store_audit_hash, 30 TGas, depósito 0",
+      "ok": true
+    },
+    {
+      "name": "3. Argumentos == los autorizados (incluye contentHash exacto)",
+      "ok": true,
+      "detail": {
+        "content_hash": "4bb4f2d98d2919b60795a607a2b7150cfaa59e9d77d8367a27ed74bd44fa571b"
+      }
+    },
+    {
+      "name": "4. Firmante hades-omega.testnet → contrato audit.hades-omega.testnet",
+      "ok": true
+    },
+    {
+      "name": "4. Firmada con la llave FunctionCall restringida (no la FullAccess)",
+      "ok": true,
+      "detail": "ed25519:Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n"
+    },
+    {
+      "name": "5. get_count == 1 (un solo registro, sin duplicados)",
+      "ok": true,
+      "detail": 1
+    },
+    {
+      "name": "5. get_audit_entry: content_hash coincide EXACTAMENTE",
+      "ok": true,
+      "detail": {
+        "content_hash": "4bb4f2d98d2919b60795a607a2b7150cfaa59e9d77d8367a27ed74bd44fa571b",
+        "recorder": "hades-omega.testnet",
+        "block_height": 275967539
+      }
+    },
+    {
+      "name": "5. get_audit_entry: tipo, agente, decisión y marca de tiempo",
+      "ok": true
+    },
+    {
+      "name": "5. Propietario del contrato == hades-omega.testnet",
+      "ok": true
+    },
+    {
+      "name": "6. Código desplegado == WASM atestado (SHA-256)",
+      "ok": true,
+      "detail": {
+        "code_hash": "CkaYdt6NcWYnwBPPFyPQ2xE1FRSE8nnxa6FC2bUdjyun",
+        "sha256": "ae9a75fff7bb44e00bf3769e10ccc4e855b1f3c249abc768fd275b34dfb9f685"
+      }
+    },
+    {
+      "name": "6. Código descargado de la cadena: SHA-256 == atestación",
+      "ok": true,
+      "detail": {
+        "bytes": 218046,
+        "sha256": "ae9a75fff7bb44e00bf3769e10ccc4e855b1f3c249abc768fd275b34dfb9f685"
+      }
+    },
+    {
+      "name": "6. Despliegue + init atómico (DeployContract + FunctionCall new) exitoso",
+      "ok": true,
+      "detail": {
+        "tx": "QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj"
+      }
+    },
+    {
+      "name": "7. Llave restringida: FunctionCall, solo audit.hades-omega.testnet / store_audit_hash",
+      "ok": true
+    },
+    {
+      "name": "7. Allowance restante <= 0.25 NEAR (y consumido solo el gas de 1 transacción)",
+      "ok": true,
+      "detail": "0.2498048148533081 NEAR"
+    },
+    {
+      "name": "7. Un solo envío firmado con esa llave (nonce = nonce inicial + 1)",
+      "ok": true,
+      "detail": {
+        "nonce": 275964626000001
+      }
+    },
+    {
+      "name": "7. Saldos",
+      "ok": true,
+      "detail": {
+        "hades-omega.testnet": "6.9926477633446827 NEAR",
+        "audit.hades-omega.testnet": "2.9982424587567502 NEAR"
+      }
+    }
+  ]
+}
