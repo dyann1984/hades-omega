@@ -80,6 +80,10 @@ export const DEFAULT_TOOLS: readonly ToolDefinition[] = [
       if (typeof p['signerId'] !== 'string' || !TESTNET_ACCOUNT.test(p['signerId']) || typeof p['receiverId'] !== 'string' || !TESTNET_ACCOUNT.test(p['receiverId'])) return 'testnet accounts required'
       return typeof p['contentHash'] === 'string' && /^[0-9a-f]{64}$/.test(p['contentHash']) ? null : 'contentHash must be 64 hex characters'
     } },
+  // Outbound call to the LLM provider. Not a human-approval class: the authorization is the operator's explicit server-side opt-in
+  // (HADES_LLM_ENABLED) plus a daily cap enforced by the API; every call is decided, logged (hash only, never the prompt) and stopped by the emergency stop.
+  { id: 'llm.plan', description: 'Send a minimized mission summary to the LLM provider to draft a plan (opt-in, capped, logged by hash)', effect: 'WRITE', agents: ['HADES'], roles: ['ADMIN', 'OPERATOR', 'SYSTEM'], allowedParams: ['model', 'promptSha256', 'chars'],
+    validate: p => (typeof p['model'] === 'string' && /^[a-zA-Z0-9._-]{1,80}$/.test(p['model']) && typeof p['promptSha256'] === 'string' && /^[0-9a-f]{64}$/.test(p['promptSha256']) && Number.isInteger(p['chars']) && (p['chars'] as number) >= 1 && (p['chars'] as number) <= 4000) ? null : 'llm.plan needs model, promptSha256 and chars (1-4000)' },
   // No executor exists for payments yet. Registering it fixes its classification and limits so that any future
   // implementation is born behind approval, allowlist and budget checks.
   { id: 'payment.execute', description: 'Pay a vendor', effect: 'FINANCIAL', agents: ['PERSEPHONE'], roles: ['ADMIN', 'OPERATOR', 'SYSTEM'],

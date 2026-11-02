@@ -64,6 +64,9 @@ export class CerberusGate implements ExecutionGate {
   get tools(): ToolRegistry { return this.registry }
   private policyHash(): string { return createHash('sha256').update(`${this.opts.policyHash()}|${this.registry.hash()}`).digest('hex') }
 
+  /** Number of PERMIT decisions for a tool since a point in time (used for per-day call caps). */
+  countPermits(tool: string, sinceMs: number): number { return (this.db.prepare("SELECT COUNT(*) AS n FROM cerberus_decisions WHERE tool=? AND outcome='PERMIT' AND ts>=?").get(tool, sinceMs) as { n: number }).n }
+
   isStopped(): boolean { return (this.db.prepare('SELECT stopped FROM near_security WHERE id=1').get() as { stopped: number }).stopped === 1 }
   setStopped(stopped: boolean, actor: string): void {
     this.db.transaction(() => {
