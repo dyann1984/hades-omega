@@ -32,7 +32,7 @@ describe('audit contract source ↔ API conformance', () => {
     expect(RUST).toMatch(/assert_eq!\(env::predecessor_account_id\(\), self\.owner, "only the owner may record entries"\)/)
     expect(RUST).not.toMatch(/#\[payable\]/)
     for (const view of ['get_audit_entry', 'get_count', 'get_owner']) expect(RUST).toMatch(new RegExp(`pub fn ${view}\\(&self`))
-    expect(RUST).toMatch(/#\[init\]\s*pub fn new\(owner_id: AccountId\)/)
+    expect(RUST).toMatch(/#\[init\]\s*#\[private\]\s*pub fn new\(owner_id: AccountId\)/) // only the contract account may initialize (anti front-running)
     expect(RUST).toMatch(/PanicOnDefault/)
   })
 

@@ -1,6 +1,7 @@
 # Rebuilds the audit contract from the COMMITTED tree in a throwaway Docker container (nothing installed on the host,
 # nothing deployed) and prints the WASM SHA-256. Compare it with docs/contract-attestation.json.
 #   powershell -File scripts\verify-contract-wasm.ps1
+param([string]$KeepWasmTo)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $work = Join-Path ([IO.Path]::GetTempPath()) ("hades-wasm-" + [guid]::NewGuid().ToString('N'))
@@ -12,6 +13,7 @@ try {
   $wasm = Join-Path $out 'hades_audit_registry.wasm'
   $att = Get-Content (Join-Path $repo 'docs\contract-attestation.json') -Raw | ConvertFrom-Json
   $hash = (Get-FileHash $wasm -Algorithm SHA256).Hash.ToLower()
+  if ($KeepWasmTo) { Copy-Item $wasm $KeepWasmTo -Force }
   "wasm bytes : " + (Get-Item $wasm).Length
   "sha256      : $hash"
   "attested    : $($att.wasmSha256)"

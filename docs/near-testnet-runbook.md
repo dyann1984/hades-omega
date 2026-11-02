@@ -7,7 +7,7 @@ Status verified on 2026-11-02 by read-only RPC (`rpc.testnet.near.org`, chain `t
 | `audit.hades-omega.testnet` | **does not exist** (`UNKNOWN_ACCOUNT`) |
 | `hades-omega.testnet` | **does not exist** — and since anyone can register testnet names, pick a name you control now |
 
-See also **docs/near-testnet-preparacion.md** (attested WASM hash, costs, exact first operation) and docs/contract-attestation.json.
+**Superseded in detail by docs/near-testnet-preparacion.md** (current hash ae9a75ff…, #[private] init, official-doc commands, recovery). See also (attested WASM hash, costs, exact first operation) and docs/contract-attestation.json.
 
 Nothing below has been executed by the code or by an assistant. Every command that creates an account, uses a faucet,
 deploys, or sends a transaction is for **you** to run, deliberately, with testnet funds only.
@@ -57,8 +57,8 @@ input / permission unit tests, and every intent the API accepts also satisfies t
 
 - `cargo test`: **12 passed, 0 failed** (owner-only write, idempotent retry, conflicting duplicate, short/uppercase/non-hex hash,
   malformed/over-long id, lowercase operation type, unknown decision, independent ids).
-- `cargo build --release --target wasm32-unknown-unknown`: OK, `hades_audit_registry.wasm` = 217 149 bytes,
-  SHA-256 `5B1429BB68198957A3FCC87D5E52C5484CB33A654B45F4FA2E69F78A11D0356A`. The binary exports `store_audit_hash`,
+- `cargo build --release --target wasm32-unknown-unknown`: OK, `hades_audit_registry.wasm` = 218 046 bytes,
+  SHA-256 `AE9A75FFF7BB44E00BF3769E10CCC4E855B1F3C249ABC768FD275B34DFB9F685 (after the #[private] init fix; was 5B1429BB… before)`. The binary exports `store_audit_hash`,
   `get_audit_entry`, `get_count`, `get_owner`, and contains the non-payable guard ("doesn't accept deposit").
 - Dependencies are pinned by the committed `Cargo.lock` (near-sdk resolved to 5.30.0; `Cargo.toml` only says `5.5.0`).
 - That wasm came from plain `cargo build`. Before the real deployment build it with `cargo near build` (the reproducible
@@ -67,7 +67,7 @@ input / permission unit tests, and every intent the API accepts also satisfies t
 
 ```
 near account create-account fund-myself audit.hades-<yourhandle>.testnet '3 NEAR' autogenerate-new-keypair save-to-keychain sign-as hades-<yourhandle>.testnet network-config testnet sign-with-keychain send
-near contract deploy audit.hades-<yourhandle>.testnet use-file ./target/near/hades_audit_registry.wasm with-init-call new json-args '{"owner_id":"hades-<yourhandle>.testnet"}' prepaid-gas '100 Tgas' attached-deposit '0 NEAR' network-config testnet sign-with-keychain send
+near contract deploy audit.hades-<yourhandle>.testnet use-file ./target/near/hades_audit_registry.wasm with-init-call new json-args '{"owner_id":"hades-<yourhandle>.testnet"}' prepaid-gas '100 TGas' attached-deposit '0 NEAR' network-config testnet sign-with-keychain send
 ```
 
 Verify (read-only): `near contract call-function as-read-only audit.hades-<yourhandle>.testnet get_owner json-args '{}' network-config testnet now`
@@ -76,7 +76,7 @@ must print your signer account.
 ## 4. Give the server a restricted key
 
 ```
-near account add-key hades-<yourhandle>.testnet grant-function-call-access --receiver-account-id audit.hades-<yourhandle>.testnet --method-names 'store_audit_hash' --allowance '0.25 NEAR' autogenerate-new-keypair save-to-legacy-keychain network-config testnet sign-with-keychain send
+near account add-key hades-<yourhandle>.testnet grant-function-call-access --contract-account-id audit.hades-<yourhandle>.testnet --function-names 'store_audit_hash' --allowance '0.25 NEAR' autogenerate-new-keypair save-to-legacy-keychain network-config testnet sign-with-keychain send
 ```
 
 Export that new key's private key into the server environment (never into the repo).
