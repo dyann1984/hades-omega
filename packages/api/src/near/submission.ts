@@ -80,6 +80,22 @@ export class NearSubmissionService {
     }
   }
 
+  /** Read-only reachability check for the Vault. Sends nothing, signs nothing; every failure is reported, never thrown. */
+  async probe(): Promise<{ reachable: boolean; chainId: string | null; contractDeployed: boolean | null; ownerMatchesSigner: boolean | null; signerKeyPresent: boolean | null; error?: string }> {
+    const { rpc, config, signer } = this.deps
+    const out = { reachable: false, chainId: null as string | null, contractDeployed: null as boolean | null, ownerMatchesSigner: null as boolean | null, signerKeyPresent: null as boolean | null }
+    try {
+      out.chainId = await rpc.chainId(); out.reachable = true
+      if (config.contractId) {
+        const acct = await rpc.viewAccount(config.contractId)
+        out.contractDeployed = !!acct && acct.codeHash !== NO_CONTRACT_CODE_HASH
+        if (out.contractDeployed && signer) out.ownerMatchesSigner = (await rpc.viewFunction(config.contractId, 'get_owner', {})) === signer.accountId
+      }
+      if (signer) out.signerKeyPresent = !!(await rpc.viewAccessKey(signer.accountId, signer.publicKey))
+      return out
+    } catch (e) { return { ...out, error: String((e as Error).message ?? e).slice(0, 160) } }
+  }
+
   private row(intentId: string): Row | undefined { return this.deps.db.prepare('SELECT * FROM near_submissions WHERE intent_id=?').get(intentId) as Row | undefined }
   private view(r: Row): SubmissionView {
     return { intentId: r.intent_id, auditId: r.audit_id, signerId: r.signer_id, receiverId: r.receiver_id, publicKey: r.public_key, nonce: r.nonce, txHash: r.tx_hash, explorerUrl: explorer(r.tx_hash), startHeight: r.start_height, broadcastCount: r.broadcast_count, lastError: r.last_error, onChainVerified: r.on_chain_verified === null ? null : r.on_chain_verified === 1, outcomeBlockHash: r.outcome_block_hash, createdAt: r.created_at, updatedAt: r.updated_at, payload: describeSignedTx(r.signed_tx) }

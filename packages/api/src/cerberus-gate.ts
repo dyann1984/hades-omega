@@ -76,6 +76,8 @@ export class CerberusGate implements ExecutionGate {
     const def = this.registry.get(tool)
     if (!def?.recipientField) throw new GateError('NO_RECIPIENT_FIELD', 'tool does not take recipients')
     if (typeof recipient !== 'string' || !recipient || recipient.length > 128) throw new GateError('INVALID_RECIPIENT')
+    // NEAR destinations must be well-formed testnet accounts; a mainnet or malformed id can never be allow-listed.
+    if (tool.startsWith('near.') && !/^(?:[a-z\d]+[-_])*[a-z\d]+(?:\.(?:[a-z\d]+[-_])*[a-z\d]+)*\.testnet$/.test(recipient)) throw new GateError('INVALID_RECIPIENT', 'NEAR recipients must be valid .testnet accounts')
     this.db.prepare('INSERT OR IGNORE INTO cerberus_recipients VALUES (?,?,?,?)').run(tool, recipient, actor, this.now())
     this.opts.audit({ actor, action: 'CERBERUS_RECIPIENT_ADDED', result: `${tool}:${recipient}` })
   }

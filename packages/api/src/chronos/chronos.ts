@@ -249,4 +249,12 @@ export class ChronosService {
     this.timer.unref()
   }
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = undefined } }
+  isRunning(): boolean { return this.timer !== undefined }
+  /** Counts for the Vault view; derived only from persisted rows. */
+  summary(): { tasks: Record<string, number>; runs: Record<string, number>; nextRunAt: number | null; lastFinishedAt: number | null } {
+    const group = (sql: string): Record<string, number> => Object.fromEntries((this.db.prepare(sql).all() as Array<{ k: string; n: number }>).map(r => [r.k, r.n]))
+    const next = this.db.prepare("SELECT MIN(next_run_at) AS t FROM chronos_tasks WHERE status = 'ACTIVE'").get() as { t: number | null }
+    const last = this.db.prepare('SELECT MAX(finished_at) AS t FROM chronos_runs').get() as { t: number | null }
+    return { tasks: group('SELECT status AS k, COUNT(*) AS n FROM chronos_tasks GROUP BY status'), runs: group('SELECT status AS k, COUNT(*) AS n FROM chronos_runs GROUP BY status'), nextRunAt: next.t, lastFinishedAt: last.t }
+  }
 }

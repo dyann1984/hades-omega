@@ -33,6 +33,8 @@ export class SqliteRepository extends JsonRepository {
   createNearSubmissionService(deps: Omit<ConstructorParameters<typeof NearSubmissionService>[0], 'db' | 'repository'>): NearSubmissionService {
     return new NearSubmissionService({ ...deps, db: this.db, repository: this })
   }
+  /** Cheap liveness probe of the live database handle. */
+  ping(): boolean { try { return (this.db.prepare('SELECT 1 AS ok').get() as { ok: number }).ok === 1 } catch { return false } }
   /** Second service over the same database with its own clock; used by tests to simulate time and extra processes. */
   createChronos(clock: () => number): ChronosService { return new ChronosService(this.db, this, clock) }
   /** Where execution events are delivered. Defaults to the global bus; isolated demo repositories override it. */
