@@ -119,3 +119,20 @@ integration-v10-temp/
 .test-tmp/
 ESTRATEGIA_INTEGRACION_SEGURA_V10.md
 INFORME_INTEGRACION_V10.md
+
+# ── Seguridad adicional: cualquier entorno no ejemplificado ──
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# ── Credenciales locales y certificados privados ────────────
+.npmrc
+.pypirc
+*.p12
+*.pfx
+*.jks
+*.keystore
+service-account*.json
+*credentials*.local.json
