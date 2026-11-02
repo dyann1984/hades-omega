@@ -8,6 +8,7 @@ import { JsonRepository, type StoredApproval, type SystemEvent } from './persist
 import { analyzeDocuments } from './document-analysis.js'
 import { dispatchCapability } from './capability-dispatcher.js'
 import { guard } from './runtime.js'
+import { NearIntentStore } from './near-intents.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
 type Row = { data: string }
@@ -19,6 +20,7 @@ export interface ExecutionEvent {
 /** SQLite-backed repository. Legacy JSON is imported once, after a separate backup. */
 export class SqliteRepository extends JsonRepository {
   private db!: Database.Database
+  private nearIntents!: NearIntentStore
   /** Where execution events are delivered. Defaults to the global bus; isolated demo repositories override it. */
   eventSink: (event: {type:'EXECUTION_EVENT'; payload: any}) => void = event => bus.publish(event as any)
   constructor(private readonly databasePath: string, private readonly legacyPath: string, private readonly policyGuard = guard) { super(legacyPath) }
@@ -89,6 +91,7 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (8)').run()
       })()
     }
+    this.nearIntents = new NearIntentStore(this.db, this.policyGuard)
     this.reconcileOnStartup()
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
@@ -117,6 +120,7 @@ export class SqliteRepository extends JsonRepository {
     this.db.prepare('DELETE FROM tasks WHERE mission_id=?').run(mission.id)
     for (const task of mission.tasks) this.db.prepare('INSERT INTO tasks VALUES (?,?,?)').run(task.id, mission.id, JSON.stringify(task))
   }
+  getNearIntentStore(): NearIntentStore { return this.nearIntents }
   override listMissions(): Mission[] { return (this.db.prepare('SELECT data FROM missions ORDER BY rowid DESC').all() as Row[]).map(r => JSON.parse(r.data)) }
   override getMission(id: string): Mission | undefined { const row = this.db.prepare('SELECT data FROM missions WHERE id=?').get(id) as Row | undefined; return row && JSON.parse(row.data) }
   listExecutionEvents(missionId: string, after: number, limit = 200): ExecutionEvent[] {

@@ -5,6 +5,19 @@ import { describe, it, expect } from 'vitest'
 import { SqliteRepository } from './sqlite.js'
 
 describe('SQLite migration and persistence', () => {
+  it('preserves a pending NEAR approval and emergency stop across database reopen', async () => {
+    const dir=await mkdtemp(join(tmpdir(),'hades-near-')); const db=join(dir,'data.sqlite'), json=join(dir,'none.json')
+    try {
+      const first=new SqliteRepository(db,json); await first.init()
+      const store=first.getNearIntentStore()
+      const draft=store.create({network:'testnet',signerId:'source.testnet',receiverId:'audit.testnet',type:'AUDIT_HASH',amountYocto:'0',auditId:'audit-1',contentHash:'a'.repeat(64),operationType:'PLANNING',agentName:'HADES',decision:'PERMIT',timestampMs:1700000000000,gas:'30000000000000'},'operator')
+      store.requestApproval(draft.id,'operator');store.approve(draft.id,draft.hash,'admin',Date.now()+60000);store.setEmergency(true,'admin');first.close()
+      const second=new SqliteRepository(db,json);await second.init()
+      expect(second.getNearIntentStore().get(draft.id)?.status).toBe('APPROVED')
+      expect(()=>second.getNearIntentStore().claimForSigning(draft.id,draft.hash,'executor')).toThrow('EMERGENCY_STOP')
+      second.close()
+    } finally { await rm(dir,{recursive:true,force:true}) }
+  })
   it('backs up and imports legacy records once, preserving tasks and decisions after restart', async () => {
     const dir=await mkdtemp(join(tmpdir(),'hades-sqlite-')); const json=join(dir,'legacy.json'); const db=join(dir,'data.sqlite')
     const legacy={version:1,missions:[{id:'m1',ownerId:'a',tasks:[{id:'t1',missionId:'m1',status:'CERBERUS_REVIEW',result:{data:{escalationId:'e1'}}}]}],audits:[],approvals:[],events:[],idempotency:{}}

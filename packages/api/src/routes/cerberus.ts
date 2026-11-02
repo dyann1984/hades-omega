@@ -90,6 +90,43 @@ export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRe
   app.get('/near/transactions', async () => {
     return ok(near.getAllTransactions())
   })
+
+  // Preparation only: this interface has no signing or broadcast route.
+  app.post('/near/intents', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    try { return reply.code(201).send(ok(repository.getNearIntentStore().create(req.body, (req.user as {sub:string}).sub))) }
+    catch { return reply.code(400).send(err('INVALID_INTENT', 'Parámetros testnet inválidos')) }
+  })
+  app.get('/near/intents/:id', async (req, reply) => {
+    const intent=repository?.getNearIntentStore().get((req.params as {id:string}).id)
+    return intent ? ok(intent) : reply.code(404).send(err('INTENT_NOT_FOUND', 'Operación no encontrada'))
+  })
+  app.post('/near/intents/:id/request-approval', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    try { return ok(repository.getNearIntentStore().requestApproval((req.params as {id:string}).id,(req.user as {sub:string}).sub)) }
+    catch { return reply.code(409).send(err('INTENT_NOT_READY', 'La operación no puede solicitar aprobación')) }
+  })
+  app.post('/near/intents/:id/approve', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    const body=req.body as {hash?:unknown;expiresAt?:unknown} | undefined
+    if (typeof body?.hash!=='string' || typeof body.expiresAt!=='number') return reply.code(400).send(err('VALIDATION_ERROR','Hash y expiración requeridos'))
+    try { return ok(repository.getNearIntentStore().approve((req.params as {id:string}).id,body.hash,(req.user as {sub:string}).sub,body.expiresAt)) }
+    catch { return reply.code(409).send(err('APPROVAL_REJECTED', 'La aprobación no es válida o la operación cambió')) }
+  })
+  app.post('/near/intents/:id/resolve', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    const body=req.body as {outcome?:unknown} | undefined
+    if (body?.outcome!=='REJECTED' && body?.outcome!=='CANCELLED') return reply.code(400).send(err('VALIDATION_ERROR','Decisión inválida'))
+    try { return ok(repository.getNearIntentStore().resolve((req.params as {id:string}).id,body.outcome,(req.user as {sub:string}).sub)) }
+    catch { return reply.code(409).send(err('INVALID_STATE', 'No se puede resolver la operación en su estado actual')) }
+  })
+  app.post('/near/emergency-stop', async (req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    const body=req.body as {stopped?:unknown} | undefined
+    if (typeof body?.stopped!=='boolean') return reply.code(400).send(err('VALIDATION_ERROR','Estado requerido'))
+    repository.getNearIntentStore().setEmergency(body.stopped,(req.user as {sub:string}).sub)
+    return ok({stopped:body.stopped})
+  })
 }
 
 function ok<T>(data: T) {
