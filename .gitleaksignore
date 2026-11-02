@@ -1,0 +1,2 @@
+# Test fixture, not a credential: a UUID-shaped Idempotency-Key literal in a unit test (verified 2026-11-02).
+b03c9d0de1f58ae64a623445a0701e14f5016b5a:packages/api/src/demo-auth.test.ts:generic-api-key:266
