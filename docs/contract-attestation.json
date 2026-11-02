@@ -1,0 +1,21 @@
+{
+  "contract": "hades-audit-registry",
+  "version": "0.4.0",
+  "verifiedOn": "2026-11-02",
+  "sourceCommit": "6ce6921de17cf63dddc1c4837cad1fbd96256302",
+  "sourceBlobs": {
+    "Cargo.toml": "6dfdab7d99d529aaa6cf5d0bf9c564684a438b78",
+    "Cargo.lock": "a32aac129946f1ac133ac8ff55fa7b4ee7551c9c",
+    "src/lib.rs": "e0cdb97ccf8df19a21cb0dd45c22f9b0746f5745"
+  },
+  "toolchain": { "image": "rust:1", "rustc": "1.99.1 (58cf8f9c3 2026-10-13)", "cargo": "1.99.1", "nearSdk": "5.30.0 (pinned by Cargo.lock)", "build": "cargo build --release --target wasm32-unknown-unknown --locked" },
+  "wasmBytes": 217149,
+  "wasmSha256": "5b1429bb68198957a3fcc87d5e52c5484cb33a654b45f4fa2e69f78a11d0356a",
+  "reproducibility": "Built twice from `git archive HEAD` in two separate containers: identical hash; also identical to the earlier build from the working copy.",
+  "unitTests": "12 passed, 0 failed (cargo test --locked)",
+  "exports": ["new", "store_audit_hash", "get_audit_entry", "get_count", "get_owner", "memory", "contract_source_metadata"],
+  "hostImports": ["value_return", "read_register", "register_len", "storage_read", "storage_write", "storage_remove", "storage_has_key", "log_utf8", "input", "block_index", "block_timestamp", "attached_deposit", "predecessor_account_id"],
+  "forbiddenHostCalls": "none: no promise_*, transfer, deploy, add/delete key, stake or cross-contract calls",
+  "embeddedGuards": ["only the owner may record entries", "doesn't accept deposit", "audit_id already recorded with different content", "content_hash must be 64 lowercase hex characters", "decision must be PERMIT, DENY or ESCALATE"],
+  "note": "A deployment through `cargo near build` produces a different binary; if used, rebuild this attestation for that artifact before deploying. Nothing has been deployed."
+}

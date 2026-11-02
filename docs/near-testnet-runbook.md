@@ -7,6 +7,8 @@ Status verified on 2026-11-02 by read-only RPC (`rpc.testnet.near.org`, chain `t
 | `audit.hades-omega.testnet` | **does not exist** (`UNKNOWN_ACCOUNT`) |
 | `hades-omega.testnet` | **does not exist** — and since anyone can register testnet names, pick a name you control now |
 
+See also **docs/near-testnet-preparacion.md** (attested WASM hash, costs, exact first operation) and docs/contract-attestation.json.
+
 Nothing below has been executed by the code or by an assistant. Every command that creates an account, uses a faucet,
 deploys, or sends a transaction is for **you** to run, deliberately, with testnet funds only.
 
