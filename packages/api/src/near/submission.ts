@@ -22,6 +22,26 @@ export interface NearServiceConfig {
   contractId: string | null
   /** Minimum signer balance, in yocto, required before submitting. */
   minBalanceYocto: bigint
+  /** A FullAccess key may sign only if this is explicitly true (default: refused; use a FunctionCall key). */
+  allowFullAccessKey?: boolean
+  /** Upper bound for a FunctionCall key's allowance, in yocto (default 0.25 NEAR; the allowance only shrinks as gas is spent). */
+  maxKeyAllowanceYocto?: bigint
+}
+
+export const DEFAULT_MAX_KEY_ALLOWANCE_YOCTO = 250_000_000_000_000_000_000_000n
+
+/**
+ * Least-privilege policy for the signing key as seen ON-CHAIN: a FunctionCall key limited to exactly the audit method of the
+ * audit contract, with a bounded (not unlimited) allowance. FullAccess keys are refused unless explicitly allowed.
+ */
+export function assertSignerKeyPolicy(key: { fullAccess: boolean; receiverId?: string; methodNames?: string[]; allowance?: string | null }, receiverId: string, config: Pick<NearServiceConfig, 'allowFullAccessKey' | 'maxKeyAllowanceYocto'>): void {
+  if (key.fullAccess) { if (config.allowFullAccessKey) return; throw new NearSubmitError('SIGNER_KEY_NOT_PERMITTED', 'a FullAccess key is not accepted for server signing') }
+  if (key.receiverId !== receiverId) throw new NearSubmitError('SIGNER_KEY_NOT_PERMITTED', 'key is limited to a different contract')
+  if (!key.methodNames || key.methodNames.length !== 1 || key.methodNames[0] !== AUDIT_METHOD) throw new NearSubmitError('SIGNER_KEY_NOT_PERMITTED', 'key must be limited to exactly store_audit_hash')
+  if (key.allowance == null) throw new NearSubmitError('SIGNER_KEY_NOT_PERMITTED', 'key has an unlimited allowance')
+  let allowance: bigint
+  try { allowance = BigInt(key.allowance) } catch { throw new NearSubmitError('SIGNER_KEY_NOT_PERMITTED', 'key allowance is not a number') }
+  if (allowance > (config.maxKeyAllowanceYocto ?? DEFAULT_MAX_KEY_ALLOWANCE_YOCTO)) throw new NearSubmitError('SIGNER_KEY_NOT_PERMITTED', 'key allowance exceeds the authorized maximum')
 }
 
 export interface SubmissionView {
@@ -129,7 +149,7 @@ export class NearSubmissionService {
     if (owner !== s.accountId) throw new NearSubmitError('CONTRACT_OWNER_MISMATCH')
     const key = await this.rpc(() => rpc.viewAccessKey(s.accountId, s.publicKey))
     if (!key) throw new NearSubmitError('SIGNER_KEY_NOT_ON_ACCOUNT')
-    if (!key.fullAccess && (key.receiverId !== p.receiverId || (key.methodNames?.length && !key.methodNames.includes(AUDIT_METHOD)))) throw new NearSubmitError('SIGNER_KEY_NOT_PERMITTED')
+    assertSignerKeyPolicy(key, p.receiverId, config)
     const acct = await this.rpc(() => rpc.viewAccount(s.accountId))
     if (!acct || BigInt(acct.amount) < config.minBalanceYocto) throw new NearSubmitError('INSUFFICIENT_BALANCE')
     if (this.row(intent.id)) throw new NearSubmitError('DUPLICATE_SUBMISSION')
@@ -180,6 +200,7 @@ export class NearSubmissionService {
 
     const key = await this.rpc(() => rpc.viewAccessKey(signer.accountId, signer.publicKey))
     if (!key) throw new NearSubmitError('SIGNER_KEY_NOT_ON_ACCOUNT')
+    assertSignerKeyPolicy(key, p.receiverId, this.deps.config) // re-checked right before signing
     const block = await this.rpc(() => rpc.finalBlock())
     const localMax = (db.prepare('SELECT COALESCE(MAX(nonce),0) AS n FROM near_submissions WHERE signer_id=?').get(p.signerId) as { n: number }).n
     const nonce = Math.max(key.nonce, localMax) + 1
@@ -288,5 +309,5 @@ export class NearSubmissionService {
 export function nearServiceConfigFromEnv(env: NodeJS.ProcessEnv = process.env): NearServiceConfig {
   const contractId = env['NEAR_AUDIT_CONTRACT_ID'] || null
   if (contractId && !/^[a-z0-9]+(?:[._-][a-z0-9]+)*\.testnet$/.test(contractId)) throw new Error('NEAR_AUDIT_CONTRACT_ID must be a .testnet account')
-  return { enabled: env['NEAR_SIGNING_ENABLED'] === 'true', contractId, minBalanceYocto: BigInt(env['NEAR_MIN_SIGNER_BALANCE_YOCTO'] ?? '50000000000000000000000') }
+  return { enabled: env['NEAR_SIGNING_ENABLED'] === 'true', contractId, minBalanceYocto: BigInt(env['NEAR_MIN_SIGNER_BALANCE_YOCTO'] ?? '50000000000000000000000'), allowFullAccessKey: env['NEAR_ALLOW_FULL_ACCESS_KEY'] === 'true' }
 }

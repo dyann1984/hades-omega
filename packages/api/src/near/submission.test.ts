@@ -65,7 +65,7 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
     rpc.accounts.set(SIGNER, { amount: '5000000000000000000000000', codeHash: NO_CONTRACT_CODE_HASH })
     rpc.keys.set(`${SIGNER}|${signer.publicKey}`, { nonce: 100, fullAccess: true })
     bridge = new NEARBridge(); bridge.attachGate(repo.gate)
-    config = { enabled: true, contractId: CONTRACT, minBalanceYocto: 50_000_000_000_000_000_000_000n }
+    config = { enabled: true, contractId: CONTRACT, minBalanceYocto: 50_000_000_000_000_000_000_000n, allowFullAccessKey: true } // the legacy happy paths use FullAccess; the strict policy is tested below
     svc = repo.createNearSubmissionService({ bridge, rpc, signer, config })
     repo.gate.addRecipient('near.audit_hash_submit', CONTRACT, 'admin')
   })
@@ -102,7 +102,8 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
   })
 
   it('works with a least-privilege FunctionCall key (store_audit_hash on the audit contract only), never needing FullAccess', async () => {
-    rpc.keys.set(`${SIGNER}|${signer.publicKey}`, { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['store_audit_hash'] })
+    rpc.keys.set(`${SIGNER}|${signer.publicKey}`, { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['store_audit_hash'], allowance: '250000000000000000000000' })
+    config.allowFullAccessKey = false // strict policy on the same service
     const i = approvedIntent()
     const r = await svc.submit(i.id, 'admin')
     expect(r.error).toBeNull(); expect(r.intent.status).toBe('BROADCASTED')
@@ -110,9 +111,21 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
     expect(r.submission!.payload.actions).toHaveLength(1) // a restricted key could not authorize anything else anyway
   })
 
-  it('refuses a FunctionCall key that is not limited to the audit method of the audit contract (approval stays unspent)', async () => {
-    for (const k of [{ receiverId: CONTRACT, methodNames: ['other_method'] }, { receiverId: 'someone.testnet', methodNames: ['store_audit_hash'] }]) {
-      rpc.keys.set(`${SIGNER}|${signer.publicKey}`, { nonce: 7, fullAccess: false, ...k })
+  it('refuses FullAccess by default and any FunctionCall key that is not exactly store_audit_hash on the audit contract with a bounded allowance (approval stays unspent)', async () => {
+    config.allowFullAccessKey = false
+    const okAllowance = '250000000000000000000000'
+    const bad: AccessKeyView[] = [
+      { nonce: 7, fullAccess: true },
+      { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['other_method'], allowance: okAllowance },
+      { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: [], allowance: okAllowance }, // an empty list means every method on-chain
+      { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['store_audit_hash', 'new'], allowance: okAllowance },
+      { nonce: 7, fullAccess: false, receiverId: 'someone.testnet', methodNames: ['store_audit_hash'], allowance: okAllowance },
+      { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['store_audit_hash'], allowance: null }, // unlimited
+      { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['store_audit_hash'], allowance: '250000000000000000000001' }, // above the authorized maximum
+      { nonce: 7, fullAccess: false, receiverId: CONTRACT, methodNames: ['store_audit_hash'], allowance: 'abc' },
+    ]
+    for (const k of bad) {
+      rpc.keys.set(`${SIGNER}|${signer.publicKey}`, k)
       const i = approvedIntent()
       await expect(svc.submit(i.id, 'admin')).rejects.toMatchObject({ code: 'SIGNER_KEY_NOT_PERMITTED' })
       expect(repo.getNearIntentStore().get(i.id)!.status).toBe('APPROVED')
@@ -120,7 +133,8 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
     expect(rpc.broadcasts).toHaveLength(0)
   })
 
-  it('confirms only from a final on-chain outcome and verifies the recorded hash against contract state', async () => {    const i = approvedIntent(); const { submission } = await svc.submit(i.id, 'admin')
+  it('confirms only from a final on-chain outcome and verifies the recorded hash against contract state', async () => {
+    const i = approvedIntent(); const { submission } = await svc.submit(i.id, 'admin')
     expect((await svc.refresh(i.id, 'admin')).intent.status).toBe('BROADCASTED') // still pending
     rpc.finalize(submission!.txHash, true)
     const done = await svc.refresh(i.id, 'admin')

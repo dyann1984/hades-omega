@@ -1,8 +1,44 @@
 # Propuesta para autorización: llave limitada y registro `hades-attest-0001`
 
-Preparado el 2026-11-02. **Nada de lo que sigue se ha ejecutado**: no existe la llave de servidor, no hay intención creada, no se firmó ni transmitió nada.
+Preparado el 2026-11-02. **Estado:** el paso A (llave limitada) está **hecho y verificado**; el cargador de credenciales de HADES ya lo soporta (ver A.1-A.3).
+Los pasos B, C y D **no se han ejecutado**: no hay intención creada, no se firmó ni transmitió ninguna operación de auditoría, `NEAR_SIGNING_ENABLED` sin definir.
 Estado base verificado por RPC: contrato desplegado, `get_owner` = `hades-omega.testnet`, `get_count` = 0 (ver `docs/near-testnet-preparacion.md` §0).
-Cada paso A-D requiere tu autorización **por separado**.
+Cada paso B-D requiere tu autorización **por separado**.
+
+## A.0 Resultado del AddKey (ejecutado con autorización)
+
+* Transacción `GBWu3Lu5MeXmGkjYgWnDn9vvvNpdakD6Vm2vuP1SA3o9` (FINAL, sin fallos), una sola acción `AddKey` firmada con la FullAccess existente (intacta).
+  Explorador: https://explorer.testnet.near.org/transactions/GBWu3Lu5MeXmGkjYgWnDn9vvvNpdakD6Vm2vuP1SA3o9
+* Llave `ed25519:Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n`, verificada por RPC: `FunctionCall`, receptor `audit.hades-omega.testnet`, método único `store_audit_hash`, allowance 0.25 NEAR exactos.
+
+## A.1 Cargador de credenciales (`loadSignerFromEnv`)
+
+* near-cli-rs 0.30.1 escribe un JSON con los campos `seed_phrase_hd_path`, `master_seed_phrase`, `implicit_account_id`, `public_key` y `private_key`, **sin `account_id`**
+  (inspección solo de nombres de campo; no se leyeron ni imprimieron valores). El cargador ahora lo acepta usando `NEAR_SIGNER_ACCOUNT_ID` como identidad explícita; el formato JS-CLI (con `account_id`) sigue funcionando.
+* Se rechazan con códigos fijos (sin material secreto en mensajes, trazas ni serialización): dos fuentes a la vez (archivo + clave en variable), identidad ausente o distinta entre archivo y variable,
+  `public_key` que no corresponde a la clave privada, campos desconocidos o duplicados (`secret_key`, `network_id`…), tipos erróneos, archivos > 8 KB, directorios, claves no ed25519, cuentas que no sean `.testnet` y rutas con un segmento `mainnet`.
+  Los campos de la frase semilla nunca se leen ni se conservan.
+* **Política on-chain de la llave** (`assertSignerKeyPolicy`, en la comprobación previa y de nuevo justo antes de firmar): se rechaza FullAccess (salvo `NEAR_ALLOW_FULL_ACCESS_KEY=true`, no usado), cualquier receptor distinto del contrato,
+  cualquier lista de métodos distinta de exactamente `store_audit_hash` (una lista vacía en NEAR significa *todos* los métodos), allowance ilimitado o superior a 0.25 NEAR. El allowance baja al gastar gas, por eso se exige ≤ 0.25 y no igualdad.
+* Pruebas (solo credenciales sintéticas generadas en cada ejecución): `signer-loader.test.ts` (6) y `submission.test.ts`. Mutaciones detectadas: quitar la comprobación de `public_key`, aceptar campos desconocidos, aceptar FullAccess, filtrar contenido en un error.
+
+## A.2 Verificación con las credenciales reales (solo lectura, sin imprimir secretos)
+
+Se cargaron ambos archivos con el cargador nuevo (`NEAR_SIGNER_ACCOUNT_ID=hades-omega.testnet`) y se consultó la llave por RPC: la clave pública cargada es `ed25519:Gm4bBKzH…tw7n`, **idéntica a la autorizada**; on-chain es FunctionCall,
+receptor `audit.hades-omega.testnet`, método `store_audit_hash`, allowance `250000000000000000000000` yocto; la política de HADES la acepta. No se firmó nada.
+
+## A.3 Archivos de credenciales, ACL y riesgo de la copia adicional
+
+near-cli-rs con `save-to-legacy-keychain` escribió **dos copias** de la misma llave (y su frase semilla) en `%USERPROFILE%\.near-credentials\testnet\`:
+
+| Archivo | ACL verificada |
+|---|---|
+| `hades-omega.testnet\ed25519_Gm4bBKzH….json` (en carpeta protegida) | solo `DESKTOP-8H9RI4S\DYANN` (control total), sin herencia |
+| `hades-omega.testnet.json` (copia adicional, junto a la carpeta) | solo `DESKTOP-8H9RI4S\DYANN` (control total), sin herencia; restringida tras crearse (ventana mínima con permisos heredados) |
+
+Riesgo: cada copia adicional es una superficie más de robo (malware con tu sesión, copias de seguridad, sincronización de carpetas). El daño máximo está acotado: la llave solo puede llamar a `store_audit_hash` en el contrato, con ≤ 0.25 NEAR de gas, sin transferir fondos;
+la frase semilla solo reconstruye esa misma llave. Recomendación (requiere tu autorización, **no se ha borrado nada**): usar el archivo de la carpeta protegida como `NEAR_SIGNER_KEY_FILE` y, tras el primer registro, eliminar la copia `hades-omega.testnet.json`,
+excluir `.near-credentials` de copias en la nube y revocar la llave (`delete-keys`) cuando termine el hackathon. Las ACL se comprobaron leyendo los permisos, no probando con otro usuario; existen otros usuarios locales (`CodexSandbox*`) sin ninguna entrada.
 
 ## A. Crear la llave FunctionCall limitada (transacción AddKey, firmada con la llave FullAccess de `hades-omega.testnet`)
 
@@ -32,16 +68,18 @@ $near = "$env:USERPROFILE\tools\near-cli-rs-0.30.1\near-cli-rs-x86_64-pc-windows
 * **Opción 2: `save-to-keychain`**. La llave queda en el llavero de Windows, pero el servidor no podrá usarla sin exportarla (`account export-account` la mostraría en pantalla), es decir, sin firma automática.
 
 Comprobación posterior (sin imprimir valores): nombres de campos del archivo, `list-keys` y RPC `view_access_key` de la clave nueva con `permission.FunctionCall`
-= `{receiver_id: audit.hades-omega.testnet, method_names: [store_audit_hash], allowance ≤ 0.25 NEAR}`. Si el archivo no trajera el campo `account_id`,
-se informa antes de continuar (no se improvisa ni se imprime la llave). **Esta propiedad on-chain solo se puede confirmar después de crear la llave.**
+= `{receiver_id: audit.hades-omega.testnet, method_names: [store_audit_hash], allowance ≤ 0.25 NEAR}`. (Hecho, ver A.0-A.3: el archivo no trae `account_id`
+y el cargador lo resuelve con `NEAR_SIGNER_ACCOUNT_ID`.)
 
 ## B. Configuración del servidor (local, nada de producción)
 
 ```
 NEAR_EXECUTION_MODE=testnet
 NEAR_AUDIT_CONTRACT_ID=audit.hades-omega.testnet
-NEAR_SIGNER_KEY_FILE=<ruta al JSON de la llave limitada>
+NEAR_SIGNER_ACCOUNT_ID=hades-omega.testnet
+NEAR_SIGNER_KEY_FILE=C:\Users\DYANN\.near-credentials\testnet\hades-omega.testnet\ed25519_Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n.json
 # NEAR_SIGNING_ENABLED  → sigue SIN definir hasta el paso D
+# NEAR_ALLOW_FULL_ACCESS_KEY → NO definir (FullAccess queda prohibida para el servidor)
 ```
 
 Con `NEAR_SIGNING_ENABLED` sin definir el servicio es inerte (probado: `SIGNING_DISABLED`, nada se firma ni consume).

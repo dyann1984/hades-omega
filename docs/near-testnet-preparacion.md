@@ -15,7 +15,7 @@ con `<tuusuario>`; para HADES léase `hades-omega`.
 | Estado del contrato | `get_owner` = `"hades-omega.testnet"`; `get_count` = `0`; `get_audit_entry("hades-attest-0001")` = `null` |
 | Métodos | escritura: `new` (privado, ya usado), `store_audit_hash` (solo propietario, sin depósito); vistas: `get_audit_entry`, `get_count`, `get_owner` |
 | Saldos | `audit.hades-omega.testnet` 2.99824 NEAR (almacenamiento 218,309 B); `hades-omega.testnet` 6.99289 NEAR |
-| Llaves de servidor | **ninguna creada**; firma automática desactivada (`NEAR_SIGNING_ENABLED` sin definir) |
+| Llave de servidor | creada: tx `GBWu3Lu5MeXmGkjYgWnDn9vvvNpdakD6Vm2vuP1SA3o9`, `ed25519:Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n`, FunctionCall solo `store_audit_hash` en `audit.hades-omega.testnet`, allowance 0.25 NEAR (verificada por RPC); privada solo en JSON bajo `%USERPROFILE%\.near-credentials` con ACL restringida (detalle y riesgo de la copia adicional en `docs/near-primera-operacion-propuesta.md` A.3). Firma automática desactivada (`NEAR_SIGNING_ENABLED` sin definir) |
 
 Variables del servidor (nombres reales leídos del código): `NEAR_EXECUTION_MODE=testnet`, `NEAR_AUDIT_CONTRACT_ID=audit.hades-omega.testnet`,
 `NEAR_SIGNER_ACCOUNT_ID` + `NEAR_SIGNER_PRIVATE_KEY`, o bien `NEAR_SIGNER_KEY_FILE` (JSON con `account_id` y `private_key`), y `NEAR_SIGNING_ENABLED=true` solo en el momento autorizado.

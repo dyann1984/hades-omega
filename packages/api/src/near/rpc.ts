@@ -3,7 +3,7 @@ import { providers } from 'near-api-js'
 export const NO_CONTRACT_CODE_HASH = '11111111111111111111111111111111'
 
 export interface AccountView { amount: string; codeHash: string; blockHeight: number }
-export interface AccessKeyView { nonce: number; fullAccess: boolean; receiverId?: string; methodNames?: string[] }
+export interface AccessKeyView { nonce: number; fullAccess: boolean; receiverId?: string; methodNames?: string[]; /** yocto remaining for a FunctionCall key; null = unlimited */ allowance?: string | null }
 export type TxState = 'UNKNOWN' | 'PENDING' | 'SUCCESS' | 'FAILURE'
 export interface TxStatusView { state: TxState; blockHash?: string; error?: string }
 
@@ -57,11 +57,11 @@ export class JsonRpcNearRpc implements NearRpc {
   }
   async viewAccessKey(accountId: string, publicKey: string): Promise<AccessKeyView | null> {
     try {
-      const r = await this.provider.query({ request_type: 'view_access_key', finality: 'final', account_id: accountId, public_key: publicKey }) as unknown as { nonce: number | string; permission: 'FullAccess' | { FunctionCall: { receiver_id: string; method_names: string[] } } }
+      const r = await this.provider.query({ request_type: 'view_access_key', finality: 'final', account_id: accountId, public_key: publicKey }) as unknown as { nonce: number | string; permission: 'FullAccess' | { FunctionCall: { receiver_id: string; method_names: string[]; allowance?: string | null } } }
       const nonce = Number(r.nonce)
       if (!Number.isSafeInteger(nonce)) throw new Error('NEAR_INVALID_RESPONSE')
       if (r.permission === 'FullAccess') return { nonce, fullAccess: true }
-      return { nonce, fullAccess: false, receiverId: r.permission.FunctionCall.receiver_id, methodNames: r.permission.FunctionCall.method_names }
+      return { nonce, fullAccess: false, receiverId: r.permission.FunctionCall.receiver_id, methodNames: r.permission.FunctionCall.method_names, allowance: r.permission.FunctionCall.allowance ?? null }
     } catch (e) { if (/UNKNOWN_ACCESS_KEY|UNKNOWN_ACCOUNT|(does not|doesn't) exist|UnknownAccessKey|AccessKeyDoesNotExist|AccountDoesNotExist/i.test(errName(e))) return null; throw e }
   }
   async viewFunction(contractId: string, method: string, args: Record<string, unknown>): Promise<unknown> {
