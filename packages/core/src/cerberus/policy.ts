@@ -13,7 +13,7 @@ export interface PolicyRule {
 }
 
 export interface PolicyCondition {
-  type:          'AMOUNT_LIMIT' | 'VENDOR_ALLOWLIST' | 'BUDGET_THRESHOLD' | 'ALWAYS' | 'COMPOUND' | 'AGENT_PERMISSION' | 'INVALID_FINANCIAL_AMOUNT' | 'SENSITIVE_APPROVAL' | 'UNAUTHORIZED_TOOL' | 'REGISTERED_OPERATION'
+  type:          'AMOUNT_LIMIT' | 'VENDOR_ALLOWLIST' | 'BUDGET_THRESHOLD' | 'ALWAYS' | 'COMPOUND' | 'AGENT_PERMISSION' | 'INVALID_FINANCIAL_AMOUNT' | 'SENSITIVE_APPROVAL' | 'UNAUTHORIZED_TOOL' | 'REGISTERED_OPERATION' | 'HIDDEN_EFFECT'
   maxAmount?:    number
   currency?:     string
   allowedVendors?: string[]
@@ -153,6 +153,7 @@ export const DEFAULT_POLICY: Omit<CerberusPolicy, 'hash'> = {
     { id: 'R-012', name: 'Importe financiero obligatorio', description: 'Pagos y transferencias requieren importe positivo y moneda MXN', operationType: '*', condition: { type: 'INVALID_FINANCIAL_AMOUNT' }, outcome: 'DENY', priority: 190, active: true },
     { id: 'R-013', name: 'Aprobación humana de operaciones sensibles', description: 'Pagos, transferencias y transacciones NEAR requieren aprobación humana', operationType: '*', condition: { type: 'SENSITIVE_APPROVAL' }, outcome: 'ESCALATE', priority: 80, active: true },
     { id: 'R-014', name: 'Herramientas sensibles no autorizadas', description: 'La ejecución genérica de herramientas externas no está autorizada', operationType: '*', condition: { type: 'UNAUTHORIZED_TOOL' }, outcome: 'DENY', priority: 190, active: true },
+    { id: 'R-016', name: 'Efecto financiero oculto', description: 'Una operación interna registrada no puede llevar destinatarios, cuentas, depósitos ni credenciales: sería un efecto externo bajo otro nombre', operationType: '*', condition: { type: 'HIDDEN_EFFECT' }, outcome: 'DENY', priority: 250, active: true },
     { id: 'R-015', name: 'Operaciones internas registradas', description: 'Permite operaciones internas conocidas', operationType: '*', condition: { type: 'REGISTERED_OPERATION' }, outcome: 'PERMIT', priority: 2, active: true },
     {
       id:            'R-008',

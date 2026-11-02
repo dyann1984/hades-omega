@@ -18,12 +18,26 @@ export interface NEARBridgeStatus {
   lastTxAt:      number | null
 }
 
+/** Verifies and burns a single-use CERBERUS grant for exactly these parameters; throws if it is not valid. */
+export interface ExecutionGate {
+  consumeGrant(grantId: string, tool: string, params: unknown): void
+}
+
+export const NEAR_SUBMIT_TOOL = 'near.audit_hash_submit'
+
 // Simulates NEAR Testnet transactions when NEAR_EXECUTION_MODE != 'real'
 export class NEARBridge {
   private mode: ExecutionMode
   private txRecords: Map<string, NEARTxRecord> = new Map()
   private networkId = 'testnet'
   private contractId = 'audit.hades-omega.testnet'
+  private gate: ExecutionGate | undefined
+
+  /** The gate can be attached once; it cannot be replaced or removed afterwards. */
+  attachGate(gate: ExecutionGate): void {
+    if (this.gate && this.gate !== gate) throw new Error('CERBERUS_GATE_ALREADY_ATTACHED')
+    this.gate = gate
+  }
 
   constructor() {
     const configured = process.env['NEAR_EXECUTION_MODE'] ?? 'simulation'
@@ -59,10 +73,15 @@ export class NEARBridge {
     agentName:     string
     decision:      string
     timestampMs:   number
-  }): Promise<NEARTxRecord> {
+  }, grantId?: string, intentParams?: unknown): Promise<NEARTxRecord> {
     if (this.mode === 'real') {
+      // Fail closed: a real transaction needs a gate and a valid single-use grant bound to the exact parameters.
+      if (!this.gate) throw new Error('CERBERUS_GATE_REQUIRED')
+      if (typeof grantId !== 'string' || intentParams === undefined) throw new Error('CERBERUS_GRANT_REQUIRED')
+      this.gate.consumeGrant(grantId, NEAR_SUBMIT_TOOL, intentParams)
       return this.executeRealTransaction(params)
     }
+    // Simulation has no external effect: it only writes a labelled in-memory record.
     return this.simulateTransaction(params)
   }
 

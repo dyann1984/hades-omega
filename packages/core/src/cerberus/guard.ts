@@ -7,6 +7,7 @@ import type {
 } from '../types/index.js'
 import type { CerberusPolicy, PolicyRule } from './policy.js'
 import { DEFAULT_POLICY } from './policy.js'
+import { collectAmounts, findHiddenEffectKeys } from './tools.js'
 
 const REGISTERED_OPERATIONS = new Set(['PURCHASE_ORDER', 'BUDGET_APPROVAL', 'VENDOR_EVALUATION', 'PLANNING', 'ANOMALY_REPORT', 'CRYPTO_HASH', 'DOCUMENT_INTAKE', 'BATCH_DOCUMENT_INTAKE', 'DOCUMENT_VALIDATION', 'BATCH_DOCUMENT_VALIDATION', 'DOCUMENT_SUMMARY', 'MULTI_DOCUMENT_COMPARISON', 'DOCUMENT_DELIVERABLE', 'DELIVERABLE_GENERATION'])
 
@@ -64,15 +65,20 @@ export class CerberusGUARD {
         return true
 
       case 'AGENT_PERMISSION': {
-        const allowed = this.policy.operationPermissions?.[proposal.operationType]
+        // Own-property lookup only: names such as "constructor" or "__proto__" must not resolve to prototype members.
+        const perms = this.policy.operationPermissions
+        const allowed = perms && Object.hasOwn(perms, proposal.operationType) ? perms[proposal.operationType] : undefined
         return !!allowed && !allowed.includes(proposal.agentName)
       }
 
       case 'INVALID_FINANCIAL_AMOUNT': {
         if (!['PAYMENT', 'TRANSFER'].includes(proposal.operationType)) return false
-        const raw = payload.totalAmount ?? payload.amount
-        return typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || payload.currency !== 'MXN'
+        // Every amount-like value must be valid; checking only the first one lets a bad figure hide behind a good one.
+        const amounts = collectAmounts(payload)
+        return amounts.length === 0 || amounts.some(raw => typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) || payload.currency !== 'MXN'
       }
+      case 'HIDDEN_EFFECT':
+        return REGISTERED_OPERATIONS.has(proposal.operationType) && findHiddenEffectKeys(payload).length > 0
       case 'SENSITIVE_APPROVAL':
         return ['PAYMENT', 'TRANSFER', 'NEAR_TRANSACTION'].includes(proposal.operationType)
       case 'REGISTERED_OPERATION':
@@ -81,12 +87,10 @@ export class CerberusGUARD {
         return ['TOOL_EXECUTION', 'SHELL_COMMAND', 'EXTERNAL_REQUEST'].includes(proposal.operationType)
 
       case 'AMOUNT_LIMIT': {
-        const raw = payload.totalAmount ?? payload.amount
-        if (raw === undefined || raw === null) return false
-        const amount = Number(raw)
+        const max = this.highestAmount(payload)
         // Fail closed: a non-numeric or negative amount is treated as over the limit.
-        if (!Number.isFinite(amount) || amount < 0) return true
-        return amount > (cond.maxAmount ?? Infinity)
+        if (max === 'INVALID') return true
+        return max !== null && max > (cond.maxAmount ?? Infinity)
       }
 
       case 'VENDOR_ALLOWLIST': {
@@ -125,12 +129,23 @@ export class CerberusGUARD {
     if (rule.outcome !== 'ESCALATE') return rule.outcome
 
     if (rule.condition.type === 'AMOUNT_LIMIT') {
-      const payload = (proposal.payload ?? {}) as Record<string, unknown>
-      const amount = Number(payload.totalAmount ?? payload.amount ?? 0)
-      if (ctx.budgetLimit && amount > ctx.budgetLimit) return 'DENY'
+      const max = this.highestAmount((proposal.payload ?? {}) as Record<string, unknown>)
+      if (max === 'INVALID' || (ctx.budgetLimit && max !== null && max > ctx.budgetLimit)) return 'DENY'
     }
 
     return 'ESCALATE'
+  }
+
+  /** Largest amount-like value anywhere in the payload; 'INVALID' if any is non-numeric or negative; null if none. */
+  private highestAmount(payload: unknown): number | 'INVALID' | null {
+    let max: number | null = null
+    for (const raw of collectAmounts(payload)) {
+      if (raw === undefined || raw === null) continue
+      const n = typeof raw === 'string' && raw.trim() === '' ? NaN : Number(raw)
+      if (!Number.isFinite(n) || n < 0) return 'INVALID'
+      max = max === null ? n : Math.max(max, n)
+    }
+    return max
   }
 
   private buildDecision(
