@@ -19,7 +19,6 @@ const SETTINGS: ReadonlyArray<{ key: string; kind: 'public' | 'secret'; descript
   { key: 'NEAR_SIGNER_KEY_FILE', kind: 'secret', description: 'Archivo de credenciales del firmante' },
   { key: 'JWT_SECRET', kind: 'secret', description: 'Secreto de firma de sesiones' },
   { key: 'CHRONOS_TICK_SECRET', kind: 'secret', description: 'Secreto del endpoint externo de CHRONOS' },
-  { key: 'HADES_LLM_ENABLED', kind: 'public', description: 'Interruptor de IA generativa (solo se envía a Anthropic si vale true)' },
   { key: 'ANTHROPIC_API_KEY', kind: 'secret', description: 'Clave del planificador LLM (opcional)' },
   { key: 'ALLOWED_ORIGIN', kind: 'public', description: 'Orígenes CORS permitidos' },
 ]
@@ -83,15 +82,15 @@ export function buildVaultStatus(deps: VaultDeps) {
   })
 
   const llm = present(env['ANTHROPIC_API_KEY'])
-  const llmEnabled = env['HADES_LLM_ENABLED'] === 'true'
-  const llmUsed = repository.gate.countPermits('llm.plan', Math.floor(now / 86_400_000) * 86_400_000)
+  const pol = repository.llmPolicy.get()
+  const llmUsed = repository.llmPolicy.usageToday()
   connections.push({
     id: 'planner', name: 'Planificador LLM (Anthropic)',
-    state: llm && llmEnabled ? 'OPERATIONAL' : 'DISABLED',
+    state: llm && pol.enabled ? 'OPERATIONAL' : 'DISABLED',
     detail: !llm ? 'Sin clave: se usa el planificador determinista por reglas.'
-      : !llmEnabled ? 'Clave configurada pero la IA generativa está desactivada (falta HADES_LLM_ENABLED=true): no sale ningún dato; se usa el planificador por reglas.'
-      : 'Activa por decisión del operador. Cada llamada pasa por CERBERUS (herramienta llm.plan), se minimiza (solo título, descripción y prioridad, con datos sensibles tachados), tiene tope diario y se registra solo con hash. La parada de emergencia la bloquea. Clave configurada, no verificada contra el proveedor.',
-    facts: { keyConfigured: llm, enabled: llmEnabled, callsToday: llmUsed, dailyLimit: Number(env['HADES_LLM_DAILY_LIMIT'] ?? 20) },
+      : !pol.enabled ? 'Clave configurada pero el egreso a IA generativa no está autorizado por un administrador: no sale ningún dato; se usa el planificador por reglas.'
+      : 'Egreso autorizado por un administrador. Cada llamada pasa por CERBERUS (herramienta llm.plan, clase EGRESS), solo se envía a api.anthropic.com, se minimiza (título, descripción y prioridad, con datos sensibles tachados), respeta cuota, tokens y costo estimado, y se registra solo con hash. La parada de emergencia la bloquea. Clave configurada, no verificada contra el proveedor.',
+    facts: { keyConfigured: llm, enabled: pol.enabled, callsToday: llmUsed.calls, estCostTodayUsd: Number(llmUsed.estCostUsd.toFixed(6)), dailyLimit: pol.dailyLimit, dailyCostCapUsd: pol.dailyCostCapUsd, maxInputTokens: pol.maxInputTokens, maxOutputTokens: pol.maxOutputTokens, provider: 'api.anthropic.com' },
   })
 
   const pendingApprovals = (repository.gate.listApprovals('PENDING') as unknown[]).length

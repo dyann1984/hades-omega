@@ -49,6 +49,26 @@ test.describe('Vault', () => {
     await expect(page.getByText('Lista vacía')).toBeVisible()
   })
 
+  test('AI egress is off by default; an ADMIN authorizes it with limits, it persists, and the stop blocks enabling it', async ({ page }) => {
+    accept(page)
+    expect((await adminApi('GET', '/vault/llm-policy')).json.data.policy.enabled).toBe(false)
+    await login(page); await goto(page, '/vault')
+    const box = page.locator('[data-llm-policy]')
+    await expect(box).toContainText('desactivado')
+    const next = (await adminApi('GET', '/vault/llm-policy')).json.data.policy.dailyLimit + 1 // always a real change (the server persists across both viewports)
+    await box.getByLabel('Cuota diaria (llamadas)').fill(String(next)); await box.getByRole('button', { name: 'Guardar límites' }).click()
+    await expect.poll(async () => (await adminApi('GET', '/vault/llm-policy')).json.data.policy.dailyLimit).toBe(next)
+    await box.getByRole('button', { name: 'Autorizar egreso' }).click()
+    await expect(box).toContainText('AUTORIZADO')
+    expect((await adminApi('GET', '/vault/llm-policy')).json.data.policy).toMatchObject({ enabled: true, dailyLimit: next, updatedBy: expect.stringMatching(/./) })
+    await box.getByRole('button', { name: 'Desactivar egreso' }).click()
+    await expect(box).toContainText('desactivado')
+    await adminApi('POST', '/cerberus/emergency-stop', { stopped: true })
+    expect((await adminApi('POST', '/vault/llm-policy', { enabled: true })).status).toBe(409)
+    await adminApi('POST', '/cerberus/emergency-stop', { stopped: false })
+    expect((await adminApi('GET', '/vault/llm-policy')).json.data.policy.enabled).toBe(false)
+  })
+
   test('the emergency stop is real: it shows ACTIVA, is persisted by the server, and can be lifted', async ({ page }) => {
     accept(page)
     await login(page); await goto(page, '/vault')

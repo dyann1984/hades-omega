@@ -24,6 +24,14 @@ describe('outbound network paths are known and guarded', () => {
     expect(route.indexOf("tool: 'near.account_view'")).toBeLessThan(route.indexOf('readTestnetAccount(accountId)'))
   })
 
+  it('the NEAR probe route asks CERBERUS (near.probe) before touching the network', () => {
+    const route = readFileSync(join(__dirname, 'routes', 'vault.ts'), 'utf8')
+    expect(route.indexOf("tool: 'near.probe'")).toBeGreaterThan(-1)
+    expect(route.indexOf("tool: 'near.probe'")).toBeLessThan(route.indexOf('near.probe()'))
+    // every NEAR network read in the routes sits behind a registered tool
+    expect(find(/\.probe\(\)/).filter(f => f.startsWith('api/src/routes/'))).toEqual(['api/src/routes/vault.ts'])
+  })
+
   it('no module performs raw HTTP requests, opens client sockets or spawns processes', () => {
     expect(find(/\bfetch\(|\bhttps?\.(?:request|get)\(|from ['"]node:https?['"]|from ['"](?:axios|undici|node-fetch)['"]|new WebSocket\(|child_process/)).toEqual([])
   })

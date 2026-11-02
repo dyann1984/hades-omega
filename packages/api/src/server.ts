@@ -52,7 +52,7 @@ async function bootstrap(): Promise<void> {
   const repository = new SqliteRepository(dbPath, legacyPath)
   await repository.init()
   near.attachGate(repository.gate)
-  attachLlmGovernor(new LlmGovernor({ gate: repository.gate, audit: e => { repository.recordAuditEvent(e) } }))
+  attachLlmGovernor(new LlmGovernor({ gate: repository.gate, policy: repository.llmPolicy, audit: e => { repository.recordAuditEvent(e) } }))
   durable?.start(repository)
   app.addHook('onClose', async () => { if (durable) await durable.stop(repository); repository.close() })
   for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void app.close().finally(() => process.exit(0)) })

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
 import { createRuleBasedPlanner } from '@hades/core'
 import type { PlannerProvider, PlanResult, MissionIntent, PlannedTask } from '@hades/core'
+import { LLM_PROVIDER_HOST } from '@hades/core'
 import type { AgentName } from '@hades/core'
 import { getLlmGovernor, type LlmGovernor } from '../llm-governor.js'
 
@@ -22,7 +23,7 @@ export class ClaudeAnthropicPlanner implements PlannerProvider {
 
   constructor(opts: { client?: Pick<Anthropic, 'messages'>; governor?: () => LlmGovernor | null } = {}) {
     this.governor = opts.governor ?? getLlmGovernor
-    this.client = (opts.client as Anthropic | undefined) ?? new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'], timeout: 20_000, maxRetries: 0 })
+    this.client = (opts.client as Anthropic | undefined) ?? new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'], baseURL: `https://${LLM_PROVIDER_HOST}`, timeout: 20_000, maxRetries: 0 })
     this.model = process.env['ANTHROPIC_PLANNER_MODEL'] ?? 'claude-haiku-5-5'
     this.fallback = createRuleBasedPlanner()
   }
@@ -88,7 +89,7 @@ Priority: ${intent.context.priority ?? 'MEDIUM'}`
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: permit.maxOutputTokens,
         system: systemPrompt,
         messages: [{ role: 'user', content: permit.content }],
       })

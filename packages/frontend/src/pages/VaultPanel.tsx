@@ -15,6 +15,7 @@ interface VaultStatus {
 }
 interface Approval { id: string; tool: string; agent: string; paramsHash: string; requestedBy: string; status: string; decidedBy: string | null; decidedAt: number | null; justification: string | null; createdAt: number; expiresAt: number | null; consumedAt: number | null }
 interface Recipient { tool: string; recipient: string; addedBy: string; addedAt: number }
+interface LlmPolicy { enabled: boolean; dailyLimit: number; maxInputTokens: number; maxOutputTokens: number; dailyCostCapUsd: number; updatedBy: string | null }
 interface Probe { reachable: boolean; chainId: string | null; contractDeployed: boolean | null; ownerMatchesSigner: boolean | null; signerKeyPresent: boolean | null; error?: string }
 
 const STATE_TEXT: Record<State, { label: string; cls: string; icon: string }> = {
@@ -42,6 +43,8 @@ export default function VaultPanel(): JSX.Element {
   const [accountResult, setAccountResult] = useState<{ accountId: string; balanceYocto: string; blockHeight: number } | null>(null)
   const [accountError, setAccountError] = useState('')
   const [checkingAccount, setCheckingAccount] = useState(false)
+  const [llm, setLlm] = useState<LlmPolicy | null>(null)
+  const [llmDraft, setLlmDraft] = useState<Record<string, string>>({})
 
   const call = useCallback(async (path: string, method = 'GET', body?: unknown): Promise<{ ok: boolean; data?: unknown; error?: string }> => {
     try {
@@ -52,11 +55,12 @@ export default function VaultPanel(): JSX.Element {
   }, [])
 
   const refresh = useCallback(async (): Promise<void> => {
-    const [s, a, r] = await Promise.all([call('/vault/status'), call('/cerberus/gate/approvals'), call('/cerberus/gate/recipients')])
+    const [s, a, r, p] = await Promise.all([call('/vault/status'), call('/cerberus/gate/approvals'), call('/cerberus/gate/recipients'), call('/vault/llm-policy')])
     if (!s.ok) { setStatus(null); setError(isDemoToken() ? 'Vault real requiere una sesión ADMIN con persistencia; las sesiones DEMO no consultan el backend.' : s.error ?? 'Error'); return }
     setError(null); setStatus(s.data as VaultStatus)
     if (a.ok) setApprovals(a.data as Approval[])
     if (r.ok) setRecipients(r.data as Recipient[])
+    if (p.ok) setLlm((p.data as { policy: LlmPolicy }).policy)
   }, [call])
   useEffect(() => { void refresh(); const t = setInterval(() => { void refresh() }, 20_000); return () => clearInterval(t) }, [refresh])
 
@@ -123,6 +127,22 @@ export default function VaultPanel(): JSX.Element {
                 <div className="flex items-center gap-2"><span className="font-mono text-xs font-semibold text-gray-200">{c.name}</span><span className={`font-mono text-[10px] ${st.cls}`}>{st.icon} {st.label}</span></div>
                 <p className="text-[11px] text-gray-500 leading-snug">{c.detail}</p>
                 <p className="font-mono text-[10px] text-gray-600 break-all">{Object.entries(c.facts).filter(([, v]) => v !== null).map(([k, v]) => `${k}=${String(v)}`).join(' · ')}</p>
+                {c.id === 'planner' && llm && (
+                  <div className="mt-2 flex flex-col gap-2" data-llm-policy>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[10px] text-gray-400">Egreso a IA generativa: <b className={llm.enabled ? 'text-escalate' : 'text-permit'}>{llm.enabled ? 'AUTORIZADO' : 'desactivado'}</b>{llm.updatedBy ? ` · por ${llm.updatedBy}` : ''}</span>
+                      <button className={primary} disabled={busy} onClick={() => { if (!llm.enabled && !window.confirm('Autorizar el envío de resúmenes minimizados de misiones a api.anthropic.com, dentro de la cuota, los tokens y el costo configurados. ¿Continuar?')) return; void act(llm.enabled ? 'egreso a IA desactivado' : 'egreso a IA autorizado', '/vault/llm-policy', { enabled: !llm.enabled }) }}>{llm.enabled ? 'Desactivar egreso' : 'Autorizar egreso'}</button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 font-mono text-[10px] text-gray-400">
+                      {([['dailyLimit', 'Cuota diaria (llamadas)'], ['maxInputTokens', 'Tokens de entrada máx.'], ['maxOutputTokens', 'Tokens de salida máx.'], ['dailyCostCapUsd', 'Tope diario estimado (USD)']] as const).map(([k, label]) => (
+                        <label key={k} className="flex flex-col gap-1">{label}
+                          <input aria-label={label} inputMode="decimal" value={llmDraft[k] ?? String(llm[k])} onChange={e => setLlmDraft(d => ({ ...d, [k]: e.target.value }))} className="w-28 rounded bg-black border border-white/20 px-2 py-1 text-xs text-gray-200" />
+                        </label>
+                      ))}
+                      <button className={`${primary} self-end`} disabled={busy || Object.keys(llmDraft).length === 0} onClick={() => { const body = Object.fromEntries(Object.entries(llmDraft).map(([k, v]) => [k, Number(v)])); void act('límites de IA guardados', '/vault/llm-policy', body).then(done => { if (done) setLlmDraft({}) }) }}>Guardar límites</button>
+                    </div>
+                  </div>
+                )}
                 {c.id === 'near' && (
                   <div className="mt-2 flex flex-col gap-2">
                     <div className="flex items-center gap-2"><button className={primary} disabled={busy} onClick={() => { void runProbe() }}>Sondear red (solo lectura)</button>
