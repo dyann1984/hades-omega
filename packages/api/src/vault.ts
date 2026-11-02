@@ -82,7 +82,16 @@ export function buildVaultStatus(deps: VaultDeps) {
   })
 
   const llm = present(env['ANTHROPIC_API_KEY'])
-  connections.push({ id: 'planner', name: 'Planificador LLM (Anthropic)', state: llm ? 'OPERATIONAL' : 'DISABLED', detail: llm ? 'Clave configurada (no verificada contra el proveedor). Su salida de red aún no pasa por la puerta de CERBERUS.' : 'Sin clave: se usa el planificador determinista por reglas.', facts: { keyConfigured: llm } })
+  const pol = repository.llmPolicy.get()
+  const llmUsed = repository.llmPolicy.usageToday()
+  connections.push({
+    id: 'planner', name: 'Planificador LLM (Anthropic)',
+    state: llm && pol.enabled ? 'OPERATIONAL' : 'DISABLED',
+    detail: !llm ? 'Sin clave: se usa el planificador determinista por reglas.'
+      : !pol.enabled ? 'Clave configurada pero el egreso a IA generativa no está autorizado por un administrador: no sale ningún dato; se usa el planificador por reglas.'
+      : 'Egreso autorizado por un administrador. Cada llamada pasa por CERBERUS (herramienta llm.plan, clase EGRESS), solo se envía a api.anthropic.com, se minimiza (título, descripción y prioridad, con datos sensibles tachados), respeta cuota, tokens y costo estimado, y se registra solo con hash. La parada de emergencia la bloquea. Clave configurada, no verificada contra el proveedor.',
+    facts: { keyConfigured: llm, enabled: pol.enabled, callsToday: llmUsed.calls, estCostTodayUsd: Number(llmUsed.estCostUsd.toFixed(6)), dailyLimit: pol.dailyLimit, dailyCostCapUsd: pol.dailyCostCapUsd, maxInputTokens: pol.maxInputTokens, maxOutputTokens: pol.maxOutputTokens, provider: 'api.anthropic.com' },
+  })
 
   const pendingApprovals = (repository.gate.listApprovals('PENDING') as unknown[]).length
   return {

@@ -9,7 +9,9 @@ export async function registerSecurity(app: FastifyInstance, repository?: Sqlite
   const secret = process.env['JWT_SECRET']
   if (!secret || secret.length < 32) throw new Error('JWT_SECRET must be configured with at least 32 characters')
   await app.register(jwt, { secret })
-  await app.register(rateLimit, { max: 120, timeWindow: '1 minute' })
+  // Per-IP ceiling; overridable for automated browser tests, which share one IP and poll many panels.
+  const globalMax = Number(process.env['HADES_RATE_LIMIT_MAX'] ?? 120)
+  await app.register(rateLimit, { max: Number.isInteger(globalMax) && globalMax >= 10 ? globalMax : 120, timeWindow: '1 minute' })
   // onRequest: authentication and DEMO default-deny run before body parsing/schema validation.
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0]!

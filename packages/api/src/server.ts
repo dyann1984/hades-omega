@@ -16,6 +16,7 @@ import { setupRoutes, generateSetupToken } from './setup.js'
 import { documentRoutes } from './routes/documents.js'
 import { chronosRoutes, registerChronosTick } from './routes/chronos.js'
 import { near } from './runtime.js'
+import { LlmGovernor, attachLlmGovernor } from './llm-governor.js'
 import { nearTxRoutes } from './routes/near-tx.js'
 import { vaultRoutes } from './routes/vault.js'
 import { auditFlowRoutes } from './routes/audit-flow.js'
@@ -51,6 +52,7 @@ async function bootstrap(): Promise<void> {
   const repository = new SqliteRepository(dbPath, legacyPath)
   await repository.init()
   near.attachGate(repository.gate)
+  attachLlmGovernor(new LlmGovernor({ gate: repository.gate, policy: repository.llmPolicy, audit: e => { repository.recordAuditEvent(e) } }))
   durable?.start(repository)
   app.addHook('onClose', async () => { if (durable) await durable.stop(repository); repository.close() })
   for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void app.close().finally(() => process.exit(0)) })

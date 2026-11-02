@@ -4,8 +4,8 @@ import { useHadesStore } from '../store/index.js'
 import { apiHeaders, apiPath, isDemoToken } from '../lib/api.js'
 
 type StageStatus = 'DONE' | 'PENDING' | 'WAITING_APPROVAL' | 'BLOCKED' | 'NOT_STARTED' | 'CONFIGURATION_PENDING'
-interface Stage { id: string; label: string; agent: string; status: StageStatus; executed: boolean; detail: string; evidence?: Record<string, string | number | boolean | null> }
-interface Flow { missionId: string; missionStatus: string; title: string; stages: Stage[]; report: { sha256: string; markdown: string } | null }
+interface Stage { id: string; label: string; agent: string; status: StageStatus; executed: boolean; detail: string; evidence?: Record<string, string | number | boolean | null>; decidedBy?: 'HUMAN' | 'DETERMINISTIC_RULES' | 'RULES_AND_HUMAN' }
+interface Flow { missionId: string; missionStatus: string; title: string; generativeAi?: boolean; stages: Stage[]; report: { sha256: string; markdown: string } | null }
 interface MissionRow { id: string; title: string; status: string; createdAt: number; context?: { tags?: string[] } }
 
 const BADGE: Record<StageStatus, { text: string; cls: string }> = {
@@ -16,6 +16,7 @@ const BADGE: Record<StageStatus, { text: string; cls: string }> = {
   NOT_STARTED: { text: 'Sin iniciar', cls: 'text-gray-500 border-white/10' },
   CONFIGURATION_PENDING: { text: 'Configuración pendiente', cls: 'text-escalate border-escalate/40' },
 }
+const DECIDED: Record<NonNullable<Stage['decidedBy']>, string> = { HUMAN: 'decisión humana', DETERMINISTIC_RULES: 'reglas deterministas · sin IA generativa', RULES_AND_HUMAN: 'reglas + aprobación humana' }
 const SAMPLE = [
   { filename: 'contrato-proveedor.txt', content: 'Contrato de suministro. Monto total 120,000 MXN. Penalización por retraso 5%. Pago a 30 días.' },
   { filename: 'cotizacion-proveedor.txt', content: 'Cotización vigente. Monto 98,500 MXN. Plazo de entrega 30 días. Garantía de 12 meses.' },
@@ -119,7 +120,8 @@ export default function AuditFlowPanel(): JSX.Element {
         <div className="flex flex-col gap-2">
           <p className="font-mono text-[11px] text-gray-400 tracking-widest">3 · FLUJO · {flow.title} · {flow.missionStatus}</p>
           {flow.stages.map(s => {
-            const b = BADGE[s.status]
+            // A step that is recorded but whose action has not happened (scheduled/prepared) must not read as completed.
+            const b = s.status === 'DONE' && !s.executed ? { text: 'Planificado', cls: 'text-escalate border-escalate/40' } : BADGE[s.status]
             return (
               <div key={s.id} className={`${card} flex flex-col gap-1`} data-stage={s.id}>
                 <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
@@ -127,6 +129,7 @@ export default function AuditFlowPanel(): JSX.Element {
                   <span className="text-gray-600">{s.agent}</span>
                   <span className={`border px-1.5 py-0.5 rounded ${b.cls}`}>{b.text}</span>
                   <span className={s.executed ? 'text-permit' : 'text-gray-500'}>{s.executed ? 'ejecutado' : 'no ejecutado'}</span>
+                  {s.decidedBy && <span className="text-gray-600" data-decided-by={s.decidedBy}>· {DECIDED[s.decidedBy]}</span>}
                 </div>
                 <p className="text-[11px] text-gray-500 leading-snug">{s.detail}</p>
                 {s.evidence && <p className="font-mono text-[10px] text-gray-600 break-all">{Object.entries(s.evidence).filter(([, v]) => v !== null).map(([k, v]) => `${k}=${String(v)}`).join(' · ')}</p>}

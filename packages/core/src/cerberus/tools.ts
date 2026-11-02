@@ -2,7 +2,8 @@ import { createHash } from 'crypto'
 import type { AgentName } from '../types/index.js'
 
 /** What a tool does to the outside world. Approval requirements derive from this class, never from a per-tool flag. */
-export type EffectClass = 'READ' | 'WRITE' | 'EXTERNAL' | 'FINANCIAL' | 'BLOCKCHAIN'
+/** EGRESS: data leaves the system toward a third-party provider. It is not an internal write; the gate permits it only while an administrator's egress policy is enabled (no per-call human approval). */
+export type EffectClass = 'READ' | 'WRITE' | 'EXTERNAL' | 'FINANCIAL' | 'BLOCKCHAIN' | 'EGRESS'
 /** Who is asking. SYSTEM covers automation (CHRONOS, missions); it never carries more rights than a human role. */
 export type ActorRole = 'ADMIN' | 'OPERATOR' | 'AUDITOR' | 'VIEWER' | 'DEMO' | 'SYSTEM'
 
@@ -39,7 +40,7 @@ export class ToolRegistry {
   register(def: ToolDefinition): void {
     if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(def.id)) throw new Error(`Invalid tool id: ${def.id}`)
     if (this.tools.has(def.id)) throw new Error(`Tool already registered: ${def.id}`)
-    if (SENSITIVE_EFFECTS.includes(def.effect) && def.roles.includes('VIEWER')) throw new Error('Sensitive tools cannot be requested by VIEWER')
+    if ((SENSITIVE_EFFECTS.includes(def.effect) || def.effect === 'EGRESS') && def.roles.includes('VIEWER')) throw new Error('Sensitive tools cannot be requested by VIEWER')
     if (def.effect === 'FINANCIAL' && (!def.amountField || def.maxAmount === undefined || !def.currency || !def.recipientField)) throw new Error('Financial tools need amountField, maxAmount, currency and recipientField')
     this.tools.set(def.id, Object.freeze({ ...def }))
   }
@@ -60,6 +61,8 @@ export function canonicalJson(value: unknown): string {
   return `{${Object.keys(o).filter(k => o[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canonicalJson(o[k])}`).join(',')}}`
 }
 
+/** The only host the LLM egress tool may target. */
+export const LLM_PROVIDER_HOST = 'api.anthropic.com'
 const TESTNET_ACCOUNT = /^[a-z0-9]+(?:[._-][a-z0-9]+)*\.testnet$/
 
 export const DEFAULT_TOOLS: readonly ToolDefinition[] = [
@@ -80,7 +83,15 @@ export const DEFAULT_TOOLS: readonly ToolDefinition[] = [
       if (typeof p['signerId'] !== 'string' || !TESTNET_ACCOUNT.test(p['signerId']) || typeof p['receiverId'] !== 'string' || !TESTNET_ACCOUNT.test(p['receiverId'])) return 'testnet accounts required'
       return typeof p['contentHash'] === 'string' && /^[0-9a-f]{64}$/.test(p['contentHash']) ? null : 'contentHash must be 64 hex characters'
     } },
-  // No executor exists for payments yet. Registering it fixes its classification and limits so that any future
+  // Read-only reachability check of the NEAR testnet account/contract (never signs or sends). Registered so even reads leave a CERBERUS decision.
+  { id: 'near.probe', description: 'Read-only NEAR testnet probe (signer, contract, RPC); never signs or sends', effect: 'READ', agents: ['HADES'], roles: ['ADMIN'], allowedParams: [] },
+  // Outbound call to the LLM provider: an EGRESS, not an internal write. Allowed only while the administrator's egress policy is enabled
+  // (checked by the gate itself), within quota/token/cost limits, only to the allowed provider host, and never during the emergency stop.
+  // Params carry only hashes and sizes, never prompt text.
+  { id: 'llm.plan', description: 'Egress to the LLM provider with a minimized mission summary (admin policy, quota, cost cap; logged by hash only)', effect: 'EGRESS', agents: ['HADES'], roles: ['ADMIN', 'OPERATOR', 'SYSTEM'], allowedParams: ['provider', 'model', 'promptSha256', 'chars', 'estInputTokens', 'maxOutputTokens'],
+    validate: p => (p['provider'] === LLM_PROVIDER_HOST && typeof p['model'] === 'string' && /^[a-zA-Z0-9._-]{1,80}$/.test(p['model']) && typeof p['promptSha256'] === 'string' && /^[0-9a-f]{64}$/.test(p['promptSha256'])
+      && Number.isInteger(p['chars']) && (p['chars'] as number) >= 1 && (p['chars'] as number) <= 8000 && Number.isInteger(p['estInputTokens']) && (p['estInputTokens'] as number) >= 1 && (p['estInputTokens'] as number) <= 4000
+      && Number.isInteger(p['maxOutputTokens']) && (p['maxOutputTokens'] as number) >= 1 && (p['maxOutputTokens'] as number) <= 4000) ? null : 'llm.plan needs the allowed provider host, model, promptSha256 and bounded sizes' },  // No executor exists for payments yet. Registering it fixes its classification and limits so that any future
   // implementation is born behind approval, allowlist and budget checks.
   { id: 'payment.execute', description: 'Pay a vendor', effect: 'FINANCIAL', agents: ['PERSEPHONE'], roles: ['ADMIN', 'OPERATOR', 'SYSTEM'],
     allowedParams: ['recipient', 'amount', 'currency', 'reference'], amountField: 'amount', currency: 'MXN', currencyField: 'currency', maxAmount: 50_000, dailyBudget: 100_000, recipientField: 'recipient' },

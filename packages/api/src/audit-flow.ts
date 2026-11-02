@@ -10,7 +10,11 @@ export interface Stage {
   executed: boolean
   detail: string
   evidence?: Record<string, string | number | boolean | null>
+  /** Who produced the outcome. This flow never calls a generative model: every result is rules-based or a human decision. */
+  decidedBy?: 'HUMAN' | 'DETERMINISTIC_RULES' | 'RULES_AND_HUMAN'
 }
+
+const DECIDED_BY: Record<string, NonNullable<Stage['decidedBy']>> = { request: 'HUMAN', cerberus: 'RULES_AND_HUMAN' }
 
 export class AuditFlowError extends Error {
   constructor(readonly code: 'NOT_FOUND' | 'NOT_COMPLETED' | 'NO_EVIDENCE' | 'ALREADY_PREPARED', message: string) { super(message) }
@@ -88,7 +92,7 @@ export class AuditFlowService {
       detail: !ev?.nearState ? 'No preparado.' : ev.nearState === 'CONFIGURATION_PENDING' ? `Configuración pendiente: ${ev.nearNote}. No se firmó ni se envió nada.` : intent ? `Operación ${intent.status}. ${intent.status === 'CONFIRMED' ? 'Confirmada on-chain.' : 'Preparada para aprobación; no se ha enviado a la red.'}` : (ev.nearNote ?? ev.nearState),
       evidence: ev?.nearState ? { plan: ev.nearState, intentId: ev.nearIntentId, intentStatus: intent?.status ?? null } : undefined,
     })
-    return { missionId, missionStatus: m.status, title: m.title, stages, report: ev ? { sha256: ev.reportSha256, markdown: ev.reportMarkdown } : null }
+    return { missionId, missionStatus: m.status, title: m.title, generativeAi: false, stages: stages.map(s => ({ ...s, decidedBy: DECIDED_BY[s.id] ?? 'DETERMINISTIC_RULES' as const })), report: ev ? { sha256: ev.reportSha256, markdown: ev.reportMarkdown } : null }
   }
 
   /** Stores the sealed report and its hash once the mission has genuinely completed. Idempotent; never rewrites. */

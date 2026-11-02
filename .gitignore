@@ -136,3 +136,9 @@ INFORME_INTEGRACION_V10.md
 *.keystore
 service-account*.json
 *credentials*.local.json
+
+# Playwright
+e2e/artifacts/
+e2e/results.json
+test-results/
+playwright-report/

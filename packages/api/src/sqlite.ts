@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { AuditRecord, Mission, Task, AgentName } from '@hades/core'
+import { LlmPolicyStore } from './llm-governor.js'
 import { defaultCapabilityRegistry, bus, createDefaultToolRegistry } from '@hades/core'
 import { CerberusGate } from './cerberus-gate.js'
 import { NearSubmissionService } from './near/submission.js'
@@ -30,6 +31,8 @@ export class SqliteRepository extends JsonRepository {
   private gateInstance!: CerberusGate
   /** The single authorization boundary for external effects. */
   get gate(): CerberusGate { return this.gateInstance }
+  private llmPolicyStore!: LlmPolicyStore
+  get llmPolicy(): LlmPolicyStore { return this.llmPolicyStore }
   get chronos(): ChronosService { return this.chronosService }
   /** Builds the NEAR submission service over this repository's database (kept here so `db` stays private). */
   createNearSubmissionService(deps: Omit<ConstructorParameters<typeof NearSubmissionService>[0], 'db' | 'repository'>): NearSubmissionService {
@@ -122,7 +125,8 @@ export class SqliteRepository extends JsonRepository {
       })()
     }
     this.chronosService = new ChronosService(this.db, this)
-    this.gateInstance = new CerberusGate(this.db, createDefaultToolRegistry(), { policyHash: () => this.policyGuard.getPolicyHash(), audit: e => { this.recordAuditEvent(e) } })
+    this.llmPolicyStore = new LlmPolicyStore(this.db)
+    this.gateInstance = new CerberusGate(this.db, createDefaultToolRegistry(), { policyHash: () => this.policyGuard.getPolicyHash(), audit: e => { this.recordAuditEvent(e) }, egressAllowed: tool => tool === 'llm.plan' && this.llmPolicyStore.isEnabled() })
     this.nearIntents = new NearIntentStore(this.db, this.policyGuard, this.gateInstance)
     this.reconcileOnStartup()
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return

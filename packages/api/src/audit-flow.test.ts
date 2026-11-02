@@ -55,6 +55,30 @@ describe('enterprise audit flow (real persistent pipeline)', () => {
     expect(repo.chronos.list()).toHaveLength(0)
   })
 
+  it('the agents really executed and left persisted evidence; every stage says who decided and that no generative AI was used', async () => {
+    const { flow } = flowWith(false)
+    const { missionId } = await completed()
+    const m = repo.getMission(missionId)!
+    // CHARON, MINOS, PERSEPHONE, ELYSIUM and TARTARUS each ran a real task: completed, timestamped, with a result and no simulation flag.
+    for (const [cap, agent] of [['cap:doc:intake@1.0.0', 'CHARON'], ['cap:doc:validate@1.0.0', 'MINOS'], ['cap:doc:compare@1.0.0', 'PERSEPHONE'], ['cap:report:generate@1.0.0', 'ELYSIUM'], ['cap:crypto:hash@1.0.0', 'TARTARUS']] as const) {
+      const t = m.tasks.find(x => x.capabilityId === cap)!
+      expect(t.assignedTo, cap).toBe(agent)
+      expect(t.status, cap).toBe('COMPLETED'); expect(t.completedAt, cap).toBeGreaterThan(0)
+      expect(t.result?.success, cap).toBe(true); expect((t.result?.data as { simulated?: boolean } | undefined)?.simulated, cap).not.toBe(true)
+      expect(t.result?.summary, cap).toMatch(/adaptador determinista/)
+    }
+    // The task and execution events were persisted (not only held in memory) and survive a reload of the store.
+    const events = repo.listExecutionEvents(missionId, 0, 200)
+    expect(events.some(e => e.type === 'mission.completed')).toBe(true)
+    const actors = new Set(events.map(e => e.agentId))
+    for (const a of ['CHARON', 'MINOS', 'PERSEPHONE']) expect(actors.has(a), "execution events of ${a}").toBe(true)
+    const v = flow.view(missionId)
+    expect(v.generativeAi).toBe(false)
+    expect(Object.fromEntries(v.stages.map(s => [s.id, s.decidedBy]))).toMatchObject({ request: 'HUMAN', intake: 'DETERMINISTIC_RULES', validation: 'DETERMINISTIC_RULES', analysis: 'DETERMINISTIC_RULES', cerberus: 'RULES_AND_HUMAN', report: 'DETERMINISTIC_RULES', seal: 'DETERMINISTIC_RULES' })
+    // The deterministic pipeline never produced an LLM-origin task.
+    expect(m.tasks.some(t => t.origin === 'LLM_GENERATED')).toBe(false)
+  })
+
   it('runs the whole chain: approved mission → evidence → CHRONOS follow-up → NEAR plan, with honest executed flags', async () => {
     const { flow } = flowWith(false)
     const { missionId, done } = await completed()

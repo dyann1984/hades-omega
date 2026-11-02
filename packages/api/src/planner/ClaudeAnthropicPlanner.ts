@@ -2,7 +2,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import { v4 as uuidv4 } from 'uuid'
 import { createRuleBasedPlanner } from '@hades/core'
 import type { PlannerProvider, PlanResult, MissionIntent, PlannedTask } from '@hades/core'
+import { LLM_PROVIDER_HOST } from '@hades/core'
 import type { AgentName } from '@hades/core'
+import { getLlmGovernor, type LlmGovernor } from '../llm-governor.js'
 
 const VALID_AGENTS: AgentName[] = ['CHARON', 'PERSEPHONE', 'MINOS', 'CERBERUS', 'ELYSIUM', 'TARTARUS', 'HADES']
 const MAX_INPUT_TOKENS = 2000
@@ -17,9 +19,11 @@ export class ClaudeAnthropicPlanner implements PlannerProvider {
   private readonly client: Anthropic
   private readonly model: string
   private readonly fallback: PlannerProvider
+  private readonly governor: () => LlmGovernor | null
 
-  constructor() {
-    this.client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] })
+  constructor(opts: { client?: Pick<Anthropic, 'messages'>; governor?: () => LlmGovernor | null } = {}) {
+    this.governor = opts.governor ?? getLlmGovernor
+    this.client = (opts.client as Anthropic | undefined) ?? new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'], baseURL: `https://${LLM_PROVIDER_HOST}`, timeout: 20_000, maxRetries: 0 })
     this.model = process.env['ANTHROPIC_PLANNER_MODEL'] ?? 'claude-haiku-5-5'
     this.fallback = createRuleBasedPlanner()
   }
@@ -72,26 +76,32 @@ Respond ONLY with valid JSON matching this schema (no markdown, no explanation):
   "warnings": ["<string>", ...]
 }`
 
+    // Data minimization: only title, description and priority leave the server (no budget, tags, organization or history), redacted and capped.
     const userContent = `Mission title: ${intent.title.slice(0, 200)}
 Mission description: ${intent.description.slice(0, 500)}
-Budget limit: ${intent.context.budgetLimit ?? 'not specified'} ${intent.context.currency ?? ''}
-Priority: ${intent.context.priority ?? 'MEDIUM'}
-Tags: ${(intent.context.tags ?? []).join(', ') || 'none'}`
+Priority: ${intent.context.priority ?? 'MEDIUM'}`
+
+    const governor = this.governor()
+    if (!governor) return this.fallbackWithWarning(intent, ['LLM disabled: no governor attached — using RuleBasedPlanner fallback'])
+    const permit = governor.request(userContent, this.model)
+    if (!permit.allowed) return this.fallbackWithWarning(intent, [`LLM not used (${permit.code}): ${permit.reason} — using RuleBasedPlanner fallback`])
 
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: permit.maxOutputTokens,
         system: systemPrompt,
-        messages: [{ role: 'user', content: userContent }],
+        messages: [{ role: 'user', content: permit.content }],
       })
 
       const text = response.content.find(b => b.type === 'text')?.text ?? ''
-      return await this.parsePlanResponse(text, intent)
+      const result = await this.parsePlanResponse(text, intent)
+      governor.report(permit, result.tasks.some(t => t.origin === 'LLM_GENERATED') ? 'OK' : 'INVALID_RESPONSE', text.length)
+      return result
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      governor.report(permit, 'ERROR', 0)
       const result = await this.fallback.plan(intent)
-      result.warnings.unshift(`Claude API error: ${message} — using RuleBasedPlanner fallback`)
+      result.warnings.unshift(`Claude API error (${error instanceof Error ? error.name : 'unknown'}) — using RuleBasedPlanner fallback`)
       return result
     }
   }

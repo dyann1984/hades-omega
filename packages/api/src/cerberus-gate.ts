@@ -18,7 +18,7 @@ export type GateCode =
   | 'OK' | 'UNKNOWN_TOOL' | 'INVALID_PARAMS' | 'EMERGENCY_STOP' | 'AGENT_NOT_PERMITTED' | 'ROLE_NOT_PERMITTED'
   | 'INVALID_AMOUNT' | 'AMOUNT_LIMIT' | 'RECIPIENT_NOT_ALLOWED' | 'BUDGET_EXCEEDED'
   | 'APPROVAL_REQUIRED' | 'APPROVAL_PENDING' | 'APPROVAL_NOT_FOUND' | 'APPROVAL_REJECTED' | 'APPROVAL_EXPIRED'
-  | 'APPROVAL_REUSED' | 'PARAMS_ALTERED' | 'POLICY_CHANGED'
+  | 'APPROVAL_REUSED' | 'PARAMS_ALTERED' | 'POLICY_CHANGED' | 'EGRESS_NOT_AUTHORIZED'
 export interface GateDecision {
   outcome: 'PERMIT' | 'DENY' | 'ESCALATE'
   code: GateCode
@@ -57,12 +57,15 @@ export class CerberusGate implements ExecutionGate {
   constructor(
     private readonly db: Database.Database,
     private readonly registry: ToolRegistry,
-    private readonly opts: { policyHash: () => string; audit: (e: { actor: string; action: string; result: string; correlationId?: string }) => void; clock?: () => number },
+    private readonly opts: { policyHash: () => string; audit: (e: { actor: string; action: string; result: string; correlationId?: string }) => void; clock?: () => number; /** Whether an administrator currently authorizes egress for this tool. Absent means never. */ egressAllowed?: (toolId: string) => boolean },
   ) { db.exec(GATE_MIGRATION_SQL) }
 
   private now(): number { return (this.opts.clock ?? Date.now)() }
   get tools(): ToolRegistry { return this.registry }
   private policyHash(): string { return createHash('sha256').update(`${this.opts.policyHash()}|${this.registry.hash()}`).digest('hex') }
+
+  /** Number of PERMIT decisions for a tool since a point in time (used for per-day call caps). */
+  countPermits(tool: string, sinceMs: number): number { return (this.db.prepare("SELECT COUNT(*) AS n FROM cerberus_decisions WHERE tool=? AND outcome='PERMIT' AND ts>=?").get(tool, sinceMs) as { n: number }).n }
 
   isStopped(): boolean { return (this.db.prepare('SELECT stopped FROM near_security WHERE id=1').get() as { stopped: number }).stopped === 1 }
   setStopped(stopped: boolean, actor: string): void {
@@ -168,6 +171,7 @@ export class CerberusGate implements ExecutionGate {
     if (shape) return deny('INVALID_PARAMS', shape)
     const params = req.params as Record<string, unknown>
     if (this.isStopped() && tool.effect !== 'READ') return deny('EMERGENCY_STOP', 'emergency stop is active: sensitive actions are suspended')
+    if (tool.effect === 'EGRESS' && !this.opts.egressAllowed?.(tool.id)) return deny('EGRESS_NOT_AUTHORIZED', 'egress to an external provider is not authorized by an administrator policy')
     if (!tool.agents.includes(req.agent as never)) return deny('AGENT_NOT_PERMITTED', `agent ${req.agent} may not use ${tool.id}`)
     if (!tool.roles.includes(req.role)) return deny('ROLE_NOT_PERMITTED', `role ${req.role} may not use ${tool.id}`)
     const extra = Object.keys(params).find(k => !tool.allowedParams.includes(k))
