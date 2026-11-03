@@ -1,0 +1,25 @@
+# Blueprint for the PUBLIC DEMO API. A NEW service, independent of the existing `hades-api` in ../../render.yaml.
+# Deliberately absent: every NEAR_* variable, ANTHROPIC_API_KEY, any signer key, any durable-database URL.
+# Result: the API can issue DEMO sessions only; signing is off and no signer or contract is configured
+# (proved by `node scripts/check-public-demo-safety.cjs`).
+# Do NOT create an admin account on this service: the one-time X-Setup-Token printed in its logs would allow it.
+services:
+  - type: web
+    name: hades-demo-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: env NODE_ENV=development npm ci && npx turbo build --filter=@hades/api...
+    startCommand: node packages/api/dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGIN
+        sync: false        # exactly the public site origin, e.g. https://<project>.vercel.app (no trailing slash)
+      - key: JWT_SECRET
+        generateValue: true  # Render generates a random value; it is never in Git
+      - key: HADES_DB_FILE
+        value: ./data/hades.sqlite
+      - key: HADES_DATA_FILE
+        value: ./data/hades.json

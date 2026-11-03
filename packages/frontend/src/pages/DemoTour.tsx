@@ -7,6 +7,8 @@ interface Capability { id: string; label: 'REAL' | 'DETERMINISTA' | 'SIMULADA' |
 interface Info { expiresAt: number; runsUsed: number; runsMax: number; capabilities: Capability[]; agents: Array<{ name: string; description: string }> }
 interface TaskView { id: string; title: string; assignedTo: string; status: string; result?: { summary?: string } }
 interface MissionView { id: string; status: string; title: string; tasks: TaskView[]; context?: { guardDecision?: { outcome?: string; reason?: string } } }
+// Public, verifiable on NEAR Testnet (see docs/evidencia-hades-attest-0001.md). Not a secret.
+const REAL_TX = 'BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3'
 interface Report { markdown: string; sha256: string; verifiable: boolean }
 interface AuditEvent { id: string; actor: string; action: string; result: string; timestamp: number }
 
@@ -174,6 +176,17 @@ export default function DemoTour(): JSX.Element {
       <section className="tour-card">
         <h3>{t('tour.near')}</h3>
         <p><span className="tour-chip SIMULADA">{t('label.SIMULADA').toUpperCase()}</span> {t('tour.nearText')}</p>
+      </section>
+
+      <section className="tour-card" data-testid="demo-real-evidence">
+        <h3>{t('tour.nearReal')}</h3>
+        <p><span className="tour-chip REAL">{t('label.REAL').toUpperCase()}</span> {t('tour.nearRealText')}</p>
+        <p style={{ marginTop: 8 }}>
+          <a href={`https://explorer.testnet.near.org/transactions/${REAL_TX}`} target="_blank" rel="noopener noreferrer">{t('tour.nearRealTx')}</a>
+          {' · '}
+          <a href="/verify/index.html" target="_blank" rel="noopener noreferrer">{t('tour.nearRealVerify')}</a>
+        </p>
+        <p className="mono" style={{ fontSize: 11, opacity: 0.75, wordBreak: 'break-all' }}>{REAL_TX}</p>
       </section>
 
       <section className="tour-card">

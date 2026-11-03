@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HADES OMEGA on-chain check</title>
+<style>
+  :root { --bg:#0e1116; --fg:#e6edf3; --muted:#8b949e; --ok:#3fb950; --bad:#f85149; --card:#161b22; --line:#30363d; --link:#58a6ff; }
+  @media (prefers-color-scheme: light) { :root { --bg:#fff; --fg:#1f2328; --muted:#59636e; --ok:#1a7f37; --bad:#cf222e; --card:#f6f8fa; --line:#d1d9e0; --link:#0969da; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; } p.sub { color:var(--muted); margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:12px 0; }
+  .row { display:flex; gap:10px; align-items:baseline; padding:4px 0; border-top:1px solid var(--line); } .row:first-child { border-top:0; }
+  .badge { font-weight:700; min-width:3.2em; } .ok { color:var(--ok); } .bad { color:var(--bad); }
+  code { font:13px ui-monospace,Consolas,monospace; word-break:break-all; } a { color:var(--link); }
+  button { font:inherit; padding:6px 14px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+  #summary { font-weight:700; margin:12px 0; }
+  .note { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>HADES OMEGA — on-chain verification</h1>
+  <p class="sub">Read-only. This page only sends JSON-RPC <em>queries</em> to a public NEAR Testnet node from your browser. It holds no keys and cannot sign or send anything.</p>
+  <div class="card">
+    <div><strong>Transaction</strong> <a id="txlink" href="#" rel="noopener"></a></div>
+    <div><strong>Contract</strong> <code>audit.hades-omega.testnet</code> · <strong>Signer</strong> <code>hades-omega.testnet</code></div>
+  </div>
+  <button id="run">Verify again</button>
+  <div id="summary" role="status" aria-live="polite">Running checks…</div>
+  <div class="card" id="results"></div>
+  <p class="note">Same checks as <code>node scripts/verify-attestation-onchain.cjs</code> in the repository. Testnet: no economic value. RPC node: <code id="rpcname"></code>.</p>
+</main>
+<script>
+const RPC = 'https://test.rpc.fastnear.com/'
+const SIGNER = 'hades-omega.testnet', CONTRACT = 'audit.hades-omega.testnet'
+const TX = 'BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3', DEPLOY_TX = 'QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj'
+const LIMITED_KEY = 'ed25519:Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n'
+const WASM_SHA256 = 'ae9a75fff7bb44e00bf3769e10ccc4e855b1f3c249abc768fd275b34dfb9f685'
+const EXPECT = { audit_id: 'hades-attest-0001', content_hash: '4bb4f2d98d2919b60795a607a2b7150cfaa59e9d77d8367a27ed74bd44fa571b', operation_type: 'CONTRACT_ATTESTATION', agent_name: 'HADES', decision: 'PERMIT', timestamp_ms: 1793661717062 }
+const EXPLORER = 'https://explorer.testnet.near.org/transactions/' + TX
+const $ = id => document.getElementById(id)
+$('txlink').href = EXPLORER; $('txlink').textContent = TX; $('rpcname').textContent = new URL(RPC).hostname
+
+async function rpc(method, params) { const r = await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'v', method, params }) }); return r.json() }
+async function view(m, args) { const r = await rpc('query', { request_type: 'call_function', finality: 'final', account_id: CONTRACT, method_name: m, args_base64: btoa(JSON.stringify(args)) }); return JSON.parse(new TextDecoder().decode(new Uint8Array(r.result.result))) }
+function b58hex(s) { const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; let n = 0n; for (const c of s) n = n * 58n + BigInt(A.indexOf(c)); return n.toString(16).padStart(64, '0') }
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
+const nearAmount = y => { const s = String(y).padStart(25, '0'); return s.slice(0, -24) + '.' + (s.slice(-24).replace(/0+$/, '') || '0') }
+
+function add(name, ok, detail) {
+  const row = document.createElement('div'); row.className = 'row'
+  const b = document.createElement('span'); b.className = 'badge ' + (ok ? 'ok' : 'bad'); b.textContent = ok ? 'PASS' : 'FAIL'
+  const t = document.createElement('span'); t.textContent = name
+  row.append(b, t)
+  if (detail !== undefined) { const c = document.createElement('code'); c.textContent = typeof detail === 'string' ? detail : JSON.stringify(detail); row.append(c) }
+  $('results').append(row); return ok
+}
+
+async function run() {
+  $('results').textContent = ''; $('summary').textContent = 'Running checks…'; $('summary').className = ''
+  let pass = 0, fail = 0; const ck = (n, ok, d) => { add(n, !!ok, d) ? pass++ : fail++ }
+  try {
+    const tx = (await rpc('tx', { tx_hash: TX, sender_account_id: SIGNER, wait_until: 'FINAL' })).result
+    const outs = [tx.transaction_outcome, ...tx.receipts_outcome]
+    ck('Transaction is FINAL', tx.final_execution_status === 'FINAL', tx.final_execution_status)
+    ck('No errors (SuccessValue, 0 failures in all receipts)', 'SuccessValue' in tx.status && !outs.some(o => 'Failure' in o.outcome.status))
+    const a = tx.transaction.actions, fc = a[0] && a[0].FunctionCall
+    ck('One action: FunctionCall store_audit_hash, 30 TGas, 0 deposit', a.length === 1 && fc && fc.method_name === 'store_audit_hash' && fc.gas === 30000000000000 && fc.deposit === '0')
+    const args = JSON.parse(atob(fc.args))
+    ck('Arguments equal the authorized ones (content hash exact)', JSON.stringify(Object.entries(args).sort()) === JSON.stringify(Object.entries(EXPECT).sort()), args.content_hash)
+    ck('Signed by hades-omega.testnet with the restricted FunctionCall key (not FullAccess)', tx.transaction.signer_id === SIGNER && tx.transaction.public_key === LIMITED_KEY, tx.transaction.public_key)
+    const count = await view('get_count', {}), entry = await view('get_audit_entry', { audit_id: EXPECT.audit_id })
+    ck('get_count == 1 (single record, no duplicates)', count === 1, count)
+    ck('get_audit_entry: content_hash matches exactly', entry && entry.content_hash === EXPECT.content_hash, entry && { recorder: entry.recorder, block_height: entry.block_height })
+    ck('Contract owner is hades-omega.testnet', (await view('get_owner', {})) === SIGNER)
+    const acct = (await rpc('query', { request_type: 'view_account', finality: 'final', account_id: CONTRACT })).result
+    ck('Deployed code hash equals the attested WASM SHA-256', b58hex(acct.code_hash) === WASM_SHA256, b58hex(acct.code_hash))
+    const code = (await rpc('query', { request_type: 'view_code', finality: 'final', account_id: CONTRACT })).result
+    const bytes = Uint8Array.from(atob(code.code_base64), c => c.charCodeAt(0))
+    ck('Code downloaded from the chain hashes to the same SHA-256', hex(await crypto.subtle.digest('SHA-256', bytes)) === WASM_SHA256, bytes.length + ' bytes')
+    const dep = (await rpc('tx', { tx_hash: DEPLOY_TX, sender_account_id: CONTRACT, wait_until: 'FINAL' })).result
+    ck('Deploy + init were one atomic transaction (DeployContract + new)', dep.transaction.actions.length === 2 && 'DeployContract' in dep.transaction.actions[0] && dep.transaction.actions[1].FunctionCall.method_name === 'new' && 'SuccessValue' in dep.status)
+    const keys = (await rpc('query', { request_type: 'view_access_key_list', finality: 'final', account_id: SIGNER })).result.keys
+    const lim = keys.find(k => k.public_key === LIMITED_KEY), perm = lim && lim.access_key.permission.FunctionCall
+    ck('Server key is restricted: only store_audit_hash on audit.hades-omega.testnet', perm && perm.receiver_id === CONTRACT && perm.method_names.length === 1 && perm.method_names[0] === 'store_audit_hash', perm && { allowance_left: nearAmount(perm.allowance) + ' NEAR' })
+    ck('That key signed exactly one transaction', lim && lim.access_key.nonce === tx.transaction.nonce, tx.transaction.nonce)
+  } catch (e) { ck('RPC reachable', false, String(e.message || e)) }
+  $('summary').textContent = fail === 0 ? 'ALL ' + pass + ' CHECKS PASSED' : fail + ' CHECK(S) FAILED'; $('summary').className = fail === 0 ? 'ok' : 'bad'
+}
+$('run').addEventListener('click', run); run()
+</script>
+</body>
+</html>
