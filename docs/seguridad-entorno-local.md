@@ -1,6 +1,16 @@
 # Seguridad del entorno local — hallazgos y recomendaciones
 
-**Alcance:** revisión de **metadatos** (nombres, tamaños, permisos, sincronización). No se leyó, copió ni publicó el contenido de ningún archivo sensible. **No se borró ni se modificó nada.** Los comandos de la sección 3 están preparados, no ejecutados.
+## Estado actual (actualizado tras aplicar R1, 2026-11-02 noche)
+
+**R1 aplicada y verificada** con tu autorización: los 8 objetivos (`.env.local`, `packages/api/.env`, `hades-admin.key`, `hades-admin-temporal.key`, `local-data/`, `data/`, `packages/api/data/`, `logs/`) y sus 14 archivos hijos (22 entradas) quedaron con acceso **solo para tu usuario y SYSTEM** (control total), sin herencia. Antes, las 22 entradas daban acceso a *Authenticated Users* / *Usuarios*.
+* **Copia de la ACL anterior** (SDDL exacto, sin contenido ni secretos) y script de restauración: `%USERPROFILE%\hades-local\acl-backup-20261102-191740\` (carpeta ya restringida). Restaurar: `powershell -File restore-acl.ps1` en esa carpeta.
+* **Contenido sin cambios:** las fechas de modificación de los 7 archivos de datos/credenciales son idénticas a las de antes; no se imprimió ni leyó ningún valor.
+* **Funcionamiento:** las 3 bases SQLite reales abren en solo lectura con `quick_check: ok`; Node abre `.env.local` y `packages/api/.env` en lectura/escritura; crear archivos nuevos en las 4 carpetas funciona y heredan la ACL restrictiva.
+* **Pendiente (no hecho):** R2 (rotar secretos) — ver «Impacto de rotar» al final; R3–R9.
+
+La sección 2 de abajo describe el estado **previo** a R1 y se conserva como registro del hallazgo.
+
+**Alcance original:** revisión de **metadatos** (nombres, tamaños, permisos, sincronización). No se leyó, copió ni publicó el contenido de ningún archivo sensible. **No se borró ni se modificó nada.** Los comandos de la sección 3 están preparados, no ejecutados.
 
 ## 1. Qué encontró Gitleaks y qué significa
 
@@ -49,3 +59,17 @@ Gitleaks en modo directorio dio 9 hallazgos. **Ninguno está en el historial de 
 | R9 | Prevenir recaídas | Activar el hook pre-commit con Gitleaks (el repo ya tiene `.github/workflows/secret-scan.yml`) y mantener `.env*` en `.gitignore` | Solo configuración |
 
 **Orden sugerido:** R1 y R2 (inmediatas, no destructivas) → R7 tras desplegar → R4, R5, R6 al cerrar el hackathon.
+
+## Impacto de rotar secretos (R2) — análisis, NO ejecutado
+
+Estado observado hoy: **ningún servicio HADES en ejecución** (puertos 3001, 3921, 3927, 3931, 4173 y 5174 libres). Sesiones en las bases reales (solo conteos, interpretando el vencimiento en milisegundos como en el código): `local-data/hades-live.sqlite` 9 sesiones, 8 revocadas y ninguna vigente; `data/hades.json.sqlite` 22 sesiones, todas revocadas y ninguna vigente. Hay 2 y 1 cuentas de usuario respectivamente.
+
+| Secreto | Dónde se usa (código) | Efecto de rotarlo | Riesgo |
+|---|---|---|---|
+| `JWT_SECRET` (`.env.local`) | `security.ts` firma y valida las sesiones; `durable.ts` lo usa como clave del respaldo cifrado **solo si** no hay `HADES_SNAPSHOT_KEY` | Invalida todo token firmado antes (incluido `VITE_DEV_TOKEN`). Hoy no hay sesiones vigentes, así que nadie pierde nada. Quien use la API debe iniciar sesión de nuevo | **Bajo hoy.** Ojo: si algún día se activa el respaldo durable sin `HADES_SNAPSHOT_KEY`, rotar `JWT_SECRET` dejaría ilegibles los respaldos cifrados con el anterior. En `.env.local` no hay URL durable ni clave de snapshot |
+| `VITE_DEV_TOKEN` | Solo `scripts/e2e-phase3.cjs` (script antiguo); no lo usa el código de la aplicación | Al rotar `JWT_SECRET` deja de ser válido; no hace falta regenerarlo salvo que uses ese script | Ninguno |
+| Contraseñas de `hades-admin.key` / `-temporal.key` | Cuentas locales en las bases (`users`) | Cambiar la contraseña con `scripts/reset-local-password.cjs` solo afecta al inicio de sesión local; las sesiones previas ya están revocadas o vencidas | Bajo. Hay que guardar la nueva en un archivo protegido y actualizar la ruta en tu gestor |
+| `JWT_SECRET` de producción (Render, `hades-api`) | Variable en su panel, **independiente** del archivo local | **No se afecta** al rotar el local. No pude comprobar si el valor local se reutilizó allí; si lo fue, rotar también el de Render, lo que cerraría las sesiones de ese servicio | A verificar por ti en el panel |
+| Llaves NEAR | No están en estos archivos | No aplica | — |
+
+Orden recomendado: (1) confirmar que no hay servicio activo (hoy cumplido); (2) rotar `JWT_SECRET` local; (3) restablecer las contraseñas locales; (4) comprobar el arranque con `npm run dev:all`; (5) solo si el valor se había reutilizado, rotar el de Render.
