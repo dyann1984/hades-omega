@@ -1,0 +1,5 @@
+  ✓  1 [desktop] › navigation.spec.ts:6:5 › login rejects wrong credentials and keeps the form (5.1s)
+  ✓  2 [desktop] › navigation.spec.ts:15:5 › the real login form signs in with the correct password (5.6s)
+  ✓  3 [desktop] › navigation.spec.ts:20:5 › every section renders after login without script errors or horizontal overflow (7.7s)
+  Slow test file: [desktop] › navigation.spec.ts (18.4s)
+  3 passed (41.3s)

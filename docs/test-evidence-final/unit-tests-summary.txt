@@ -1,0 +1,11 @@
+@hades/api:test:  ↓ src/near/rpc.live.test.ts (3 tests | 3 skipped)
+@hades/api:test:  Test Files  39 passed | 1 skipped (40)
+@hades/api:test:       Tests  244 passed | 3 skipped (247)
+@hades/api:test:    Duration  71.26s (transform 34.58s, setup 0ms, import 129.37s, tests 198.13s, environment 17ms)
+@hades/core:test:  Test Files  9 passed (9)
+@hades/core:test:       Tests  78 passed (78)
+@hades/core:test:    Duration  10.72s (transform 7.40s, setup 0ms, import 10.12s, tests 10.33s, environment 3ms)
+@hades/frontend:test:  Test Files  9 passed (9)
+@hades/frontend:test:       Tests  72 passed (72)
+@hades/frontend:test:    Duration  10.66s (transform 15.12s, setup 0ms, import 19.04s, tests 6.64s, environment 3ms)
+ Tasks:    6 successful, 6 total

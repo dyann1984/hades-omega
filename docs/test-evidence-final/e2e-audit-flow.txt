@@ -1,0 +1,24 @@
+﻿PASS  API process is up
+PASS  setup creates the first admin
+PASS  admin can log in
+PASS  Vault: NEAR is "configuración pendiente" (no account/contract configured)
+PASS  Vault: database + audit chain verified
+PASS  Vault: no secret value or fixture string in the payload
+PASS  Vault: policy rules and tools come from the server
+PASS  mission created; CHARON, MINOS and PERSEPHONE ran
+PASS  flow: three agent stages completed and executed
+PASS  flow: CERBERUS waits for human approval; report/seal/evidence not executed
+PASS  evidence cannot be recorded before completion (409)
+PASS  ADMIN approval completes the mission (ELYSIUM report + TARTARUS seal)
+PASS  evidence recorded with SHA-256
+PASS  CHRONOS follow-up scheduled (READ-only job)
+PASS  follow-up is scheduled but NOT reported as executed yet
+PASS  follow-up run succeeds and finds intact evidence + intact audit chain
+PASS  NEAR audit stays CONFIGURATION_PENDING: no intent, nothing signed or sent
+PASS  NEAR intents list is empty
+PASS  NEAR submissions list is empty
+PASS  final flow: near stage CONFIGURATION_PENDING and executed=false
+PASS  audit hash chain still verifies
+PASS  emergency stop is reflected in the Vault
+
+All 22 checks passed

@@ -1,0 +1,8 @@
+Gitleaks (zricethezav/gitleaks:latest, docker), 2026-11-03 UTC
+
+git --log-opts=--all : 136 commits scanned, no leaks found
+dir mode over the working tree: 9 findings, all classified:
+  - 7 in ignored, untracked files (local .env.local, Playwright browser profile): not in Git, not in history
+  - 1 in ignored build output (packages/api/dist) mirroring the tracked test fixture
+  - 1 tracked: packages/api/src/demo-auth.test.ts:266, a UUID-shaped Idempotency-Key test fixture, reviewed and listed in .gitleaksignore
+Secret values are not reproduced here.

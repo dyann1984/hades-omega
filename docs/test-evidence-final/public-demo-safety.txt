@@ -1,0 +1,27 @@
+PASS  API up
+PASS  anonymous GET /api/v1/near/config is rejected (401)
+PASS  anonymous GET /api/v1/near/intents is rejected (401)
+PASS  anonymous POST /api/v1/near/intents is rejected (401)
+PASS  anonymous POST /api/v1/near/intents/x/submit is rejected (401)
+PASS  anonymous GET /api/v1/vault/status is rejected (401)
+PASS  anonymous POST /api/v1/cerberus/emergency-stop is rejected (401)
+PASS  anonymous POST /api/v1/cerberus/gate/recipients/add is rejected (401)
+PASS  DEMO session is issued without credentials
+PASS  DEMO session GET /api/v1/near/config is forbidden (403)
+PASS  DEMO session GET /api/v1/near/intents is forbidden (403)
+PASS  DEMO session POST /api/v1/near/intents is forbidden (403)
+PASS  DEMO session POST /api/v1/near/intents/x/submit is forbidden (403)
+PASS  DEMO session GET /api/v1/vault/status is forbidden (403)
+PASS  DEMO session POST /api/v1/vault/near/probe is forbidden (403)
+PASS  DEMO session POST /api/v1/cerberus/emergency-stop is forbidden (403)
+PASS  DEMO session POST /api/v1/cerberus/gate/approvals/x/decision is forbidden (403)
+PASS  DEMO session POST /api/v1/cerberus/gate/recipients/add is forbidden (403)
+PASS  DEMO sees only the simulated NEAR status  {"mode":"simulation","label":"SIMULADA","transactionsSigned":0,"note":"No se firma ni envía ninguna transacción. / No transaction is signed or sent."}
+PASS  setup creates the first admin (private operator access)
+PASS  signing is OFF and no signer/contract exists on this deployment  {"signingEnabled":false,"blockers":["SIGNING_DISABLED","NO_SIGNER","NO_CONTRACT_CONFIGURED"]}
+PASS  ADMIN submit of an unknown intent is refused (the blockers above are what stop any real one)  {"http":404,"code":"NOT_FOUND"}
+PASS  no submission exists  []
+PASS  Vault reports NEAR as not configured on this deployment
+PASS  no key material in the server output
+
+PUBLIC DEMO SAFETY: ALL CHECKS PASSED

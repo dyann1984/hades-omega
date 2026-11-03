@@ -1,0 +1,54 @@
+Clean-container reproduction (Docker image node:22, Node v22.23.4, source = git archive of the repo, no host files, no keys)
+Date: 2026-11-03 UTC
+
+== Part 1: install, build, verifier, e2e, public-demo safety ==
+ 
+Digest: sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd
+Status: Downloaded newer image for node:22
+v22.23.4
+=== npm ci
+npm notice To update run: npm install -g npm@12.2.1
+npm notice
+=== build
+ Tasks:    3 successful, 3 total
+=== verify on-chain (no install needed)
+PASS  7. Saldos  {"hades-omega.testnet":"6.9926477633446827 NEAR","audit.hades-omega.testnet":"2.9982424587567502 NEAR"}
+
+TODAS LAS VERIFICACIONES PASARON (18)
+=== e2e audit flow
+
+All 22 checks passed
+=== public demo safety
+
+PUBLIC DEMO SAFETY: ALL CHECKS PASSED
+=== dev:all with minimal env
+api health:
+{"status":"ok","version":"0.3.0","mode":"fastify-dev","timestamp":1793663878021,"ws":{"clients":0}}
+web status:
+000
+
+
+== Part 2: interactive stack (dev:all) ==
+npm ci exit=0
+build exit=0
+api health: {"status":"ok","version":"0.3.0","mode":"fastify-dev","timestamp":1793664398186,"ws":{"cli
+web index:  200
+demo session through vite proxy (Origin as browser): 200
+demo token issued: 1
+demo NEAR status: {"success":true,"data":{"mode":"simulation","label":"SIMULADA","transactionsSigned":0,"note":"No se firma ni env├¡a ninguna transacci├│n. / No transaction is signed or sent."}}
+demo -> near/config (must be 403): 403
+setup token printed: 1
+--- dev.log head
+
+> hades-omega@0.3.0 dev:all
+> concurrently "npm run dev:api" "npm run dev:frontend"
+
+[1] 
+[1] > hades-omega@0.3.0 dev:frontend
+[1] > turbo dev --filter=@hades/frontend
+[1] 
+[0] 
+[0] > hades-omega@0.3.0 dev:api
+[0] > turbo dev --filter=@hades/api
+[0] 
+

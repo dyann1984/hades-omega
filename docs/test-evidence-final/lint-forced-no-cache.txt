@@ -1,0 +1,207 @@
+   • Running lint in 3 packages
+@hades/frontend:lint: cache bypass, force executing dbe407b1bbbf7e2a
+@hades/core:lint: cache bypass, force executing 82c64c3f14cecbc3
+@hades/api:lint: cache bypass, force executing f29d9f79eaf783df
+@hades/frontend:lint: 
+@hades/frontend:lint: > @hades/frontend@0.3.0 lint
+@hades/frontend:lint: > eslint src
+@hades/frontend:lint: 
+@hades/core:lint: 
+@hades/core:lint: > @hades/core@0.3.0 lint
+@hades/core:lint: > eslint src
+@hades/core:lint: 
+@hades/api:lint: 
+@hades/api:lint: > @hades/api@0.3.0 lint
+@hades/api:lint: > eslint src
+@hades/api:lint: 
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\agents\accuracy.test.ts
+@hades/core:lint:     9:31  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:    65:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:    69:43  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:    72:43  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:    77:43  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:   106:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:   109:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:   116:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\agents\agents.test.ts
+@hades/core:lint:    1:32  warning  'beforeEach' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/core:lint:   26:32  warning  Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+@hades/core:lint:   81:28  warning  Unexpected any. Specify a different type                                      @typescript-eslint/no-explicit-any
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\agents\charon.ts
+@hades/core:lint:   180:33  warning  'task' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\agents\hades.ts
+@hades/core:lint:     6:3   warning  'AgentName' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/core:lint:    14:52  warning  Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+@hades/core:lint:    15:52  warning  Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+@hades/core:lint:    16:52  warning  Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+@hades/core:lint:    17:52  warning  Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+@hades/core:lint:    18:52  warning  Unexpected any. Specify a different type                                     @typescript-eslint/no-explicit-any
+@hades/core:lint:   214:14  warning  'e' is defined but never used                                                @typescript-eslint/no-unused-vars
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\agents\persephone.ts
+@hades/core:lint:   26:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\capabilities\registry.test.ts
+@hades/core:lint:    2:30  warning  'CANONICAL_CAPABILITIES' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/core:lint:   34:34  warning  Unexpected any. Specify a different type                                                  @typescript-eslint/no-explicit-any
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\near-bridge\index.ts
+@hades/core:lint:   66:67  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\planning\PlannerProvider.ts
+@hades/core:lint:   16:15  warning  'Task' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\planning\RuleBasedPlanner.test.ts
+@hades/core:lint:    96:10  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:   108:10  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint:   162:12  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/core:lint: 
+@hades/core:lint: L:\HADES\packages\core\src\planning\RuleBasedPlanner.ts
+@hades/core:lint:    18:15  warning  'AgentName' is defined but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+@hades/core:lint:    18:26  warning  'MissionContext' is defined but never used. Allowed unused vars must match /^_/u   @typescript-eslint/no-unused-vars
+@hades/core:lint:   332:11  warning  'budget' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/core:lint: 
+@hades/core:lint: ✖ 30 problems (0 errors, 30 warnings)
+@hades/core:lint: 
+@hades/frontend:lint: 
+@hades/frontend:lint: L:\HADES\packages\frontend\src\App.tsx
+@hades/frontend:lint:   53:14  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+@hades/frontend:lint: 
+@hades/frontend:lint: L:\HADES\packages\frontend\src\components\HadesCore.tsx
+@hades/frontend:lint:   466:3  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+@hades/frontend:lint: 
+@hades/frontend:lint: L:\HADES\packages\frontend\src\components\HolographicCore3D.tsx
+@hades/frontend:lint:   602:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint: 
+@hades/frontend:lint: L:\HADES\packages\frontend\src\hooks\useWebSocket.ts
+@hades/frontend:lint:    56:6   warning  React Hook useEffect has a missing dependency: 'connect'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+@hades/frontend:lint:   113:34  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   119:34  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   124:34  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   129:34  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   134:34  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   140:34  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   144:49  warning  Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+@hades/frontend:lint: 
+@hades/frontend:lint: L:\HADES\packages\frontend\src\pages\Dashboard.tsx
+@hades/frontend:lint:   637:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   637:31  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   657:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   665:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   675:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   705:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   705:31  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   849:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   852:43  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   857:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   858:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   866:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint: 
+@hades/frontend:lint: L:\HADES\packages\frontend\src\pages\ThronePanel.tsx
+@hades/frontend:lint:    97:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   100:44  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   104:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   105:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   113:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint:   122:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/frontend:lint: 
+@hades/frontend:lint: ✖ 29 problems (0 errors, 29 warnings)
+@hades/frontend:lint:   0 errors and 2 warnings potentially fixable with the `--fix` option.
+@hades/frontend:lint: 
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\demo-auth.test.ts
+@hades/api:lint:   213:130  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\durable.test.ts
+@hades/api:lint:    17:118  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:    77:17   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   146:67   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   146:99   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   164:95   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\durable.ts
+@hades/api:lint:   18:87  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\near-intents.ts
+@hades/api:lint:   46:95  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\persistence.test.ts
+@hades/api:lint:   13:149  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\autonomous-intelligence-phase8.test.ts
+@hades/api:lint:    20:13  warning  'admin' is assigned a value but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/api:lint:    47:36  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+@hades/api:lint:   203:30  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+@hades/api:lint:   219:52  warning  Unexpected any. Specify a different type                                          @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\dispatched-mission.test.ts
+@hades/api:lint:   29:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   33:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\documents-pdf-docx.test.ts
+@hades/api:lint:    27:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:    83:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   103:60  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   136:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   145:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   165:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\documents-security.test.ts
+@hades/api:lint:   25:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   28:20  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\documents.test.ts
+@hades/api:lint:     8:10  warning  'registerSecurity' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/api:lint:     9:10  warning  'authRoutes' is defined but never used. Allowed unused vars must match /^_/u        @typescript-eslint/no-unused-vars
+@hades/api:lint:    15:41  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+@hades/api:lint:   118:49  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+@hades/api:lint:   130:49  warning  Unexpected any. Specify a different type                                            @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\documents.ts
+@hades/api:lint:   115:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   198:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   209:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   221:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\enterprise-readiness.test.ts
+@hades/api:lint:    1:8   warning  'Fastify' is defined but never used. Allowed unused vars must match /^_/u             @typescript-eslint/no-unused-vars
+@hades/api:lint:    7:10  warning  'registerSecurity' is defined but never used. Allowed unused vars must match /^_/u    @typescript-eslint/no-unused-vars
+@hades/api:lint:    8:10  warning  'cerberusRoutes' is defined but never used. Allowed unused vars must match /^_/u      @typescript-eslint/no-unused-vars
+@hades/api:lint:    9:10  warning  'localMissionRoutes' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+@hades/api:lint:   42:30  warning  Unexpected any. Specify a different type                                              @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\isolation.test.ts
+@hades/api:lint:   16:59  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   23:99  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\local-missions.ts
+@hades/api:lint:   58:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   58:50  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\missions.ts
+@hades/api:lint:   14:69  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   40:65  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   54:13  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   65:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   72:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   79:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\routes\recovery.test.ts
+@hades/api:lint:    33:58  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:    50:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   102:58  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\sqlite.ts
+@hades/api:lint:   46:56   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint:   46:102  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: L:\HADES\packages\api\src\websocket.test.ts
+@hades/api:lint:   13:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+@hades/api:lint: 
+@hades/api:lint: ✖ 53 problems (0 errors, 53 warnings)
+@hades/api:lint: 
+ Tasks:    3 successful, 3 total
