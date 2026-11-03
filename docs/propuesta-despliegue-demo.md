@@ -22,6 +22,13 @@ La demo **no firma ni envía nada**. Lo simulado está rotulado «Simulada» en 
 * El `vercel.json` y el `render.yaml` de la raíz **no se modifican**. Los archivos nuevos viven en `deploy/demo/`.
 * Dominios existentes: no se tocan. El proyecto nuevo usa su URL `*.vercel.app`.
 
+### 2.1 Estado verificado de los proyectos existentes (2026-11-03, solo lectura)
+
+* Cuenta Vercel `dyann1984s-projects`: 13 proyectos. **`hades-omega-judges` y `hades-demo-api` no existen** (nombre libre en Vercel).
+* `hades-omega`, `frontend` y `hades-omega-preview` siguen `github:dyann1984/hades-omega`, producción = `main`, y **despliegan desde Git** (previews por rama, producción por `main`). Mi push de `feat/hades-hackathon-hardening` ya generó previews en esos tres (en `hades-omega-preview` salen canceladas): es un efecto automático de ese proyecto, no un despliegue mío.
+* **El proyecto nuevo NO debe conectarse al repositorio** (`vercel deploy` desde la carpeta preparada, sin `vercel git connect`), para que ningún push pueda redesplegarlo sin revisión.
+* Render: **sin acceso** (no hay CLI ni token). La API actual es `https://hades-omega.onrender.com` (responde `/api/health` 200). Rama y auto-deploy: **pendiente de que lo revises en su panel**.
+
 ## 3. Configuración exacta
 
 **Variables en Vercel (build):** únicamente `VITE_API_URL=https://<hades-demo-api>.onrender.com`. Es pública por naturaleza. `VITE_WS_URL` no es necesaria: si falta, el frontend deriva `wss://<api>/ws` de `VITE_API_URL` (`hooks/useWebSocket.ts`). No existe ninguna otra variable `VITE_*` en el código (`VITE_API_URL`, `VITE_WS_URL`); `VITE_DEV_TOKEN` de tu `.env.local` **no se usa en el código** y no entra en el bundle.
