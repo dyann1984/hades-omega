@@ -1,0 +1,51 @@
+FINAL RUN on commit ce9661b - 2026-11-03 UTC - run serially, no other heavy process
+
+type-check: exit 0
+build: exit 0
+lint (turbo --force, ESLint): exit 0, 0 errors (warnings pre-existing)
+
+== unit tests ==
+@hades/core:test:  Test Files  9 passed (9)
+@hades/core:test:       Tests  78 passed (78)
+@hades/api:test:  ↓ src/near/rpc.live.test.ts (3 tests | 3 skipped)
+@hades/api:test:  Test Files  39 passed | 1 skipped (40)
+@hades/api:test:       Tests  244 passed | 3 skipped (247)
+@hades/frontend:test:  Test Files  10 passed (10)
+@hades/frontend:test:       Tests  75 passed (75)
+
+== scripts ==
+e2e-audit-flow: All 22 checks passed
+check-public-demo-safety: PUBLIC DEMO SAFETY: ALL CHECKS PASSED
+verify-attestation-onchain: TODAS LAS VERIFICACIONES PASARON (18)
+check-doc-links: ALL LINKS OK
+check-bundle-secrets (clean-copy build): BUNDLE CLEAN, 13/13; mutation check detects injected secrets
+
+== Playwright (Edge, desktop+mobile, workers=1, retries=0, E2E_SCREENSHOTS=1) ==
+✓  1 [desktop] › evidence.spec.ts:10:5 › capture evidence screenshots (8.5s)
+✓  2 [desktop] › navigation.spec.ts:6:5 › login rejects wrong credentials and keeps the form (2.5s)
+✓  3 [desktop] › navigation.spec.ts:15:5 › the real login form signs in with the correct password (3.1s)
+✓  4 [desktop] › navigation.spec.ts:20:5 › every section renders after login without script errors or horizontal overflow (4.6s)
+✓  5 [desktop] › operations.spec.ts:16:7 › Vault › shows real backend state, NEAR pending configuration, and never exposes a secret (2.6s)
+✓  6 [desktop] › operations.spec.ts:36:7 › Vault › ADMIN manages the recipient allowlist; invalid and mainnet recipients are refused (3.2s)
+✓  7 [desktop] › operations.spec.ts:52:7 › Vault › AI egress is off by default; an ADMIN authorizes it with limits, it persists, and the stop blocks enabling it (2.8s)
+✓  8 [desktop] › operations.spec.ts:72:7 › Vault › the emergency stop is real: it shows ACTIVA, is persisted by the server, and can be lifted (2.4s)
+✓  9 [desktop] › operations.spec.ts:85:7 › Audit flow (agents → CERBERUS approval → evidence → CHRONOS → NEAR plan) › approval completes the mission; planned steps are never shown as executed (4.3s)
+✓  10 [desktop] › operations.spec.ts:119:7 › Audit flow (agents → CERBERUS approval → evidence → CHRONOS → NEAR plan) › rejection blocks the protected steps: no report, no evidence, no follow-up (2.9s)
+✓  11 [desktop] › operations.spec.ts:132:7 › NEAR, CERBERUS and CHRONOS pages › NEAR page explains the blockers and offers no way to sign or send (1.6s)
+✓  12 [desktop] › operations.spec.ts:142:7 › NEAR, CERBERUS and CHRONOS pages › CERBERUS and CHRONOS pages load real data without errors (2.2s)
+✓  13 [mobile] › evidence.spec.ts:10:5 › capture evidence screenshots (6.5s)
+✓  14 [mobile] › navigation.spec.ts:6:5 › login rejects wrong credentials and keeps the form (2.3s)
+✓  15 [mobile] › navigation.spec.ts:15:5 › the real login form signs in with the correct password (2.9s)
+✓  16 [mobile] › navigation.spec.ts:20:5 › every section renders after login without script errors or horizontal overflow (4.4s)
+✓  17 [mobile] › operations.spec.ts:16:7 › Vault › shows real backend state, NEAR pending configuration, and never exposes a secret (2.1s)
+✓  18 [mobile] › operations.spec.ts:36:7 › Vault › ADMIN manages the recipient allowlist; invalid and mainnet recipients are refused (2.5s)
+✓  19 [mobile] › operations.spec.ts:52:7 › Vault › AI egress is off by default; an ADMIN authorizes it with limits, it persists, and the stop blocks enabling it (2.5s)
+✓  20 [mobile] › operations.spec.ts:72:7 › Vault › the emergency stop is real: it shows ACTIVA, is persisted by the server, and can be lifted (2.1s)
+✓  21 [mobile] › operations.spec.ts:85:7 › Audit flow (agents → CERBERUS approval → evidence → CHRONOS → NEAR plan) › approval completes the mission; planned steps are never shown as executed (3.8s)
+✓  22 [mobile] › operations.spec.ts:119:7 › Audit flow (agents → CERBERUS approval → evidence → CHRONOS → NEAR plan) › rejection blocks the protected steps: no report, no evidence, no follow-up (2.4s)
+✓  23 [mobile] › operations.spec.ts:132:7 › NEAR, CERBERUS and CHRONOS pages › NEAR page explains the blockers and offers no way to sign or send (1.8s)
+✓  24 [mobile] › operations.spec.ts:142:7 › NEAR, CERBERUS and CHRONOS pages › CERBERUS and CHRONOS pages load real data without errors (2.1s)
+24 passed (1.5m)
+
+Earlier run with default settings under load: 1 timeout creating a browser context (resource contention, Docker running in parallel); the same test passed alone and in all later runs.
+Skipped tests: the 2 screenshot-capture tests are skipped unless E2E_SCREENSHOTS=1; they were executed and passed in this run.
