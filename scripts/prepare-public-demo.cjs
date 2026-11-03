@@ -35,7 +35,7 @@ console.log('5/5 staging ->', out)
 fs.mkdirSync(out, { recursive: true }); fs.cpSync(dist, out, { recursive: true })
 const verify = fs.readFileSync(path.join(out, 'verify', 'index.html'), 'utf8')
 const inline = /<script>([\s\S]*?)<\/script>/.exec(verify); if (!inline) throw new Error('verify page has no inline script')
-const hash = "sha256-" + crypto.createHash('sha256').update(inline[1].replace(/\r\n?/g, '\n'), 'utf8') // browsers normalise newlines before hashing inline scripts.digest('base64')
+const hash = "sha256-" + crypto.createHash('sha256').update(inline[1].replace(/\r\n?/g, '\n'), 'utf8').digest('base64') // browsers normalise newlines before hashing inline scripts
 const tpl = fs.readFileSync(path.join(root, 'deploy', 'demo', 'vercel.template.json'), 'utf8').replace("'__VERIFY_SCRIPT_HASH__'", `'${hash}'`)
 JSON.parse(tpl); fs.writeFileSync(path.join(out, 'vercel.json'), tpl)
 console.log(`\nReady: ${out}\n  files: ${fs.readdirSync(out).join(', ')}\n  verify-page CSP script hash: ${hash}\n  .vercel present: ${fs.existsSync(path.join(out, '.vercel'))}\nNothing was deployed.`)
