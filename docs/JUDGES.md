@@ -15,7 +15,7 @@ HADES is a multi-agent system that audits business documents. Its security idea,
 
 Pick one:
 
-1. **Browser**: open [`docs/verify/index.html`](verify/index.html) (from a clone, or the raw file). It queries a public Testnet RPC node and shows 13 checks. It cannot sign or send anything.
+1. **Browser**: clone or download the repo and open `docs/verify/index.html` locally (GitHub shows that file as source code and will not run it). It queries a public Testnet RPC node and shows 13 checks. It cannot sign or send anything. The public demo site, once deployed, serves the same page at `/verify/index.html`.
 2. **Terminal** (Node 18+, no `npm install`): `node scripts/verify-attestation-onchain.cjs` → 18 checks, exit code 0 only if all pass.
 3. **Explorer**: https://explorer.testnet.near.org/transactions/BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3
 
@@ -58,7 +58,7 @@ Operator path, as the test performs it:
 | 4 | **Programar seguimiento diario** | CHRONOS task created (runs at 09:00; not yet executed) |
 | 5 | **Preparar registro NEAR** | "No se firmó ni se envió": prepared, nothing signed or sent |
 | 6 | `/near` | "No hay cuenta firmante": no signer on a default install |
-| 7 | Open [`verify/index.html`](verify/index.html) | The real record that exists on Testnet passes every check |
+| 7 | Open `docs/verify/index.html` locally (or `/verify/index.html` on the deployed demo) | The real record that exists on Testnet passes every check |
 
 Steps 1–6 are the same flow `node scripts/e2e-audit-flow.cjs` checks over HTTP (22 checks) and Playwright checks in the browser.
 

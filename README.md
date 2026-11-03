@@ -23,7 +23,7 @@ agents do the analysis; every sensitive action (a blockchain write, an external 
 ```sh
 node scripts/verify-attestation-onchain.cjs      # Node 18+, only public JSON-RPC queries, 18 checks, exit code 1 if any fails
 ```
-Or open [`docs/verify/index.html`](docs/verify/index.html) in a browser (same checks, runs client-side). Checked: transaction FINAL without errors; arguments equal the authorized ones; `get_count` = 1;
+Or clone/download the repository and open `docs/verify/index.html` in a browser (same checks, runs client-side; GitHub only shows that file as source code, it does not run it). Checked: transaction FINAL without errors; arguments equal the authorized ones; `get_count` = 1;
 `get_audit_entry("hades-attest-0001")` returns exactly that content hash; the code on-chain hashes to the attested WASM; the key is restricted; that key signed exactly one transaction.
 The five transactions that set everything up (accounts, atomic deploy+init, restricted key, the record) are listed in [`docs/evidencia-hades-attest-0001.md`](docs/evidencia-hades-attest-0001.md).
 
