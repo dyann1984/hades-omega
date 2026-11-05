@@ -266,7 +266,8 @@ export class NearSubmissionService {
           if (height - r.start_height > SAFE_VALIDITY_BLOCKS) {
             this.store.transition(intentId, 'RECONCILIATION_REQUIRED', actor)
             this.audit(actor, 'NEAR_RECOVERY', 'RECONCILIATION_REQUIRED:signature-expired', intentId)
-          } else if (this.deps.config.enabled && !this.deps.repository.gate.isStopped()) {
+          } else if (this.blockers().length === 0 && !this.deps.repository.gate.isStopped()) {
+            // Only a fully enabled service (signing on, real mode, signer and contract configured) may re-send; any blocker makes this read-only.
             await this.broadcastStored(intentId, actor) // identical bytes: the network deduplicates by hash
           }
         }

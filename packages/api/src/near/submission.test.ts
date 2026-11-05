@@ -243,6 +243,18 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
       repo.gate.setStopped(true, 'admin'); await svc.refresh(i.id, 'admin')
       expect(rpc.broadcasts).toHaveLength(0); expect(repo.getNearIntentStore().get(i.id)!.status).toBe('BROADCAST_PENDING')
     })
+    it('C-6: a service that is blocked for ANY reason (e.g. bridge not in real mode) reconciles read-only and never broadcasts', async () => {
+      const i = approvedIntent(); rpc.failBroadcast = 1; await svc.submit(i.id, 'admin') // BROADCAST_PENDING, bytes stored
+      const otherBridge = new NEARBridge(); otherBridge.attachGate(repo.gate)
+      const blocked = repo.createNearSubmissionService({ bridge: otherBridge, rpc, signer, config: { ...config, enabled: true, contractId: null } })
+      expect(blocked.blockers()).toEqual(['NO_CONTRACT_CONFIGURED'])
+      await blocked.refresh(i.id, 'system:near-recovery')
+      expect(rpc.broadcasts).toHaveLength(0)
+      expect(repo.getNearIntentStore().get(i.id)!.status).toBe('BROADCAST_PENDING')
+      // ...but it can still observe the network: a transaction that landed is confirmed from on-chain state.
+      const j = approvedIntent(); const { submission } = await svc.submit(j.id, 'admin'); rpc.finalize(submission!.txHash, true)
+      expect((await blocked.refresh(j.id, 'system:near-recovery')).intent.status).toBe('CONFIRMED')
+    })
     it('a crash after the approval is spent but before any signature ends FAILED: nothing exists on the network', async () => {
       const i = approvedIntent(); rpc.failFinalBlock = true
       const r = await svc.submit(i.id, 'admin')

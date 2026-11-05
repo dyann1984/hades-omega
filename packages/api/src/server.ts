@@ -92,11 +92,12 @@ async function bootstrap(): Promise<void> {
   // NEAR submission. Signing stays off unless NEAR_SIGNING_ENABLED=true AND a signer, a contract and execution mode are set.
   const nearSigner = loadSignerWithVault(process.env, name => repository.createSecretVault(process.env['HADES_VAULT_MASTER_KEY']).get(name, 'system:near-signer'))
   const nearService = repository.createNearSubmissionService({ bridge: near, rpc: new JsonRpcNearRpc(), signer: nearSigner, config: nearServiceConfigFromEnv() })
-  if (nearService.blockers().length === 0) {
-    void nearService.recoverAll().catch(e => app.log.error({ err: (e as Error).message }, 'NEAR recovery failed'))
-    const timer = setInterval(() => { void nearService.recoverAll().catch(() => undefined) }, 60_000); timer.unref()
-    app.addHook('onClose', async () => { clearInterval(timer) })
-  }
+  // Recovery always runs: it only reads the network and the stored state. It re-sends stored signed bytes only when signing is
+  // fully enabled and the emergency stop is off (see NearSubmissionService.refresh), so in-flight intents are still reconciled
+  // when signing is blocked, without ever signing or broadcasting.
+  void nearService.recoverAll().catch(e => app.log.error({ err: (e as Error).message }, 'NEAR recovery failed'))
+  const nearRecoveryTimer = setInterval(() => { void nearService.recoverAll().catch(() => undefined) }, 60_000); nearRecoveryTimer.unref()
+  app.addHook('onClose', async () => { clearInterval(nearRecoveryTimer) })
 
   registerEmergencyStopGuard(app, () => repository.gate.isStopped())
 
