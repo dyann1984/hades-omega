@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -127,6 +127,23 @@ describe('independent read-only verifier (scripts/verify-audit-chain.cjs)', () =
     expect(external.out.verdict).toBe('FAIL')
     const db2 = raw(file); db2.prepare("UPDATE audit_events SET result='X' WHERE rowid = (SELECT MIN(rowid) FROM audit_events WHERE hash IS NOT NULL)").run(); db2.close()
     expect((await exec(['--db', file, '--json'])).code).toBe(1)
+  })
+
+  it('exports an external anchor file and later verifies against it: grows OK, truncation/replacement FAIL, never overwrites', async () => {
+    const { repo, file, dir } = await seeded(); const anchor = join(dir, 'anchor.json')
+    const exp = await exec(['--db', file, '--json', '--export-anchor', anchor]); expect(exp.code).toBe(0)
+    const saved = JSON.parse(await readFile(anchor, 'utf8'))
+    expect(saved).toMatchObject({ schema: 'hades-audit-anchor/1', hashedEvents: 6 }); expect(saved.headHash).toMatch(/^[0-9a-f]{64}$/)
+    expect((await exec(['--db', file, '--json', '--export-anchor', anchor])).code).toBe(2) // refuses to overwrite an existing anchor
+    expect((await exec(['--db', file, '--json', '--anchor-file', anchor])).out.externalAnchorChecked).toBe(true)
+    repo.recordAuditEvent({ actor: 'a', action: 'MORE', result: 'ok' }) // legitimate growth keeps verifying
+    expect((await exec(['--db', file, '--json', '--anchor-file', anchor])).code).toBe(0)
+    const db = raw(file); db.exec('DELETE FROM audit_events WHERE rowid = (SELECT MAX(rowid) FROM audit_events)'); db.exec('DELETE FROM audit_events WHERE rowid = (SELECT MAX(rowid) FROM audit_events)')
+    db.exec('UPDATE audit_anchor SET count = count - 2, head_hash = (SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1)'); db.close()
+    const bad = await exec(['--db', file, '--json', '--anchor-file', anchor]); repo.close()
+    expect(bad.code).toBe(1); expect(bad.out.code).toBe('TRUNCATED_EXTERNAL')
+    await writeFile(join(dir, 'bad.json'), '{"schema":"x"}')
+    expect((await exec(['--db', file, '--json', '--anchor-file', join(dir, 'bad.json')])).code).toBe(2)
   })
 
   it('exits 2 on usage errors and never modifies the database file', async () => {

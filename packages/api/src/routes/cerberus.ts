@@ -9,6 +9,13 @@ import { GateError } from '../cerberus-gate.js'
 export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRepository): Promise<void> {
   // Everything here is ADMIN-only except the static decision-code catalogue (generic, value-free text), open to any authenticated role.
   app.addHook('preHandler', async req => { if (!req.routeOptions.url?.endsWith('/cerberus/gate/codes')) requireRole(req, ['ADMIN']) })
+  // Read-only: verifies the chain and returns the values to store OUTSIDE the server (see scripts/verify-audit-chain.cjs --anchor-file).
+  app.get('/cerberus/audit/anchor', async (_req, reply) => {
+    if (!repository) return reply.code(503).send(err('STORAGE_UNAVAILABLE', 'Almacenamiento no disponible'))
+    const v = repository.verifyAuditIntegrity()
+    if (!v.verified || !v.headHash) return reply.code(409).send(err('AUDIT_CHAIN_NOT_VERIFIED', 'La cadena no verifica; no se exporta un ancla', { chainCode: String(v.code ?? '') }))
+    return ok({ schema: 'hades-audit-anchor/1', headHash: v.headHash, hashedEvents: v.hashedEvents, exportedAt: new Date().toISOString() })
+  })
   app.get('/cerberus/gate/codes', async () => ok(Object.entries(DECISION_CODES).map(([code, info]) => ({ code, source: code in GATE_CODES ? 'GATE' : 'GUARD', outcome: info.outcome, http: info.http, description: info.description }))))
   app.get('/audit/events', async (req, reply) => {
     if (!repository) return reply.code(503).send(err('AUDIT_UNAVAILABLE', 'Auditoría persistente no disponible'))

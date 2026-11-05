@@ -30,8 +30,17 @@ function done(code, out) {
 }
 
 const file = opt('--db')
-if (!file) done(2, { error: 'Uso: node scripts/verify-audit-chain.cjs --db <archivo.sqlite> [--json] [--expect-head <sha256>] [--expect-count <n>]' })
-const expectHead = opt('--expect-head'), expectCountRaw = opt('--expect-count')
+if (!file) done(2, { error: 'Uso: node scripts/verify-audit-chain.cjs --db <archivo.sqlite> [--json] [--expect-head <sha256>] [--expect-count <n>] [--anchor-file <ancla.json>] [--export-anchor <ancla.json>]' })
+let expectHead = opt('--expect-head'), expectCountRaw = opt('--expect-count')
+// --anchor-file: ancla externa exportada antes con --export-anchor (guardarla FUERA del servidor: otro equipo, correo, repositorio).
+const anchorFile = opt('--anchor-file'), exportFile = opt('--export-anchor')
+if (anchorFile) {
+  try {
+    const a = JSON.parse(require('node:fs').readFileSync(anchorFile, 'utf8'))
+    if (a.schema !== 'hades-audit-anchor/1' || typeof a.headHash !== 'string' || !Number.isInteger(a.hashedEvents) || a.hashedEvents < 1) throw new Error('formato inválido')
+    expectHead = a.headHash; expectCountRaw = String(a.hashedEvents)
+  } catch (e) { done(2, { error: `No se pudo leer --anchor-file: ${e.message}` }) }
+}
 if (expectHead !== undefined && !/^[0-9a-f]{64}$/.test(expectHead)) done(2, { error: '--expect-head debe ser un SHA-256 en hexadecimal minúscula' })
 if (expectCountRaw !== undefined && !/^\d+$/.test(expectCountRaw)) done(2, { error: '--expect-count debe ser un entero' })
 
@@ -65,10 +74,18 @@ try {
   if (expectCountRaw !== undefined && Number(expectCountRaw) > hashed) done(1, result({ error: `Truncamiento respecto del ancla externa: se esperaban al menos ${expectCountRaw} eventos y hay ${hashed}`, code: 'TRUNCATED_EXTERNAL' }))
   if (expectHead !== undefined) {
     // La cabeza esperada debe aparecer en la cadena; si la cadena sólo creció, sigue siendo coherente con ese ancla.
-    const seen = events.some(e => e.hash === expectHead)
-    if (!seen) done(1, result({ error: 'La cabeza externa esperada no aparece en la cadena (reemplazo o truncamiento)', code: 'HEAD_MISMATCH_EXTERNAL' }))
+    const chained = events.filter(e => e.hash)
+    const at = chained.findIndex(e => e.hash === expectHead)
+    if (at < 0) done(1, result({ error: 'La cabeza externa esperada no aparece en la cadena (reemplazo o truncamiento)', code: 'HEAD_MISMATCH_EXTERNAL' }))
+    // Con el contador también: esa cabeza debe ocupar exactamente la posición esperada (detecta reordenar o reescribir el prefijo).
+    if (expectCountRaw !== undefined && at + 1 !== Number(expectCountRaw)) done(1, result({ error: `La cabeza externa está en la posición ${at + 1} y se esperaba ${expectCountRaw}`, code: 'HEAD_POSITION_MISMATCH' }))
   }
-  done(0, result({ externalAnchorChecked: expectHead !== undefined || expectCountRaw !== undefined }))
+  if (exportFile) {
+    if (hashed < 1) done(2, result({ error: 'No hay eventos encadenados que anclar' }))
+    // Única escritura del script: un archivo aparte, nunca la base de datos. Sólo se exporta una cadena que acaba de verificar.
+    require('node:fs').writeFileSync(exportFile, JSON.stringify({ schema: 'hades-audit-anchor/1', headHash: prev, hashedEvents: hashed, exportedAt: new Date().toISOString(), note: 'Guardar fuera del servidor. Verificar con: node scripts/verify-audit-chain.cjs --db <base> --anchor-file <este archivo>' }, null, 2) + '\n', { flag: 'wx' })
+  }
+  done(0, result({ externalAnchorChecked: expectHead !== undefined || expectCountRaw !== undefined, ...(exportFile ? { anchorExportedTo: exportFile } : {}) }))
 } catch (e) {
   done(2, { error: `Error de lectura: ${e.message}` })
 } finally { try { db.close() } catch { /* ignore */ } }

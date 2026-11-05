@@ -30,6 +30,20 @@ describe('C-7: decision-code catalogue over HTTP', () => {
     } finally { await app.close(); repo.close(); await rm(dir, { recursive: true, force: true }); process.env.JWT_SECRET = previous }
   })
 
+  it('exports the audit anchor to ADMIN only, matching the independent verifier\'s view', async () => {
+    const previous = process.env.JWT_SECRET; process.env.JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'
+    const dir = await mkdtemp(join(tmpdir(), 'anchor-http-')); const repo = new SqliteRepository(join(dir, 'h.sqlite'), join(dir, 'h.json')); await repo.init()
+    const app = Fastify()
+    try {
+      await registerSecurity(app); await app.register(async a => cerberusRoutes(a, repo), { prefix: '/api/v1' }); await app.ready()
+      const call = (role: string) => app.inject({ method: 'GET', url: '/api/v1/cerberus/audit/anchor', headers: { authorization: `Bearer ${app.jwt.sign({ sub: `${role}-u`, roles: [role], exp: Math.floor(Date.now() / 1000) + 60 })}` } })
+      expect((await call('OPERATOR')).statusCode).toBe(403)
+      const ok = await call('ADMIN'); expect(ok.statusCode).toBe(200)
+      const v = repo.verifyAuditIntegrity()
+      expect(ok.json().data).toMatchObject({ schema: 'hades-audit-anchor/1', headHash: v.headHash, hashedEvents: v.hashedEvents })
+    } finally { await app.close(); repo.close(); await rm(dir, { recursive: true, force: true }); process.env.JWT_SECRET = previous }
+  })
+
   it('denies NEAR account lookups with the stable code and a generic description, never the dynamic reason', async () => {
     const previous = process.env.JWT_SECRET; process.env.JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'
     const dir = await mkdtemp(join(tmpdir(), 'codes-deny-')); const repo = new SqliteRepository(join(dir, 'h.sqlite'), join(dir, 'h.json')); await repo.init()

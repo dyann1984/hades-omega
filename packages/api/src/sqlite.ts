@@ -4,7 +4,7 @@ import { dirname } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { AuditRecord, Mission, Task, AgentName } from '@hades/core'
 import { LlmPolicyStore } from './llm-governor.js'
-import { defaultCapabilityRegistry, bus, createDefaultToolRegistry } from '@hades/core'
+import { defaultCapabilityRegistry, bus, createDefaultToolRegistry, canonicalJson } from '@hades/core'
 import { CerberusGate } from './cerberus-gate.js'
 import { NearSubmissionService } from './near/submission.js'
 import { JsonRepository, type StoredApproval, type SystemEvent } from './persistence.js'
@@ -159,6 +159,13 @@ export class SqliteRepository extends JsonRepository {
         const head = (this.db.prepare('SELECT hash FROM audit_events WHERE hash IS NOT NULL ORDER BY rowid DESC LIMIT 1').get() as { hash: string } | undefined)?.hash ?? null
         this.db.prepare('INSERT OR REPLACE INTO audit_anchor (id,count,head_hash,updated_at) VALUES (1,?,?,?)').run(n, head, Date.now())
         this.db.prepare('INSERT INTO schema_migrations VALUES (13)').run()
+      })()
+    }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 14').get()) {
+      this.db.transaction(() => {
+        // Hash of exactly what a human is asked to authorize (see bindingHash). NULL on rows created before this migration.
+        if (!(this.db.prepare("PRAGMA table_info(local_operations)").all() as Array<{ name: string }>).some(c => c.name === 'bound_hash')) this.db.exec('ALTER TABLE local_operations ADD COLUMN bound_hash TEXT')
+        this.db.prepare('INSERT INTO schema_migrations VALUES (14)').run()
       })()
     }
     this.chronosService = new ChronosService(this.db, this)
@@ -332,13 +339,36 @@ export class SqliteRepository extends JsonRepository {
     this.db.transaction(() => {
       this.putMission(mission)
       this.db.prepare('INSERT INTO local_operations (id,mission_id,owner_id,input,state) VALUES (?,?,?,?,?)').run(approvalId,id,owner,input,'WAITING_APPROVAL')
+      this.bindOperation(approvalId,id)
       for (const state of ['CREATED','WAITING_APPROVAL']) this.workflowEvent(id,owner,state)
     })()
     return { mission, approvalId }
   }
+  /** Hash of the exact input a human authorizes: the documents and comparison shown (dispatched missions) or the raw input (legacy). */
+  private bindingHash(mission: Mission, storedInput: string): string {
+    const material = mission.context?.tags?.includes('dispatcher-v1')
+      ? { documents: (mission.context as { documents?: unknown }).documents ?? null, comparison: mission.tasks[2]?.result?.data ?? null }
+      : { input: storedInput }
+    return createHash('sha256').update(canonicalJson(material), 'utf8').digest('hex')
+  }
+  /** Throws APPROVAL_BINDING_MISMATCH (and audits it) if the stored input no longer matches what was submitted for approval. Call outside a transaction. */
+  private assertApprovalBinding(opId: string, missionId: string): void {
+    const op = this.db.prepare('SELECT bound_hash, input FROM local_operations WHERE id=?').get(opId) as { bound_hash: string | null; input: string } | undefined
+    const mission = this.getMission(missionId)
+    if (!op || !mission || op.bound_hash === null) return // rows from before the binding existed cannot be checked
+    if (this.bindingHash(mission, op.input) === op.bound_hash) return
+    this.recordAuditEvent({ actor: 'CERBERUS', missionId, action: 'APPROVAL_BINDING_MISMATCH', result: opId })
+    throw new Error('APPROVAL_BINDING_MISMATCH')
+  }
+  private bindOperation(opId: string, missionId: string): void {
+    const op = this.db.prepare('SELECT input FROM local_operations WHERE id=?').get(opId) as { input: string }
+    this.db.prepare('UPDATE local_operations SET bound_hash=? WHERE id=?').run(this.bindingHash(this.getMission(missionId)!, op.input), opId)
+  }
   async decideLocalOperation(id: string, decision: 'APPROVED' | 'REJECTED', actor: string, justification: string): Promise<Mission> {
     const initialId = this.getLocalOperationMissionId(id)
     const initial = initialId ? this.getMission(initialId) : undefined
+    // Approving authorizes the input the approver was shown: refuse if it changed since. Rejecting is always allowed.
+    if (initialId && decision === 'APPROVED' && this.db.prepare("SELECT 1 FROM local_operations WHERE id=? AND state='WAITING_APPROVAL'").get(id)) this.assertApprovalBinding(id, initialId)
     if (initial?.context?.tags?.includes('dispatcher-v1')) return this.decideDispatchedMission(id, decision, actor, justification)
     if (initial?.context?.tags?.includes('multi-doc') && decision === 'APPROVED') throw new Error('LEGACY_WORKFLOW_BLOCKED')
     return this.db.transaction(() => {
@@ -541,6 +571,7 @@ export class SqliteRepository extends JsonRepository {
     }
   }
   private resumeApprovedDispatchedMission(opId: string, missionId: string): void {
+    this.assertApprovalBinding(opId, missionId)
     const mission = this.getMission(missionId)!
     if (mission.tasks.length !== 5) throw new Error('UNEXPECTED_TASK_COUNT')
     const elysiumTask=mission.tasks[3]!, tartarusTask=mission.tasks[4]!
@@ -660,6 +691,7 @@ export class SqliteRepository extends JsonRepository {
       } else {
         current.tasks[3]!.status='CERBERUS_REVIEW'; current.status='PARTIAL_COMPLETE'; this.putMission(current)
         this.db.prepare("UPDATE local_operations SET state='WAITING_APPROVAL' WHERE id=?").run(approvalId)
+        this.bindOperation(approvalId,id)
         if (decision.outcome === 'ESCALATE') this.emitExecution(id,protectedTask,'cerberus.escalated','ESCALATE')
         this.workflowEvent(id,owner,'WAITING_APPROVAL')
       }

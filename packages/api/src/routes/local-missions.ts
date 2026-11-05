@@ -103,6 +103,7 @@ export async function localMissionRoutes(app: FastifyInstance, repository: Sqlit
     } catch (error) {
       if ((error as Error).message === 'ESCALATION_NOT_FOUND') return reply.code(404).send({success:false,error:{code:'ESCALATION_NOT_FOUND'}})
       if ((error as Error).message === 'APPROVAL_ALREADY_RESOLVED') return reply.code(409).send({success:false,error:{code:'APPROVAL_ALREADY_RESOLVED'}})
+      if ((error as Error).message === 'APPROVAL_BINDING_MISMATCH') return reply.code(409).send({success:false,error:{code:'APPROVAL_BINDING_MISMATCH',message:'La entrada cambió después de solicitar la aprobación; no se ejecutó. Rechace y cree una nueva solicitud.'}})
       if ((error as Error).message === 'LEGACY_WORKFLOW_BLOCKED') return reply.code(409).send({success:false,error:{code:'LEGACY_WORKFLOW_BLOCKED',message:'El flujo histórico requiere revisión antes de continuar.'}})
       throw error
     }
