@@ -21,7 +21,7 @@ El producto y las pruebas están listos. Ya no hay bloqueos técnicos; los que q
 
 | Comprobación | Resultado | Comando |
 |---|---|---|
-| Git | Árbol limpio; 79 commits sobre `origin/main`, todos del mismo autor | `git status --short` vacío |
+| Git | Árbol limpio; 81 commits sobre `origin/main`, todos del mismo autor | `git status --short` vacío |
 | Regresión completa sin caché | ✅ 12/12 tareas; **461 aprobadas, 3 omitidas** (api 294, core 92, frontend 75); lint 0 errores; build correcto | `$env:CI='1'; npx turbo run test type-check lint build --force --concurrency=1` |
 | Playwright | ✅ 22 aprobadas, 2 omitidas | `npm run test:e2e` |
 | Flujo HTTP / demo pública | ✅ 22/22 · ✅ todo en verde | `node scripts/e2e-audit-flow.cjs` · `node scripts/check-public-demo-safety.cjs` |
@@ -56,8 +56,8 @@ Conclusión: **sin hallazgos que exijan rotar credenciales.** Limitación: un es
 |---|---|
 | `origin/main` | `701113b…` — **es antecesor de la rama candidata** |
 | Tipo de integración | **Avance rápido (fast-forward)**: sin conflictos ni commits de fusión |
-| Simulación | `git merge-tree --write-tree origin/main HEAD` → éxito; el árbol resultante es **idéntico** al de la rama (`240a162…`), es decir, nada se pierde ni se altera |
-| Commits que se añaden | 79; archivos 168 (+16 442 / −674); **0 borrados o renombrados**; cero cambios en `vercel.json`, `render.yaml`, `railway.toml` ni workflows |
+| Simulación | `git merge-tree --write-tree origin/main HEAD` → éxito; el árbol resultante es **idéntico** al de la rama ($(58922ac93f977c6d5cb83b5be58e3342bbf3f12c.Substring(0,7))…), es decir, nada se pierde ni se altera |
+| Commits que se añaden | 81; archivos 168+ (ver git diff --shortstat origin/main HEAD); **0 borrados o renombrados**; cero cambios en `vercel.json`, `render.yaml`, `railway.toml` ni workflows |
 | Commits que se perderían | Ninguno: `origin/main`, `origin/feat/hades-hackathon-hardening`, `origin/develop` y las ramas locales relevantes ya están contenidas. `origin/security/pre-publication-hardening-20261102` tiene 3 commits propios cuyo contenido ya está en la candidata (su `.gitignore` es subconjunto del actual; mismo `secret-scan.yml`). `origin/ccr-35d4430b-cu7td8` son 3 commits antiguos (v0.1–v0.3) |
 | Regresiones | La rama candidata es el árbol que pasó la regresión de hoy; al ser fast-forward, `main` tendría exactamente ese árbol |
 | Rama local `main` | Está **1 commit por detrás** de `origin/main`; no usarla como base sin actualizarla |
@@ -65,7 +65,7 @@ Conclusión: **sin hallazgos que exijan rotar credenciales.** Limitación: un es
 
 Comandos preparados (NO ejecutados), tras tu autorización:
 ```
-git push origin codex/hades-omega-finalizacion          # publica 79 commits en el repo público
+git push origin codex/hades-omega-finalizacion          # publica 81 commits en el repo público
 git switch main ; git merge --ff-only origin/main ; git merge --ff-only codex/hades-omega-finalizacion
 git push origin main                                     # o abrir un PR (ver docs/propuesta-pr-main.md)
 ```
@@ -84,7 +84,7 @@ Responde con los números que autorices:
 
 1. **Licencia:** confirmar el texto de `LICENSE` (MIT, Diana Lopez, 2026) para publicarlo.
 2. **Releer las reglas oficiales** en `https://nearhackathon.com/` y `/HACKATHON.md` (tú, en tu navegador) y avisarme de cualquier cambio.
-3. **Publicar la rama:** `git push origin codex/hades-omega-finalizacion` (hace públicos 79 commits en `dyann1984/hades-omega`).
+3. **Publicar la rama:** `git push origin codex/hades-omega-finalizacion` (hace públicos 81 commits en `dyann1984/hades-omega`).
 4. **Decidir el despliegue antes de integrar:** (a) aceptar que empujar a `main` redespliegue Vercel (y quizá Render), o (b) desactivar primero el auto-deploy en esos paneles. Yo no puedo consultar ni cambiar Render/Vercel sin tu token.
 5. **Integrar a `main`** por fast-forward (o por PR) con los comandos de arriba.
 6. **Reverificar el día del envío** (lo haré yo cuando lo pidas): `node scripts/verify-attestation-onchain.cjs` debe dar 18/18 y los enlaces del repo deben abrir sin sesión.
