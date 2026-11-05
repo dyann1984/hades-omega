@@ -19,11 +19,15 @@
 
 | Función | Estado actual | Cuándo cambia |
 |---------|--------------|---------------|
-| Cuenta `hades-omega.testnet` | **PLANIFICADA — no verificada** | Después de F-006 el Día 1 |
-| Contrato `audit.hades-omega.testnet` | **PLANIFICADA — no desplegada** | Después de N-002 el Día 8 |
-| NEAR Bridge modo simulación | **PLANIFICADA — no implementada** | Después de N-003 el Día 7 |
-| NEAR Bridge modo real | **PLANIFICADA — no implementada** | Después de N-004 el Día 8 |
-| Transacciones en testnet | **PLANIFICADA — 0 txs reales** | Después de primera tx manual el Día 8 |
+> **Actualización 2026-11-05.** Esta tabla describía el plan inicial; el estado actual es el siguiente. Las filas «documentado» se apoyan en `docs/evidencia-hades-attest-0001.md` (verificación RPC del 2026-11-02); **hoy el RPC público no respondió** y `node scripts/verify-attestation-onchain.cjs` termina con el veredicto `INCONCLUSIVE` (sin veredicto: ni confirma ni refuta). La firma y el envío siguen **deshabilitados por defecto** (`NEAR_SIGNING_ENABLED`).
+
+| Función | Estado actual | Evidencia |
+|---------|--------------|-----------|
+| Cuenta `hades-omega.testnet` | **Creada (documentado)** | Evidencia del 2026-11-02; verificar con el script |
+| Contrato `audit.hades-omega.testnet` | **Desplegado (documentado)**, `#[private] new`, solo el propietario registra | `docs/contract-attestation.json`; código descargado de la cadena = SHA-256 atestado |
+| NEAR Bridge modo simulación | **Implementado** | `packages/core/src/near-bridge`, pruebas `bypass.test.ts` |
+| NEAR Bridge modo real | **Implementado, apagado por defecto**; exige grant de CERBERUS y llave FunctionCall restringida | `packages/api/src/near/submission.ts`, pruebas con RPC simulado |
+| Transacciones en testnet | **1 transacción real documentada** (`BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3`) | No reverificada hoy por RPC (ver arriba) |
 
 ---
 

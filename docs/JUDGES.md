@@ -16,7 +16,9 @@ HADES is a multi-agent system that audits business documents. Its security idea,
 Pick one:
 
 1. **Browser**: clone or download the repo and open `docs/verify/index.html` locally (GitHub shows that file as source code and will not run it). It queries a public Testnet RPC node and shows 13 checks. It cannot sign or send anything. The public demo site, once deployed, serves the same page at `/verify/index.html`.
-2. **Terminal** (Node 18+, no `npm install`): `node scripts/verify-attestation-onchain.cjs` → 18 checks, exit code 0 only if all pass.
+2. **Terminal** (Node 18+, no `npm install`): `node scripts/verify-attestation-onchain.cjs` → 18 checks. It retries and falls back to alternate public RPC nodes (override with `NEAR_RPC_URLS="https://a,https://b"`). Exit code **0** = PASS (all 18 match), **1** = FAIL (the network answered and something does not match), **2** = INCONCLUSIVE (no RPC node answered: this neither confirms nor refutes the evidence — retry later or use the explorer). Add `--json` for a machine-readable verdict.
+
+> **Last verification state (honest note).** The evidence in `evidencia-hades-attest-0001.md` / `evidence-hades-attest-0001.json` was verified over RPC on 2026-11-02 (18/18). When this guide was last updated (2026-11-05) the public RPC nodes were unreachable from our machine and the verifier returned INCONCLUSIVE, so that evidence was **not re-confirmed on that date**. The guarantee is narrow: one attestation hash of the contract binary stored by one approved transaction — not an "immutable audit log" and not on-chain policy enforcement (see `CERBERUS_PEER_REVIEW_RESPONSE.md`).
 3. **Explorer**: https://explorer.testnet.near.org/transactions/BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3
 
 What you should see: transaction `BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3` FINAL without errors; one `FunctionCall store_audit_hash` signed by `hades-omega.testnet` with key `ed25519:Gm4bBKzH…vtw7n`; `get_count` = 1; `get_audit_entry("hades-attest-0001")` with content hash `4bb4f2d9…571b`;
