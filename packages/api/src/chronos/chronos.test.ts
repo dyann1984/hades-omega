@@ -158,10 +158,41 @@ describe('CHRONOS service (real SQLite)', () => {
     const run = svc().runNow(task.id, 'a')
     // Simulate a process dying mid-run: force the row back to RUNNING.
     ;(repo as unknown as { db: { prepare(s: string): { run(...a: unknown[]): void } } }).db.prepare("UPDATE chronos_runs SET status = 'RUNNING', finished_at = NULL WHERE id = ?").run(run.id)
+    now = T0 + 6 * 60_000 // beyond the 5 minute lease
     expect(svc().recover()).toBe(1)
     const tick = svc().tick()
     expect(tick.retried).toBe(1)
     expect(tick.executed[0]).toMatchObject({ id: run.id, status: 'SUCCEEDED' })
+  })
+
+  it('does not steal a RUNNING run that another live process claimed recently, and recovers it once, only after the lease', () => {
+    const task = svc().create({ title: 'Shared', kind: 'APPROVALS_DIGEST', cron: '0 * * * *' }, 'a')
+    const run = svc().runNow(task.id, 'a')
+    const db = (repo as unknown as { db: { prepare(s: string): { run(...a: unknown[]): void } } }).db
+    db.prepare("UPDATE chronos_runs SET status = 'RUNNING', finished_at = NULL WHERE id = ?").run(run.id)
+    // A second connection (another process starting up) opens the same database file.
+    const other = new SqliteRepository(join(dir, 'h.sqlite'), join(dir, 'h.json'))
+    return other.init().then(() => {
+      try {
+        const a = repo.createChronos(() => now), b = other.createChronos(() => now)
+        now = T0 + 60_000
+        expect(b.recover()).toBe(0)
+        expect(b.runs(task.id)[0]).toMatchObject({ id: run.id, status: 'RUNNING' })
+        now = T0 + 6 * 60_000
+        expect(a.recover() + b.recover()).toBe(1) // exactly one process wins the orphan
+        expect(a.runs(task.id)[0]).toMatchObject({ id: run.id, status: 'RETRYING' })
+      } finally { other.close() }
+    })
+  })
+
+  it('marks an orphaned run INTERRUPTED when its attempts are exhausted', () => {
+    const task = svc().create({ title: 'Last try', kind: 'APPROVALS_DIGEST', cron: '0 * * * *', maxAttempts: 1 }, 'a')
+    const run = svc().runNow(task.id, 'a')
+    ;(repo as unknown as { db: { prepare(s: string): { run(...a: unknown[]): void } } }).db.prepare("UPDATE chronos_runs SET status = 'RUNNING', finished_at = NULL WHERE id = ?").run(run.id)
+    now = T0 + 6 * 60_000
+    expect(svc().recover()).toBe(1)
+    expect(svc().runs(task.id)[0]).toMatchObject({ id: run.id, status: 'INTERRUPTED' })
+    expect(svc().recover()).toBe(0)
   })
 })
 

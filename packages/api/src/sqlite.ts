@@ -132,6 +132,13 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (11)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 12').get()) {
+      this.db.transaction(() => {
+        // Claim timestamp lets recovery distinguish a live run owned by another process from an orphaned one.
+        this.db.exec('ALTER TABLE chronos_runs ADD COLUMN claimed_at INTEGER')
+        this.db.prepare('INSERT INTO schema_migrations VALUES (12)').run()
+      })()
+    }
     this.chronosService = new ChronosService(this.db, this)
     this.llmPolicyStore = new LlmPolicyStore(this.db)
     this.gateInstance = new CerberusGate(this.db, createDefaultToolRegistry(), { policyHash: () => this.policyGuard.getPolicyHash(), audit: e => { this.recordAuditEvent(e) }, egressAllowed: tool => tool === 'llm.plan' && this.llmPolicyStore.isEnabled() })

@@ -105,6 +105,8 @@ export const CHRONOS_MIGRATION_SQL = `
   CREATE INDEX chronos_runs_task ON chronos_runs(task_id, scheduled_for DESC);`
 
 const BACKOFF_MS = [30_000, 120_000, 600_000]
+/** Jobs are synchronous and take milliseconds; a RUNNING claim older than this is considered orphaned. */
+const RUN_LEASE_MS = 5 * 60_000
 
 export class ChronosService {
   private timer: NodeJS.Timeout | undefined
@@ -197,7 +199,7 @@ export class ChronosService {
   /** Executes (or re-executes) one run row. Jobs are synchronous and local, so a run is never left half-claimed. */
   private execute(runId: string, requireActive: boolean): ChronosRun | null {
     const startedAt = this.clock()
-    const claim = this.db.prepare("UPDATE chronos_runs SET status = 'RUNNING', attempt = attempt + 1, started_at = COALESCE(started_at, ?), retry_at = NULL WHERE id = ? AND status = 'RETRYING' AND EXISTS (SELECT 1 FROM chronos_tasks t WHERE t.id = chronos_runs.task_id AND t.status != 'CANCELLED' AND (? = 0 OR t.status = 'ACTIVE'))").run(startedAt, runId, requireActive ? 1 : 0)
+    const claim = this.db.prepare("UPDATE chronos_runs SET status = 'RUNNING', attempt = attempt + 1, started_at = COALESCE(started_at, ?), claimed_at = ?, retry_at = NULL WHERE id = ? AND status = 'RETRYING' AND EXISTS (SELECT 1 FROM chronos_tasks t WHERE t.id = chronos_runs.task_id AND t.status != 'CANCELLED' AND (? = 0 OR t.status = 'ACTIVE'))").run(startedAt, startedAt, runId, requireActive ? 1 : 0)
     if (claim.changes !== 1) return null
     const run = toRun(this.db.prepare('SELECT * FROM chronos_runs WHERE id = ?').get(runId) as RunRow)
     const task = this.get(run.taskId)
@@ -225,15 +227,24 @@ export class ChronosService {
   }
 
   /** After a restart, runs left RUNNING were interrupted. Idempotent jobs are re-queued, others are failed. */
-  recover(): number {
-    const rows = this.db.prepare("SELECT r.id, r.attempt, t.max_attempts FROM chronos_runs r JOIN chronos_tasks t ON t.id = r.task_id WHERE r.status = 'RUNNING'").all() as Array<{ id: string; attempt: number; max_attempts: number }>
-    for (const r of rows) {
-      const requeue = r.attempt < r.max_attempts
-      this.db.prepare('UPDATE chronos_runs SET status = ?, error = ?, retry_at = ?, finished_at = ? WHERE id = ?')
-        .run(requeue ? 'RETRYING' : 'INTERRUPTED', 'interrupted by restart', requeue ? this.clock() : null, requeue ? null : this.clock(), r.id)
-      this.audit('system:chronos-recovery', 'CHRONOS_RUN', `${requeue ? 'REQUEUED' : 'INTERRUPTED'}:${r.id}`, r.id)
+  recover(staleAfterMs = RUN_LEASE_MS): number {
+    const now = this.clock()
+    // Only runs whose claim is older than the lease (or legacy rows with no claim time) are orphaned: a process starting
+    // up must not steal a run another live process claimed moments ago. Each row is re-checked inside its own update.
+    const rows = this.db.prepare("SELECT r.id FROM chronos_runs r WHERE r.status = 'RUNNING' AND (r.claimed_at IS NULL OR r.claimed_at <= ?)").all(now - staleAfterMs) as Array<{ id: string }>
+    let recovered = 0
+    for (const { id } of rows) {
+      const outcome = this.db.transaction(() => {
+        const r = this.db.prepare("SELECT r.attempt, t.max_attempts FROM chronos_runs r JOIN chronos_tasks t ON t.id = r.task_id WHERE r.id = ? AND r.status = 'RUNNING' AND (r.claimed_at IS NULL OR r.claimed_at <= ?)").get(id, now - staleAfterMs) as { attempt: number; max_attempts: number } | undefined
+        if (!r) return null
+        const requeue = r.attempt < r.max_attempts
+        const moved = this.db.prepare("UPDATE chronos_runs SET status = ?, error = ?, retry_at = ?, finished_at = ? WHERE id = ? AND status = 'RUNNING'")
+          .run(requeue ? 'RETRYING' : 'INTERRUPTED', 'interrupted by restart', requeue ? now : null, requeue ? null : now, id)
+        return moved.changes === 1 ? (requeue ? 'REQUEUED' : 'INTERRUPTED') : null
+      }).immediate()
+      if (outcome) { recovered++; this.audit('system:chronos-recovery', 'CHRONOS_RUN', `${outcome}:${id}`, id) }
     }
-    return rows.length
+    return recovered
   }
 
   /**
