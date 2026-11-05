@@ -6,7 +6,11 @@
  *   node scripts/verify-attestation-onchain.cjs            # prints each check and exits 1 if any fails
  *   node scripts/verify-attestation-onchain.cjs --json     # machine-readable result
  */
-const RPC = process.env.NEAR_RPC_URL || 'https://test.rpc.fastnear.com/'
+const { createRpcClient, parseUrls, RpcUnavailableError } = require('./lib/rpc-client.cjs')
+// RPC configurable: NEAR_RPC_URLS="https://a,https://b" (o NEAR_RPC_URL). Reintenta con espera y pasa al siguiente RPC.
+// Veredicto: PASS (exit 0) | FAIL (exit 1: la red respondió y alguna comprobación no coincide) | INCONCLUSIVE (exit 2: ningún RPC respondió; NO es un fallo de la evidencia).
+const client = createRpcClient({ urls: parseUrls(), retries: Number(process.env.NEAR_RPC_RETRIES ?? 2), baseDelayMs: Number(process.env.NEAR_RPC_BACKOFF_MS ?? 500) })
+const RPC = parseUrls().join(',')
 const SIGNER = 'hades-omega.testnet', CONTRACT = 'audit.hades-omega.testnet'
 const TX = 'BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3'
 const DEPLOY_TX = 'QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj'
@@ -16,14 +20,7 @@ const EXPECT = { audit_id: 'hades-attest-0001', content_hash: '4bb4f2d98d2919b60
 const crypto = require('node:crypto')
 const results = []
 const check = (name, ok, detail) => { results.push({ name, ok: !!ok, ...(detail !== undefined ? { detail } : {}) }); if (!process.argv.includes('--json')) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail !== undefined ? '  ' + (typeof detail === 'string' ? detail : JSON.stringify(detail)) : ''}`) }
-async function rpc(method, params) {
-  const r = await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'v', method, params }) })
-  if (!r.ok) throw new Error(`RPC ${method}: HTTP ${r.status}`)
-  const body = await r.json()
-  if (body.error) throw new Error(`RPC ${method}: ${body.error.message || 'error'}${body.error.cause?.name ? ` (${body.error.cause.name})` : ''}`)
-  if (body.result == null) throw new Error(`RPC ${method}: respuesta sin resultado`)
-  return body
-}
+const rpc = (method, params) => client.call(method, params)
 const view = async (account, m, args) => { const r = await rpc('query', { request_type: 'call_function', finality: 'final', account_id: account, method_name: m, args_base64: Buffer.from(JSON.stringify(args)).toString('base64') }); return JSON.parse(Buffer.from(r.result.result).toString()) }
 function b58hex(s) { const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; let n = 0n; for (const c of s) n = n * 58n + BigInt(A.indexOf(c)); return n.toString(16).padStart(64, '0') }
 const near = y => { const s = String(y).padStart(25, '0'); return `${s.slice(0, -24)}.${s.slice(-24).replace(/0+$/, '') || '0'}` }
@@ -64,11 +61,18 @@ const near = y => { const s = String(y).padStart(25, '0'); return `${s.slice(0, 
   check('7. Saldos', true, { 'hades-omega.testnet': near(s.amount) + ' NEAR', 'audit.hades-omega.testnet': near(acct.amount) + ' NEAR' })
 
   const failed = results.filter(r => !r.ok).length
-  if (process.argv.includes('--json')) console.log(JSON.stringify({ network: 'testnet', rpc: RPC, checkedAt: new Date().toISOString(), allPassed: failed === 0, results }, null, 2))
-  else console.log(failed === 0 ? `\nTODAS LAS VERIFICACIONES PASARON (${results.length})` : `\n${failed} VERIFICACIÓN(ES) FALLARON`)
-  process.exit(failed === 0 ? 0 : 1)
+  finish(failed === 0 ? 'PASS' : 'FAIL', failed === 0 ? undefined : `${failed} comprobación(es) no coinciden`)
 })().catch(e => {
-  if (process.argv.includes('--json')) console.log(JSON.stringify({ network: 'testnet', rpc: RPC, checkedAt: new Date().toISOString(), allPassed: false, results, error: e.message }, null, 2))
-  else console.error('ERROR', e.message)
-  process.exit(2)
+  // Sin respuesta de ningún RPC: no se puede afirmar ni negar nada. Es distinto de una comprobación fallida.
+  if (e instanceof RpcUnavailableError) finish('INCONCLUSIVE', e.message)
+  else finish('FAIL', e.message) // la red respondió con un error (p. ej. transacción desconocida) o hubo un error interno
 })
+
+function finish(verdict, error) {
+  const out = { network: 'testnet', verdict, allPassed: verdict === 'PASS', checkedAt: new Date().toISOString(), rpcConfigured: RPC, rpcUsed: client.rpcUsed, checksRun: results.length, results, ...(error ? { error } : {}), ...(verdict === 'INCONCLUSIVE' ? { attempts: client.attempts.slice(-12), note: 'Ningún RPC respondió: SIN VEREDICTO. La evidencia documentada no se confirma ni se refuta; reintentar o usar NEAR_RPC_URLS.' } : {}) }
+  if (process.argv.includes('--json')) console.log(JSON.stringify(out, null, 2))
+  else if (verdict === 'PASS') console.log(`\nTODAS LAS VERIFICACIONES PASARON (${results.length}) · RPC: ${client.rpcUsed}`)
+  else if (verdict === 'FAIL') console.error(`\nFALLO: ${error}`)
+  else console.error(`\nSIN VEREDICTO: ${error}. Último intento: ${JSON.stringify(client.attempts.slice(-1)[0] || null)}`)
+  process.exit(verdict === 'PASS' ? 0 : verdict === 'FAIL' ? 1 : 2)
+}
