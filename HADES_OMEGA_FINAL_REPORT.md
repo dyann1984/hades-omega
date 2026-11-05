@@ -19,6 +19,13 @@ Fecha: 2026-11-05. Rama: `codex/hades-omega-finalizacion`, creada desde `6ad144b
 
 ### Continuación de finalización
 
+#### Avance adicional
+
+- `95e89af` implementa una primitiva de rotación AES-GCM transaccional compatible con los registros existentes. Pruebas locales con claves efímeras: rotación y reapertura con la clave nueva; la antigua se rechaza. Falta interfaz operativa segura, coordinación de procesos y respaldos, e integración de NEAR y LLM con Vault; no se rotó ninguna clave real.
+- `b966eec` revoca aprobaciones pendientes/no consumidas y permisos sin usar al activar la parada. Tras quitarla, la aprobación previa no vuelve a servir. Pruebas focalizadas de Vault, CERBERUS y NEAR: 78 aprobadas; usan dobles locales y no envían transacciones. No demuestra cancelación cooperativa de trabajos activos ni cobertura de rutas alternativas.
+- Diagnóstico NEAR: el sandbox denegó resolución DNS; fuera de él el nombre `test.rpc.fastnear.com` resolvió registros A y AAAA, pero `Test-NetConnection` a TCP 443 falló para ambas direcciones IPv4. No se pudo establecer TLS ni obtener respuesta RPC. No se ha verificado de nuevo la evidencia on-chain.
+- Tras los cambios, `npx turbo run test type-check lint build --force --concurrency=1` terminó con 12 tareas correctas, sin caché: 402 pruebas aprobadas y 3 RPC en vivo omitidas; lint y build pasaron con advertencias. Playwright sobre los builds locales, base temporal y NEAR sin configurar: 22 aprobadas y 2 capturas omitidas en escritorio y móvil. No cubre todos los botones ni garantiza la parada integral.
+
 - Recuperación conservada en `7201e68`. Vault cifrado añadido en `9bf0d99`: AES-256-GCM, clave externa, rutas ADMIN que no revelan valores, prueba de integridad y rechazo de clave incorrecta. `npm run test -w @hades/api -- --run src/secret-vault.test.ts src/vault.test.ts`: 12 aprobadas. `npm run type-check -w @hades/api` y lint de API pasaron (lint con advertencias). Ver `docs/vault-secrets.md` para límites, incluida la ausencia de rotación automática e integración con consumidores NEAR/LLM.
 - `8753e50` bloquea también herramientas READ durante la parada de emergencia. Pruebas `cerberus-gate`, `chronos`, `near/submission` y `vault`: 84 aprobadas. Esto no demuestra el bloqueo de todos los caminos de ejecución ni la cancelación de tareas en curso: se requiere trabajo adicional antes de afirmar una parada integral.
 - El resultado de 398 pruebas de la sección de recuperación precede estos commits; no sustituye una regresión completa posterior. Los pasos de agentes, concurrencia de CHRONOS, Playwright, diagnóstico de conectividad y verificación final permanecen pendientes.
