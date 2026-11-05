@@ -11,7 +11,9 @@ class RpcAnswerError extends Error {
   constructor(method, message) { super(`RPC ${method}: ${message}`); this.name = 'RpcAnswerError' }
 }
 
-const DEFAULT_URLS = ['https://test.rpc.fastnear.com/', 'https://rpc.testnet.near.org/']
+// The archival node is last: regular nodes garbage-collect old transactions (about 2.5 days), so a record older than that is only
+// answerable by an archival endpoint. All three are public and are only ever queried read-only.
+const DEFAULT_URLS = ['https://test.rpc.fastnear.com/', 'https://rpc.testnet.near.org/', 'https://archival-rpc.testnet.near.org/']
 const RETRYABLE_HTTP = new Set([408, 425, 429, 500, 502, 503, 504])
 
 function parseUrls(env = process.env) {

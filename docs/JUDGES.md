@@ -18,7 +18,7 @@ Pick one:
 1. **Browser**: clone or download the repo and open `docs/verify/index.html` locally (GitHub shows that file as source code and will not run it). It queries a public Testnet RPC node and shows 13 checks. It cannot sign or send anything. The public demo site, once deployed, serves the same page at `/verify/index.html`.
 2. **Terminal** (Node 18+, no `npm install`): `node scripts/verify-attestation-onchain.cjs` â†’ 18 checks. It retries and falls back to alternate public RPC nodes (override with `NEAR_RPC_URLS="https://a,https://b"`). Exit code **0** = PASS (all 18 match), **1** = FAIL (the network answered and something does not match), **2** = INCONCLUSIVE (no RPC node answered: this neither confirms nor refutes the evidence â€” retry later or use the explorer). Add `--json` for a machine-readable verdict.
 
-> **Last verification state (honest note).** The evidence in `evidencia-hades-attest-0001.md` / `evidence-hades-attest-0001.json` was verified over RPC on 2026-11-02 (18/18). When this guide was last updated (2026-11-05) the public RPC nodes were unreachable from our machine and the verifier returned INCONCLUSIVE, so that evidence was **not re-confirmed on that date**. The guarantee is narrow: one attestation hash of the contract binary stored by one approved transaction â€” not an "immutable audit log" and not on-chain policy enforcement (see `CERBERUS_PEER_REVIEW_RESPONSE.md`).
+> **Last verification state (honest note).** The evidence in `evidencia-hades-attest-0001.md` / `evidence-hades-attest-0001.json` was verified over RPC on 2026-11-02 (18/18). It was **re-verified on 2026-11-05: 18/18 PASS**, read-only, answered by the public archival node `https://archival-rpc.testnet.near.org/` (the regular nodes had already discarded a transaction of that age and timed out, which the verifier reports as INCONCLUSIVE, never as PASS). The guarantee is narrow: one attestation hash of the contract binary stored by one approved transaction â€” not an "immutable audit log" and not on-chain policy enforcement (see `CERBERUS_PEER_REVIEW_RESPONSE.md`).
 3. **Explorer**: https://explorer.testnet.near.org/transactions/BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3
 
 What you should see: transaction `BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3` FINAL without errors; one `FunctionCall store_audit_hash` signed by `hades-omega.testnet` with key `ed25519:Gm4bBKzHâ€¦vtw7n`; `get_count` = 1; `get_audit_entry("hades-attest-0001")` with content hash `4bb4f2d9â€¦571b`;
@@ -68,18 +68,18 @@ Steps 1â€“6 are the same flow `node scripts/e2e-audit-flow.cjs` checks over
 
 See the table in the [README](../README.md#what-is-real-simulated-and-pending). In one line: the gate, the agents, the scheduler and one on-chain record are real; the public demo's NEAR is simulated; payments, NEAR Intents, mainnet and a hosted public URL are **not** built or deployed.
 
-## 6. Tests we ran (2026-11-02, this commit)
+## 6. Tests we ran (2026-11-05 unless marked, this commit)
 
 | Check | Result |
 |---|---|
 | `npm run type-check`, `npm run lint` (ESLint, forced, no cache), `npm run build` | pass |
 | `npm test` | api 294 passed + 3 skipped (live-RPC tests, off by default), core 92, frontend 75 (461 in total) |
-| Rust unit tests | 12 passed |
-| Contract integration in a local `near-sandbox` (release WASM) | 6 passed (takeover refused, double init refused, failed init rolls back the deploy) |
+| Rust unit tests (2026-11-02, not re-run) | 12 passed |
+| Contract integration in a local `near-sandbox` (release WASM; 2026-11-02, not re-run) | 6 passed (takeover refused, double init refused, failed init rolls back the deploy) |
 | `node scripts/e2e-audit-flow.cjs` | 22/22 |
 | `node scripts/check-public-demo-safety.cjs` | all pass |
 | Playwright (Edge, desktop + mobile) | 22 passed, 2 skipped (2026-11-05) |
-| Gitleaks, full history | 0 findings |
+| Gitleaks, full history (2026-11-02) | 0 findings. On 2026-11-05 a separate pattern scan of all 179 revisions found no private key, token or credential; only obvious test canaries |
 
 Raw logs of this run are in `docs/test-evidence-final/`.
 
@@ -89,7 +89,7 @@ Raw logs of this run are in `docs/test-evidence-final/`.
 * The CERBERUS evidence for that record comes from a local database; a third party can reproduce only the on-chain half.
 * The default demo uses deterministic capabilities. The optional LLM planner is implemented but disabled and was not exercised against the live API.
 * `payment.execute` is registered in the policy but has no executor, by design.
-* Hosted public deployment: not done yet (needs the owner's decision).
+* Hosted public deployment: the repository carries Vercel/Render configs and an earlier site existed, but it is **not part of this submission and was not reachable from our check on 2026-11-05** (request timed out). Judges should run the product locally (section 3).`n* Six registered agent capabilities (`cap:procurement:eval`, `cap:policy:verify`, `cap:financial:analyze`, `cap:resilience:recover`, `cap:orchestration:plan`, `cap:security:guard`) have no executor and are rejected with `CAPABILITY_NOT_IMPLEMENTED`; NEP-297 on-chain governance events and the UI link from mission evidence to an on-chain record are not built.
 
 
 ## CERBERUS: endurecimiento posterior a la revisiÃ³n externa

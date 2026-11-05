@@ -104,7 +104,7 @@ Current counts are in [`docs/JUDGES.md`](docs/JUDGES.md).
 
 * **Timeline**: the first commit is dated 2026-10-24, after the 2026-10-19 announcement; the whole repository is within the window. The NEAR contract, the transaction pipeline and the on-chain record were built 2026-10-26 to 2026-11-02.
 * **AI-assisted code**: most of the code was written with Claude Code (Anthropic) under human direction and review. Libraries: Fastify, better-sqlite3, React, Vite, near-api-js, near-sdk (Rust), Playwright, Vitest.
-* **License**: see the repository's `LICENSE` file once added by the maintainers.
+* **License**: MIT, Copyright (c) 2026 Diana Lopez (see [`LICENSE`](LICENSE)). Third-party dependencies keep their own licenses.
 
 
 ### Auditoría y códigos de CERBERUS
