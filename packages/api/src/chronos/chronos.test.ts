@@ -118,6 +118,25 @@ describe('CHRONOS service (real SQLite)', () => {
     } finally { JOB_REGISTRY['APPROVALS_DIGEST']!.run = original }
   })
 
+  it('holds pending retries while paused and resumes them after restart', async () => {
+    const task = svc().create({ title: 'Pausable retry', kind: 'APPROVALS_DIGEST', cron: '0 * * * *' }, 'a')
+    const original = JOB_REGISTRY['APPROVALS_DIGEST']!.run
+    JOB_REGISTRY['APPROVALS_DIGEST']!.run = () => { throw new Error('temporary failure') }
+    try {
+      const run = svc().runNow(task.id, 'a')
+      expect(run.status).toBe('RETRYING')
+      svc().pause(task.id, 'a')
+      repo.close()
+      repo = new SqliteRepository(join(dir, 'h.sqlite'), join(dir, 'h.json')); await repo.init()
+      now += 31_000
+      expect(svc().tick().retried).toBe(0)
+      expect(svc().runs(task.id)[0]).toMatchObject({ id: run.id, status: 'RETRYING', attempt: 1 })
+      JOB_REGISTRY['APPROVALS_DIGEST']!.run = original
+      svc().resume(task.id, 'a')
+      expect(svc().tick().executed[0]).toMatchObject({ id: run.id, status: 'SUCCEEDED', attempt: 2 })
+    } finally { JOB_REGISTRY['APPROVALS_DIGEST']!.run = original }
+  })
+
   it('recovers runs interrupted by a crash', () => {
     const task = svc().create({ title: 'Crashy', kind: 'APPROVALS_DIGEST', cron: '0 * * * *' }, 'a')
     const run = svc().runNow(task.id, 'a')

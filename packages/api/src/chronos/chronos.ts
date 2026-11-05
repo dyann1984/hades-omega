@@ -253,7 +253,7 @@ export class ChronosService {
       started++
       executed.push(this.execute(runId))
     }
-    const retries = this.db.prepare("SELECT r.id FROM chronos_runs r JOIN chronos_tasks t ON t.id = r.task_id WHERE r.status = 'RETRYING' AND r.retry_at IS NOT NULL AND r.retry_at <= ? AND t.status != 'CANCELLED'").all(now) as Array<{ id: string }>
+    const retries = this.db.prepare("SELECT r.id FROM chronos_runs r JOIN chronos_tasks t ON t.id = r.task_id WHERE r.status = 'RETRYING' AND r.retry_at IS NOT NULL AND r.retry_at <= ? AND t.status = 'ACTIVE'").all(now) as Array<{ id: string }>
     for (const r of retries) { retried++; executed.push(this.execute(r.id)) }
     // Requeued-by-recovery runs have retry_at set to now, so they flow through the retry path above.
     return { started, retried, executed }
