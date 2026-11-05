@@ -7,8 +7,8 @@ import { join, resolve } from 'node:path'
 import type { AddressInfo } from 'node:net'
 
 const root = resolve(process.cwd(), '../..') // vitest runs from packages/api
-const require = createRequire(join(root, 'package.json'))
-const { createRpcClient, parseUrls, RpcUnavailableError, RpcAnswerError } = require(join(root, 'scripts/lib/rpc-client.cjs'))
+const nodeRequire = createRequire(join(root, 'package.json'))
+const { createRpcClient, parseUrls, RpcUnavailableError, RpcAnswerError } = nodeRequire(join(root, 'scripts/lib/rpc-client.cjs'))
 const run = promisify(execFile)
 
 const res = (status: number, body?: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response
