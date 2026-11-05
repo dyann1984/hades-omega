@@ -17,6 +17,17 @@ import { SecretVault } from './secret-vault.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
 type Row = { data: string }
+const AUDIT_GENESIS = 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000'
+export interface AuditIntegrity {
+  verified: boolean
+  /** Why verification failed; absent when verified. Stable identifiers for UIs and indexers. */
+  code?: 'HASH_MISSING' | 'CHAIN_BROKEN' | 'HASH_MISMATCH' | 'TRUNCATED' | 'ANCHOR_BEHIND' | 'HEAD_MISMATCH'
+  totalEvents: number; brokenAtId: string | null; error: string | null
+  /** Hash of the last chained event, and how many events are chained (legacy unhashed rows excluded). */
+  headHash: string | null; hashedEvents: number
+  /** Local anchor kept in the database; null only on databases that predate it. */
+  anchor: { count: number; headHash: string | null } | null
+}
 export interface ExecutionEvent {
   eventId: string; missionId: string; taskId: string | null; agentId: string | null
   type: string; status: string; timestamp: number; sequence: number; correlationId: string
@@ -139,6 +150,17 @@ export class SqliteRepository extends JsonRepository {
         this.db.prepare('INSERT INTO schema_migrations VALUES (12)').run()
       })()
     }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 13').get()) {
+      this.db.transaction(() => {
+        // Local anchor of the audit chain: how many hashed events exist and which hash is the head. Updated in the same
+        // transaction as every event so truncation and replacement of the tail become detectable. Seeded from current data.
+        this.db.exec('CREATE TABLE IF NOT EXISTS audit_anchor (id INTEGER PRIMARY KEY CHECK(id = 1), count INTEGER NOT NULL, head_hash TEXT, updated_at INTEGER NOT NULL)')
+        const n = (this.db.prepare('SELECT COUNT(*) AS n FROM audit_events WHERE hash IS NOT NULL').get() as { n: number }).n
+        const head = (this.db.prepare('SELECT hash FROM audit_events WHERE hash IS NOT NULL ORDER BY rowid DESC LIMIT 1').get() as { hash: string } | undefined)?.hash ?? null
+        this.db.prepare('INSERT OR REPLACE INTO audit_anchor (id,count,head_hash,updated_at) VALUES (1,?,?,?)').run(n, head, Date.now())
+        this.db.prepare('INSERT INTO schema_migrations VALUES (13)').run()
+      })()
+    }
     this.chronosService = new ChronosService(this.db, this)
     this.llmPolicyStore = new LlmPolicyStore(this.db)
     this.gateInstance = new CerberusGate(this.db, createDefaultToolRegistry(), { policyHash: () => this.policyGuard.getPolicyHash(), audit: e => { this.recordAuditEvent(e) }, egressAllowed: tool => tool === 'llm.plan' && this.llmPolicyStore.isEnabled() })
@@ -226,41 +248,54 @@ export class SqliteRepository extends JsonRepository {
     const missionId = input.missionId ?? null
     const correlationId = input.correlationId ?? input.missionId ?? randomUUID()
 
-    // Obtener el hash del último evento registrado para formar la cadena (blockchain local de auditoría)
-    const lastRow = this.db.prepare('SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1').get() as { hash: string | null } | undefined
-    const prevHash = lastRow?.hash ?? 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000'
-    const payload = `${prevHash}|${id}|${input.actor}|${missionId}|${input.action}|${input.result}|${correlationId}|${now}`
-    const hash = createHash('sha256').update(payload, 'utf8').digest('hex')
-
-    this.db.prepare('INSERT INTO audit_events (id,actor,mission_id,action,result,correlation_id,timestamp,prev_hash,hash) VALUES (?,?,?,?,?,?,?,?,?)')
-      .run(id, input.actor, missionId, input.action, input.result, correlationId, now, prevHash, hash)
-
-    return { id, hash, prevHash }
+    // Read-the-head, insert and anchor update are one transaction: with WAL a second process that read a stale head cannot
+    // commit (SQLITE_BUSY) instead of forking the chain. Inside a caller's transaction this becomes a savepoint.
+    const append = this.db.transaction((): { id: string; hash: string; prevHash: string | null } => {
+      const lastRow = this.db.prepare('SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1').get() as { hash: string | null } | undefined
+      const prevHash = lastRow?.hash ?? AUDIT_GENESIS
+      const payload = `${prevHash}|${id}|${input.actor}|${missionId}|${input.action}|${input.result}|${correlationId}|${now}`
+      const hash = createHash('sha256').update(payload, 'utf8').digest('hex')
+      this.db.prepare('INSERT INTO audit_events (id,actor,mission_id,action,result,correlation_id,timestamp,prev_hash,hash) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(id, input.actor, missionId, input.action, input.result, correlationId, now, prevHash, hash)
+      const moved = this.db.prepare('UPDATE audit_anchor SET count = count + 1, head_hash = ?, updated_at = ? WHERE id = 1').run(hash, now)
+      if (moved.changes !== 1) this.db.prepare('INSERT INTO audit_anchor (id,count,head_hash,updated_at) VALUES (1,1,?,?)').run(hash, now)
+      return { id, hash, prevHash }
+    })
+    return this.db.inTransaction ? append() : append.immediate()
   }
   listAuditEvents(filter: { action?: string; missionId?: string; limit: number; offset: number }): Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number;prev_hash?:string|null;hash?:string|null}> {
     return this.db.prepare('SELECT id,actor,mission_id AS missionId,action,result,correlation_id AS correlationId,timestamp,prev_hash,hash FROM audit_events WHERE (? IS NULL OR action=?) AND (? IS NULL OR mission_id=?) ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?').all(filter.action ?? null,filter.action ?? null,filter.missionId ?? null,filter.missionId ?? null,filter.limit,filter.offset) as Array<{id:string;actor:string;missionId:string|null;action:string;result:string;correlationId:string;timestamp:number;prev_hash?:string|null;hash?:string|null}>
   }
-  verifyAuditIntegrity(): { verified: boolean; totalEvents: number; brokenAtId: string | null; error: string | null } {
+  /**
+   * Recomputes the audit chain. Legacy rows without a hash are accepted ONLY before the first hashed event (pre-migration
+   * data); a missing hash afterwards is tampering. The local anchor (count + head) additionally exposes truncation and
+   * replacement of the tail. An attacker who can also rewrite the anchor is caught only by an external anchor
+   * (see scripts/verify-audit-chain.cjs --expect-head/--expect-count).
+   */
+  verifyAuditIntegrity(): AuditIntegrity {
     const events = this.db.prepare('SELECT id,actor,mission_id,action,result,correlation_id,timestamp,prev_hash,hash FROM audit_events ORDER BY rowid ASC').all() as Array<{
       id: string; actor: string; mission_id: string | null; action: string; result: string; correlation_id: string; timestamp: number; prev_hash: string | null; hash: string | null
     }>
-    let currentPrev = 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000'
+    const anchorRow = this.db.prepare('SELECT count, head_hash FROM audit_anchor WHERE id = 1').get() as { count: number; head_hash: string | null } | undefined
+    const anchor = anchorRow ? { count: anchorRow.count, headHash: anchorRow.head_hash } : null
+    let currentPrev = AUDIT_GENESIS, hashed = 0
+    const fail = (code: AuditIntegrity['code'], id: string | null, error: string): AuditIntegrity => ({ verified: false, code, totalEvents: events.length, brokenAtId: id, error, headHash: hashed ? currentPrev : null, hashedEvents: hashed, anchor })
     for (const evt of events) {
       if (!evt.hash) {
-        // Evento pre-migración v6: no rompe, pero se salta
-        continue
+        if (hashed > 0) return fail('HASH_MISSING', evt.id, `Evento sin hash después de la cadena firmada: ${evt.id}`)
+        continue // evento pre-migración v6, anterior al primer evento encadenado
       }
-      if (evt.prev_hash !== currentPrev) {
-        return { verified: false, totalEvents: events.length, brokenAtId: evt.id, error: `Discrepancia en cadena: prev_hash esperado ${currentPrev}, encontrado ${evt.prev_hash}` }
-      }
+      if (evt.prev_hash !== currentPrev) return fail('CHAIN_BROKEN', evt.id, `Discrepancia en cadena: prev_hash esperado ${currentPrev}, encontrado ${evt.prev_hash}`)
       const payload = `${evt.prev_hash}|${evt.id}|${evt.actor}|${evt.mission_id}|${evt.action}|${evt.result}|${evt.correlation_id}|${evt.timestamp}`
-      const expectedHash = createHash('sha256').update(payload, 'utf8').digest('hex')
-      if (evt.hash !== expectedHash) {
-        return { verified: false, totalEvents: events.length, brokenAtId: evt.id, error: `Hash alterado o no coincidente para evento ${evt.id}` }
-      }
-      currentPrev = evt.hash
+      if (evt.hash !== createHash('sha256').update(payload, 'utf8').digest('hex')) return fail('HASH_MISMATCH', evt.id, `Hash alterado o no coincidente para evento ${evt.id}`)
+      currentPrev = evt.hash; hashed++
     }
-    return { verified: true, totalEvents: events.length, brokenAtId: null, error: null }
+    if (anchor) {
+      if (hashed < anchor.count) return fail('TRUNCATED', null, `Faltan eventos: la cadena tiene ${hashed} y el ancla registra ${anchor.count}`)
+      if (hashed > anchor.count) return fail('ANCHOR_BEHIND', null, `La cadena tiene ${hashed} eventos y el ancla sólo ${anchor.count}`)
+      if (hashed > 0 && anchor.headHash !== currentPrev) return fail('HEAD_MISMATCH', null, 'La cabeza de la cadena no coincide con el ancla')
+    }
+    return { verified: true, totalEvents: events.length, brokenAtId: null, error: null, headHash: hashed ? currentPrev : null, hashedEvents: hashed, anchor }
   }
   private workflowEvent(missionId: string, actor: string, state: string): void {
     const event = { id: randomUUID(), type: 'LOCAL_EXECUTION_STATE', actor, timestamp: Date.now(), payload: { missionId, state } }
