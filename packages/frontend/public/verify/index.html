@@ -33,7 +33,9 @@
   <p class="note">Same checks as <code>node scripts/verify-attestation-onchain.cjs</code> in the repository. Testnet: no economic value. RPC node: <code id="rpcname"></code>.</p>
 </main>
 <script>
-const RPC = 'https://test.rpc.fastnear.com/'
+// Public, read-only RPC nodes tried in order. Regular nodes discard old transactions (~2.5 days), so the archival node is last.
+const RPCS = ['https://test.rpc.fastnear.com/', 'https://rpc.testnet.near.org/', 'https://archival-rpc.testnet.near.org/']
+let RPC = RPCS[0]
 const SIGNER = 'hades-omega.testnet', CONTRACT = 'audit.hades-omega.testnet'
 const TX = 'BGzHzQArywmJifVAaftWm7dwKZhzCay6ECutxfagw1V3', DEPLOY_TX = 'QSf1bwTWzvvRCQ6W4HQ5fVmYYQN3BAyXudqqs6WsPqj'
 const LIMITED_KEY = 'ed25519:Gm4bBKzHhAsHhQGUfSPpphL1QxTCA8uxbaJmPYvVtw7n'
@@ -43,7 +45,21 @@ const EXPLORER = 'https://explorer.testnet.near.org/transactions/' + TX
 const $ = id => document.getElementById(id)
 $('txlink').href = EXPLORER; $('txlink').textContent = TX; $('rpcname').textContent = new URL(RPC).hostname
 
-async function rpc(method, params) { const r = await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'v', method, params }) }); return r.json() }
+// Tries each node (20 s timeout) until one returns a result; an RPC error object or a network failure moves on to the next node.
+async function rpc(method, params) {
+  let last
+  for (const url of RPCS) {
+    try {
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000)
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'v', method, params }), signal: ctl.signal })
+      clearTimeout(timer)
+      const j = await r.json()
+      if (j && j.result) { RPC = url; $('rpcname').textContent = new URL(url).hostname; return j }
+      last = j
+    } catch (e) { last = { error: String(e) } }
+  }
+  return last || { error: 'no RPC node answered' }
+}
 async function view(m, args) { const r = await rpc('query', { request_type: 'call_function', finality: 'final', account_id: CONTRACT, method_name: m, args_base64: btoa(JSON.stringify(args)) }); return JSON.parse(new TextDecoder().decode(new Uint8Array(r.result.result))) }
 function b58hex(s) { const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; let n = 0n; for (const c of s) n = n * 58n + BigInt(A.indexOf(c)); return n.toString(16).padStart(64, '0') }
 const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
