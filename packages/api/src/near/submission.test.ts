@@ -173,13 +173,14 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
     expect(raw.prepare('SELECT COUNT(*) AS n FROM near_submissions').get()).toEqual({ n: 0 })
   })
 
-  it('respects the emergency stop and keeps the approval for later', async () => {
+  it('revokes the existing approval on emergency stop and refuses it after clearing', async () => {
     const i = approvedIntent()
     repo.gate.setStopped(true, 'admin')
     await expect(svc.submit(i.id, 'admin')).rejects.toThrow('EMERGENCY_STOP')
     expect(rpc.broadcasts).toHaveLength(0)
     repo.gate.setStopped(false, 'admin')
-    expect((await svc.submit(i.id, 'admin')).intent.status).toBe('BROADCASTED')
+    await expect(svc.submit(i.id, 'admin')).rejects.toThrow()
+    expect(rpc.broadcasts).toHaveLength(0)
   })
 
   describe('preflight failures leave the one-time approval intact', () => {
@@ -343,11 +344,13 @@ describe('NEAR submission (fake chain, throwaway in-memory key)', () => {
         expect((await call('ADMIN', 'POST', `/near/intents/${i.id}/submit`)).statusCode).toBe(422)
         rpc.owner = SIGNER
         repo.gate.setStopped(true, 'admin'); expect((await call('ADMIN', 'POST', `/near/intents/${i.id}/submit`)).statusCode).toBe(423); repo.gate.setStopped(false, 'admin')
-        const ok = await call('ADMIN', 'POST', `/near/intents/${i.id}/submit`)
+        expect((await call('ADMIN', 'POST', `/near/intents/${i.id}/submit`)).statusCode).toBe(409)
+        const fresh = approvedIntent()
+        const ok = await call('ADMIN', 'POST', `/near/intents/${fresh.id}/submit`)
         expect(ok.statusCode).toBe(200); expect(ok.json().data.intent.status).toBe('BROADCASTED')
-        expect((await call('ADMIN', 'GET', `/near/submissions/${i.id}`)).json().data.submission.txHash).toBeTruthy()
-        expect((await call('ADMIN', 'GET', '/near/submissions')).json().data).toHaveLength(1)
-        expect((await call('ADMIN', 'POST', `/near/submissions/${i.id}/reconcile`)).statusCode).toBe(409)
+        expect((await call('ADMIN', 'GET', `/near/submissions/${fresh.id}`)).json().data.submission.txHash).toBeTruthy()
+        expect((await call('ADMIN', 'GET', '/near/submissions')).json().data).toHaveLength(2)
+        expect((await call('ADMIN', 'POST', `/near/submissions/${fresh.id}/reconcile`)).statusCode).toBe(409)
       } finally { await app.close(); process.env.JWT_SECRET = prev }
     })
   })

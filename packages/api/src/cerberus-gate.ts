@@ -71,6 +71,11 @@ export class CerberusGate implements ExecutionGate {
   setStopped(stopped: boolean, actor: string): void {
     this.db.transaction(() => {
       this.db.prepare('UPDATE near_security SET stopped=? WHERE id=1').run(stopped ? 1 : 0)
+      if (stopped) {
+        const now = this.now()
+        this.db.prepare("UPDATE cerberus_approvals SET status='REJECTED', decided_by=?, decided_at=?, justification='Revoked by emergency stop', expires_at=NULL WHERE consumed_at IS NULL AND status IN ('PENDING','APPROVED')").run(actor, now)
+        this.db.prepare("UPDATE cerberus_decisions SET grant_used_at=? WHERE outcome='PERMIT' AND grant_used_at IS NULL").run(now)
+      }
       this.opts.audit({ actor, action: stopped ? 'EMERGENCY_STOP' : 'EMERGENCY_CLEAR', result: 'OK' })
     })()
   }
@@ -135,6 +140,7 @@ export class CerberusGate implements ExecutionGate {
       const now = this.now()
       const row = this.db.prepare('SELECT * FROM cerberus_decisions WHERE id=?').get(grantId) as { ts: number; tool: string; params_hash: string; outcome: string; agent: string; grant_used_at: number | null } | undefined
       if (!row || row.outcome !== 'PERMIT') throw new GateError('GRANT_INVALID')
+      if (this.isStopped()) throw new GateError('EMERGENCY_STOP')
       if (row.tool !== tool) throw new GateError('GRANT_TOOL_MISMATCH')
       if (row.grant_used_at !== null) throw new GateError('GRANT_REUSED')
       if (now - row.ts > GRANT_TTL_MS) throw new GateError('GRANT_EXPIRED')

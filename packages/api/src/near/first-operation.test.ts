@@ -62,7 +62,7 @@ describe('first NEAR operation (attestation of the deployed WASM) — rehearsal,
     const fresh = store.create(op({ auditId: 'hades-attest-0004' }), 'admin-1')
     expect(() => store.requestApproval(fresh.id, 'admin-1')).toThrow(/EMERGENCY_STOP/)
     store.setEmergency(false, 'admin-1')
-    expect(store.claimForSigning(ready.id, ready.hash, 'admin-1').status).toBe('SIGNING') // the approval survived the stop, unspent
+    expect(() => store.claimForSigning(ready.id, ready.hash, 'admin-1')).toThrow(/APPROVAL_REJECTED/)
   })
 
   it('preparing the operation sends nothing: no submission exists and no network call is possible from this store', () => {

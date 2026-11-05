@@ -167,7 +167,8 @@ describe('CERBERUS gate: emergency stop and budgets', () => {
     const restarted = new CerberusGate(dir, createDefaultToolRegistry(), { policyHash: () => g.policy.hash, audit: () => {}, clock: () => g.clock.now })
     expect(restarted.isStopped()).toBe(true)
     restarted.setStopped(false, 'admin')
-    expect(restarted.authorize(pay({ approvalId: pendingApproved }, { ...PAY, amount: 20 })).outcome).toBe('PERMIT')
+    expect(restarted.authorize(pay({ approvalId: pendingApproved }, { ...PAY, amount: 20 })).outcome).toBe('DENY')
+    expect(() => restarted.consumeGrant(run.grantId!, 'payment.execute', PAY)).toThrow('GRANT_REUSED')
   })
   it('enforces the daily budget across consumed approvals and resets the next UTC day', () => {
     const g = setup()
