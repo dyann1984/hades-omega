@@ -16,7 +16,14 @@ const EXPECT = { audit_id: 'hades-attest-0001', content_hash: '4bb4f2d98d2919b60
 const crypto = require('node:crypto')
 const results = []
 const check = (name, ok, detail) => { results.push({ name, ok: !!ok, ...(detail !== undefined ? { detail } : {}) }); if (!process.argv.includes('--json')) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail !== undefined ? '  ' + (typeof detail === 'string' ? detail : JSON.stringify(detail)) : ''}`) }
-async function rpc(method, params) { const r = await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'v', method, params }) }); return r.json() }
+async function rpc(method, params) {
+  const r = await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'v', method, params }) })
+  if (!r.ok) throw new Error(`RPC ${method}: HTTP ${r.status}`)
+  const body = await r.json()
+  if (body.error) throw new Error(`RPC ${method}: ${body.error.message || 'error'}${body.error.cause?.name ? ` (${body.error.cause.name})` : ''}`)
+  if (body.result == null) throw new Error(`RPC ${method}: respuesta sin resultado`)
+  return body
+}
 const view = async (account, m, args) => { const r = await rpc('query', { request_type: 'call_function', finality: 'final', account_id: account, method_name: m, args_base64: Buffer.from(JSON.stringify(args)).toString('base64') }); return JSON.parse(Buffer.from(r.result.result).toString()) }
 function b58hex(s) { const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; let n = 0n; for (const c of s) n = n * 58n + BigInt(A.indexOf(c)); return n.toString(16).padStart(64, '0') }
 const near = y => { const s = String(y).padStart(25, '0'); return `${s.slice(0, -24)}.${s.slice(-24).replace(/0+$/, '') || '0'}` }
@@ -60,4 +67,8 @@ const near = y => { const s = String(y).padStart(25, '0'); return `${s.slice(0, 
   if (process.argv.includes('--json')) console.log(JSON.stringify({ network: 'testnet', rpc: RPC, checkedAt: new Date().toISOString(), allPassed: failed === 0, results }, null, 2))
   else console.log(failed === 0 ? `\nTODAS LAS VERIFICACIONES PASARON (${results.length})` : `\n${failed} VERIFICACIÓN(ES) FALLARON`)
   process.exit(failed === 0 ? 0 : 1)
-})().catch(e => { console.error('ERROR', e.message); process.exit(2) })
+})().catch(e => {
+  if (process.argv.includes('--json')) console.log(JSON.stringify({ network: 'testnet', rpc: RPC, checkedAt: new Date().toISOString(), allPassed: false, results, error: e.message }, null, 2))
+  else console.error('ERROR', e.message)
+  process.exit(2)
+})

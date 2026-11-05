@@ -17,6 +17,13 @@ Fecha: 2026-11-05. Rama: `codex/hades-omega-finalizacion`, creada desde `6ad144b
 
 ## Cambios y pruebas
 
+### Reanudación tras corte de energía — 2026-11-05
+
+- Se encontró HEAD `dd1f4e2` en `codex/hades-omega-finalizacion`, con árbol Git inicialmente limpio. `d616831` es un antecesor; las carpetas ignoradas de datos y recuperación se conservaron. No se ha demostrado corrupción atribuible al corte.
+- Regresión `npx turbo run test --force --concurrency=1` fuera del sandbox: 398 pruebas aprobadas y 3 omitidas; las compilaciones de API, core y frontend pasaron. En el sandbox Vitest falló antes de las pruebas por `EPERM` al renombrar temporales. CHRONOS pasó sus 12 pruebas específicas fuera del sandbox.
+- El verificador de atestación informa ahora errores HTTP y JSON-RPC y emite JSON válido también cuando falla. Se comprobó su sintaxis y el manejo de un error RPC inducido localmente. La consulta real no pudo conectarse (`fetch failed`), incluso fuera del sandbox: no hay verificación actual en cadena.
+- La regresión de navegador y el flujo integral no se repitieron en esta reanudación. Las brechas y autorizaciones de este informe siguen vigentes; estos resultados no certifican el producto completo.
+
 - CHRONOS ahora mantiene los reintentos pendientes durante la pausa y los ejecuta tras reanudar. Prueba con base SQLite real, pausa y reinicio: `npx vitest run src/chronos/chronos.test.ts`, 12 aprobadas, fuera del sandbox.
 - `npm test` y `npm run build` inicialmente devolvieron éxito desde caché de Turbo: no cuentan como ejecución nueva.
 - Suite sin caché dentro del sandbox: falló antes de ejecutar pruebas por `EPERM` al renombrar archivos temporales de Vitest. La repetición fuera del sandbox pasó: 398 pruebas aprobadas y 3 omitidas (API 245 + 3 omitidas, core 78, frontend 75).
