@@ -13,6 +13,28 @@ const fail = (code: string, message: string) => ({ success: false, data: null, e
 export async function vaultRoutes(app: FastifyInstance, repository: SqliteRepository, near: NearSubmissionService): Promise<void> {
   app.addHook('preHandler', async req => requireRole(req, ['ADMIN']))
   const actorOf = (req: { user?: unknown }): string => (req.user as { sub: string }).sub
+  const secrets = repository.createSecretVault(process.env['HADES_VAULT_MASTER_KEY'])
+  const vaultError = (e: unknown, reply: any) => {
+    const code = e instanceof Error ? e.message : ''
+    if (['VAULT_NOT_CONFIGURED', 'VAULT_AUTHENTICATION_FAILED', 'VAULT_NAME_INVALID', 'VAULT_VALUE_INVALID'].includes(code)) return reply.code(code === 'VAULT_NOT_CONFIGURED' ? 503 : code === 'VAULT_AUTHENTICATION_FAILED' ? 503 : 400).send(fail(code, 'No se pudo completar la operación de Vault.'))
+    throw e
+  }
+  app.get('/vault/secrets', async (_req, reply) => { try { return ok({ configured: secrets.configured, secrets: secrets.list() }) } catch (e) { return vaultError(e, reply) } })
+  app.put('/vault/secrets/:name', { bodyLimit: 20000 }, async (req, reply) => {
+    try {
+      if (repository.gate.isStopped()) return reply.code(409).send(fail('EMERGENCY_STOP', 'Parada de emergencia activa.'))
+      const body = req.body as { value?: unknown } | null
+      if (!body || typeof body.value !== 'string' || Object.keys(body).some(k => k !== 'value')) throw new Error('VAULT_VALUE_INVALID')
+      secrets.put((req.params as { name: string }).name, body.value, actorOf(req))
+      return ok({ stored: true })
+    } catch (e) { return vaultError(e, reply) }
+  })
+  app.delete('/vault/secrets/:name', async (req, reply) => {
+    try {
+      if (repository.gate.isStopped()) return reply.code(409).send(fail('EMERGENCY_STOP', 'Parada de emergencia activa.'))
+      return ok({ deleted: secrets.delete((req.params as { name: string }).name, actorOf(req)) })
+    } catch (e) { return vaultError(e, reply) }
+  })
   app.get('/vault/status', async () => ok(buildVaultStatus({ repository, near, wsClients: getConnectedClientsCount })))
 
   // Read-only network check; separate from /status so opening the page never depends on an external RPC.

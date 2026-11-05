@@ -13,6 +13,7 @@ import { dispatchCapability } from './capability-dispatcher.js'
 import { guard } from './runtime.js'
 import { NearIntentStore } from './near-intents.js'
 import { ChronosService, CHRONOS_MIGRATION_SQL } from './chronos/chronos.js'
+import { SecretVault } from './secret-vault.js'
 
 type Legacy = { missions: Mission[]; audits: AuditRecord[]; approvals: StoredApproval[]; events: SystemEvent[]; idempotency: Record<string, { fingerprint: string; missionId: string }> }
 type Row = { data: string }
@@ -34,6 +35,7 @@ export class SqliteRepository extends JsonRepository {
   private llmPolicyStore!: LlmPolicyStore
   get llmPolicy(): LlmPolicyStore { return this.llmPolicyStore }
   get chronos(): ChronosService { return this.chronosService }
+  createSecretVault(key: string | undefined): SecretVault { return new SecretVault(this.db, key, (actor, action, result) => { this.recordAuditEvent({ actor, action, result }) }) }
   /** Builds the NEAR submission service over this repository's database (kept here so `db` stays private). */
   createNearSubmissionService(deps: Omit<ConstructorParameters<typeof NearSubmissionService>[0], 'db' | 'repository'>): NearSubmissionService {
     return new NearSubmissionService({ ...deps, db: this.db, repository: this })
@@ -122,6 +124,12 @@ export class SqliteRepository extends JsonRepository {
       this.db.transaction(() => {
         this.db.exec(`CREATE TABLE mission_evidence (mission_id TEXT PRIMARY KEY, report_sha256 TEXT NOT NULL, report_markdown TEXT NOT NULL, sealed_task_id TEXT NOT NULL, recorded_by TEXT NOT NULL, recorded_at INTEGER NOT NULL, near_intent_id TEXT, near_state TEXT, near_note TEXT, near_updated_at INTEGER);`)
         this.db.prepare('INSERT INTO schema_migrations VALUES (10)').run()
+      })()
+    }
+    if (!this.db.prepare('SELECT 1 FROM schema_migrations WHERE version = 11').get()) {
+      this.db.transaction(() => {
+        this.db.exec('CREATE TABLE vault_secrets (name TEXT PRIMARY KEY, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, tag BLOB NOT NULL, updated_at INTEGER NOT NULL)')
+        this.db.prepare('INSERT INTO schema_migrations VALUES (11)').run()
       })()
     }
     this.chronosService = new ChronosService(this.db, this)
