@@ -70,6 +70,22 @@ describe('CHRONOS service (real SQLite)', () => {
     expect(svc().runs(task.id)).toHaveLength(1)
   })
 
+  it('does not claim an in-progress retry from a second SQLite connection', async () => {
+    const task = svc().create({ title: 'Concurrent retry', kind: 'APPROVALS_DIGEST', cron: '0 * * * *' }, 'a')
+    const second = new SqliteRepository(join(dir, 'h.sqlite'), join(dir, 'h.json')); await second.init()
+    const original = JOB_REGISTRY['APPROVALS_DIGEST']!.run
+    try {
+      JOB_REGISTRY['APPROVALS_DIGEST']!.run = () => { throw new Error('temporary') }
+      const pending = svc().runNow(task.id, 'a'); expect(pending.status).toBe('RETRYING')
+      now += 31_000
+      let calls = 0
+      JOB_REGISTRY['APPROVALS_DIGEST']!.run = () => { calls++; expect(second.createChronos(() => now).tick().retried).toBe(0); return { ok: true } }
+      expect(svc().tick().retried).toBe(1)
+      expect(calls).toBe(1)
+      expect(svc().runs(task.id)[0]).toMatchObject({ id: pending.id, status: 'SUCCEEDED', attempt: 2 })
+    } finally { JOB_REGISTRY['APPROVALS_DIGEST']!.run = original; second.close() }
+  })
+
   it('coalesces slots missed during downtime into one catch-up run', () => {
     const task = svc().create({ title: 'Every 15 min', kind: 'APPROVALS_DIGEST', cron: '*/15 * * * *' }, 'a')
     now = T0 + 10 * HOUR

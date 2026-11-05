@@ -189,16 +189,20 @@ export class ChronosService {
     // Inserted as RETRYING with retry_at=now so a crash before execute() is picked up by the next tick.
     this.db.prepare("INSERT INTO chronos_runs (id,task_id,scheduled_for,trigger,status,attempt,retry_at) VALUES (?,?,?,'MANUAL','RETRYING',0,?)").run(runId, id, now, now)
     this.audit(actor, 'CHRONOS_RUN_REQUESTED', id, runId)
-    return this.execute(runId)
+    const run = this.execute(runId, false)
+    if (!run) throw new ChronosError('INVALID_STATE', 'run could not be claimed')
+    return run
   }
 
   /** Executes (or re-executes) one run row. Jobs are synchronous and local, so a run is never left half-claimed. */
-  private execute(runId: string): ChronosRun {
+  private execute(runId: string, requireActive: boolean): ChronosRun | null {
+    const startedAt = this.clock()
+    const claim = this.db.prepare("UPDATE chronos_runs SET status = 'RUNNING', attempt = attempt + 1, started_at = COALESCE(started_at, ?), retry_at = NULL WHERE id = ? AND status = 'RETRYING' AND EXISTS (SELECT 1 FROM chronos_tasks t WHERE t.id = chronos_runs.task_id AND t.status != 'CANCELLED' AND (? = 0 OR t.status = 'ACTIVE'))").run(startedAt, runId, requireActive ? 1 : 0)
+    if (claim.changes !== 1) return null
     const run = toRun(this.db.prepare('SELECT * FROM chronos_runs WHERE id = ?').get(runId) as RunRow)
     const task = this.get(run.taskId)
     const job = Object.hasOwn(JOB_REGISTRY, task.kind) ? JOB_REGISTRY[task.kind]! : undefined
-    const startedAt = this.clock(), attempt = run.attempt + 1
-    this.db.prepare("UPDATE chronos_runs SET status = 'RUNNING', attempt = ?, started_at = COALESCE(started_at, ?), retry_at = NULL WHERE id = ?").run(attempt, startedAt, runId)
+    const attempt = run.attempt
     try {
       if (!job) throw new Error('job kind is no longer registered')
       // Mandatory CERBERUS check on every run, so a task created earlier cannot outlive a policy change or emergency stop.
@@ -250,11 +254,11 @@ export class ChronosService {
         return ins.changes === 1
       })()
       if (!claimed) continue
-      started++
-      executed.push(this.execute(runId))
+      const result = this.execute(runId, true)
+      if (result) { started++; executed.push(result) }
     }
     const retries = this.db.prepare("SELECT r.id FROM chronos_runs r JOIN chronos_tasks t ON t.id = r.task_id WHERE r.status = 'RETRYING' AND r.retry_at IS NOT NULL AND r.retry_at <= ? AND t.status = 'ACTIVE'").all(now) as Array<{ id: string }>
-    for (const r of retries) { retried++; executed.push(this.execute(r.id)) }
+    for (const r of retries) { const result = this.execute(r.id, true); if (result) { retried++; executed.push(result) } }
     // Requeued-by-recovery runs have retry_at set to now, so they flow through the retry path above.
     return { started, retried, executed }
   }
