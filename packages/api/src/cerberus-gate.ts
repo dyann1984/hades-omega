@@ -170,7 +170,7 @@ export class CerberusGate implements ExecutionGate {
     const shape = this.checkShape(req.params)
     if (shape) return deny('INVALID_PARAMS', shape)
     const params = req.params as Record<string, unknown>
-    if (this.isStopped() && tool.effect !== 'READ') return deny('EMERGENCY_STOP', 'emergency stop is active: sensitive actions are suspended')
+    if (this.isStopped()) return deny('EMERGENCY_STOP', 'emergency stop is active: new tool executions are suspended')
     if (tool.effect === 'EGRESS' && !this.opts.egressAllowed?.(tool.id)) return deny('EGRESS_NOT_AUTHORIZED', 'egress to an external provider is not authorized by an administrator policy')
     if (!tool.agents.includes(req.agent as never)) return deny('AGENT_NOT_PERMITTED', `agent ${req.agent} may not use ${tool.id}`)
     if (!tool.roles.includes(req.role)) return deny('ROLE_NOT_PERMITTED', `role ${req.role} may not use ${tool.id}`)

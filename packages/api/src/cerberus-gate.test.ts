@@ -153,7 +153,7 @@ describe('CERBERUS gate: one-time human approvals', () => {
 })
 
 describe('CERBERUS gate: emergency stop and budgets', () => {
-  it('stop is persistent and blocks every new sensitive action, including already granted ones; reads continue', () => {
+  it('stop is persistent and blocks new tool executions, including reads and already granted actions', () => {
     const dir = new Database(':memory:'), g = setup(dir)
     const id = approved(g)
     const run = g.gate.authorize(pay({ approvalId: id }))
@@ -162,7 +162,7 @@ describe('CERBERUS gate: emergency stop and budgets', () => {
     expect(g.gate.authorize(pay({ approvalId: pendingApproved }, { ...PAY, amount: 20 }))).toMatchObject({ outcome: 'DENY', code: 'EMERGENCY_STOP' })
     expect(g.gate.authorize(pay({}, { ...PAY, amount: 21 }))).toMatchObject({ outcome: 'DENY', code: 'EMERGENCY_STOP' })
     expect(() => g.gate.consumeGrant(run.grantId!, 'payment.execute', PAY)).toThrow('EMERGENCY_STOP')
-    expect(g.gate.authorize({ tool: 'chronos.approvals_digest', agent: 'HADES', role: 'SYSTEM', source: 'CHRONOS', params: {}, actor: 'c' }).outcome).toBe('PERMIT')
+    expect(g.gate.authorize({ tool: 'chronos.approvals_digest', agent: 'HADES', role: 'SYSTEM', source: 'CHRONOS', params: {}, actor: 'c' })).toMatchObject({ outcome: 'DENY', code: 'EMERGENCY_STOP' })
     // "Restart": a new gate on the same database sees the same flag.
     const restarted = new CerberusGate(dir, createDefaultToolRegistry(), { policyHash: () => g.policy.hash, audit: () => {}, clock: () => g.clock.now })
     expect(restarted.isStopped()).toBe(true)
