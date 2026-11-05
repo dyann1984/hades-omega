@@ -17,6 +17,12 @@ Fecha: 2026-11-05. Rama: `codex/hades-omega-finalizacion`, creada desde `6ad144b
 
 ## Cambios y pruebas
 
+### Continuación de finalización
+
+- Recuperación conservada en `7201e68`. Vault cifrado añadido en `9bf0d99`: AES-256-GCM, clave externa, rutas ADMIN que no revelan valores, prueba de integridad y rechazo de clave incorrecta. `npm run test -w @hades/api -- --run src/secret-vault.test.ts src/vault.test.ts`: 12 aprobadas. `npm run type-check -w @hades/api` y lint de API pasaron (lint con advertencias). Ver `docs/vault-secrets.md` para límites, incluida la ausencia de rotación automática e integración con consumidores NEAR/LLM.
+- `8753e50` bloquea también herramientas READ durante la parada de emergencia. Pruebas `cerberus-gate`, `chronos`, `near/submission` y `vault`: 84 aprobadas. Esto no demuestra el bloqueo de todos los caminos de ejecución ni la cancelación de tareas en curso: se requiere trabajo adicional antes de afirmar una parada integral.
+- El resultado de 398 pruebas de la sección de recuperación precede estos commits; no sustituye una regresión completa posterior. Los pasos de agentes, concurrencia de CHRONOS, Playwright, diagnóstico de conectividad y verificación final permanecen pendientes.
+
 ### Reanudación tras corte de energía — 2026-11-05
 
 - Se encontró HEAD `dd1f4e2` en `codex/hades-omega-finalizacion`, con árbol Git inicialmente limpio. `d616831` es un antecesor; las carpetas ignoradas de datos y recuperación se conservaron. No se ha demostrado corrupción atribuible al corte.
