@@ -49,6 +49,21 @@ describe('encrypted secret vault', () => {
       expect(() => vault.put('TOKEN', '', 'admin')).toThrow('VAULT_VALUE_INVALID')
     } finally { repo.close() }
   })
+  it('rotates every existing record atomically and rejects the old key after restart', async () => {
+    const { repo, db, legacy } = await repository(), old = key(), next = key()
+    const vault = repo.createSecretVault(old)
+    vault.put('TOKEN_A', 'first secret', 'admin'); vault.put('TOKEN_B', 'second secret', 'admin')
+    expect(() => vault.rotate('bad', 'admin')).toThrow('VAULT_KEY_INVALID')
+    expect(() => vault.rotate(old, 'admin')).toThrow('VAULT_KEY_UNCHANGED')
+    vault.rotate(next, 'admin')
+    expect(vault.get('TOKEN_A', 'service')).toBe('first secret')
+    repo.close()
+    const reopened = new SqliteRepository(db, legacy); await reopened.init()
+    try {
+      expect(() => reopened.createSecretVault(old).list()).toThrow('VAULT_AUTHENTICATION_FAILED')
+      expect(reopened.createSecretVault(next).get('TOKEN_B', 'service')).toBe('second secret')
+    } finally { reopened.close() }
+  })
   it('limits HTTP operations to administrators and never returns stored values', async () => {
     const { repo } = await repository(), oldJwt = process.env.JWT_SECRET, oldKey = process.env.HADES_VAULT_MASTER_KEY
     process.env.JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'; process.env.HADES_VAULT_MASTER_KEY = key()

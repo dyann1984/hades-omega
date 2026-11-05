@@ -7,7 +7,7 @@ const CHECK = 'HADES_VAULT_KEY_CHECK_V1'
 
 /** Encrypted at rest with an externally provisioned 256-bit key. No key is persisted in SQLite. */
 export class SecretVault {
-  private readonly key: Buffer | null
+  private key: Buffer | null
   constructor(private readonly db: Database.Database, encodedKey: string | undefined, private readonly audit: (actor: string, action: string, result: string) => void) {
     this.key = encodedKey && /^[A-Za-z0-9+/]{43}=$/.test(encodedKey) ? Buffer.from(encodedKey, 'base64') : null
     if (this.key && (this.key.length !== 32 || this.key.toString('base64') !== encodedKey)) throw new Error('VAULT_KEY_INVALID')
@@ -71,5 +71,23 @@ export class SecretVault {
       if (deleted) this.audit(actor, 'VAULT_SECRET_DELETED', this.fingerprint(name))
       return deleted
     })()
+  }
+  /** Call only during a coordinated maintenance window after safely staging the new external key. */
+  rotate(encodedKey: string, actor: string): void {
+    const next = /^[A-Za-z0-9+/]{43}=$/.test(encodedKey) ? Buffer.from(encodedKey, 'base64') : null
+    if (!next || next.length !== 32 || next.toString('base64') !== encodedKey) throw new Error('VAULT_KEY_INVALID')
+    const old = this.requireKey()
+    if (old.equals(next)) throw new Error('VAULT_KEY_UNCHANGED')
+    try {
+      this.db.transaction(() => {
+        this.verify()
+        const rows = this.db.prepare('SELECT name,nonce,ciphertext,tag FROM vault_secrets').all() as Array<Row & { name: string }>
+        const plaintext = rows.map(row => ({ name: row.name, value: this.decrypt(row.name, row) }))
+        this.key = next
+        for (const row of plaintext) this.insert(row.name, row.value)
+        if (!rows.length) this.insert(SENTINEL, CHECK)
+        this.audit(actor, 'VAULT_KEY_ROTATED', `entries=${Math.max(0, rows.length - 1)}`)
+      })()
+    } catch (e) { this.key = old; throw e }
   }
 }
