@@ -1,13 +1,15 @@
 import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../security.js'
 import { guard, audit, near } from '../runtime.js'
-import type { AuditFilter, GUARDOutcome, AgentName } from '@hades/core'
+import { DECISION_CODES, GATE_CODES, type AuditFilter, type GUARDOutcome, type AgentName } from '@hades/core'
 import type { SqliteRepository } from '../sqlite.js'
 import { readTestnetAccount } from '../near-testnet.js'
 import { GateError } from '../cerberus-gate.js'
 
 export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRepository): Promise<void> {
-  app.addHook('preHandler', async req => requireRole(req, ['ADMIN']))
+  // Everything here is ADMIN-only except the static decision-code catalogue (generic, value-free text), open to any authenticated role.
+  app.addHook('preHandler', async req => { if (!req.routeOptions.url?.endsWith('/cerberus/gate/codes')) requireRole(req, ['ADMIN']) })
+  app.get('/cerberus/gate/codes', async () => ok(Object.entries(DECISION_CODES).map(([code, info]) => ({ code, source: code in GATE_CODES ? 'GATE' : 'GUARD', outcome: info.outcome, http: info.http, description: info.description }))))
   app.get('/audit/events', async (req, reply) => {
     if (!repository) return reply.code(503).send(err('AUDIT_UNAVAILABLE', 'Auditoría persistente no disponible'))
     const q=req.query as {action?:string;missionId?:string;limit?:string;offset?:string}
@@ -83,7 +85,7 @@ export async function cerberusRoutes(app: FastifyInstance, repository?: SqliteRe
     const { accountId } = req.params as { accountId: string }
     if (repository) {
       const verdict = repository.gate.authorize({ tool: 'near.account_view', agent: 'HADES', role: 'ADMIN', source: 'API', params: { accountId }, actor: (req.user as { sub: string }).sub })
-      if (verdict.outcome !== 'PERMIT') return reply.code(verdict.code === 'INVALID_PARAMS' ? 400 : 403).send(err(verdict.code === 'INVALID_PARAMS' ? 'INVALID_TESTNET_ACCOUNT' : 'CERBERUS_DENIED', verdict.reason))
+      if (verdict.outcome !== 'PERMIT') return reply.code(verdict.code === 'INVALID_PARAMS' ? 400 : 403).send(verdict.code === 'INVALID_PARAMS' ? err('INVALID_TESTNET_ACCOUNT', 'Cuenta testnet inválida') : err('CERBERUS_DENIED', DECISION_CODES[verdict.code].description, { gateCode: verdict.code }))
     }
     try { return ok(await readTestnetAccount(accountId)) }
     catch (error) {
@@ -183,8 +185,8 @@ function ok<T>(data: T) {
   return { success: true, data, error: null, meta: { requestId: genId(), timestamp: Date.now(), version: '0.3.0' } }
 }
 
-function err(code: string, message: string) {
-  return { success: false, data: null, error: { code, message }, meta: { requestId: genId(), timestamp: Date.now(), version: '0.3.0' } }
+function err(code: string, message: string, extra: Record<string, string> = {}) {
+  return { success: false, data: null, error: { code, message, ...extra }, meta: { requestId: genId(), timestamp: Date.now(), version: '0.3.0' } }
 }
 
 function genId(): string { return Math.random().toString(36).slice(2) }
