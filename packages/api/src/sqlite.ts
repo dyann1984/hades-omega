@@ -165,6 +165,7 @@ export class SqliteRepository extends JsonRepository {
     this.llmPolicyStore = new LlmPolicyStore(this.db)
     this.gateInstance = new CerberusGate(this.db, createDefaultToolRegistry(), { policyHash: () => this.policyGuard.getPolicyHash(), audit: e => { this.recordAuditEvent(e) }, egressAllowed: tool => tool === 'llm.plan' && this.llmPolicyStore.isEnabled() })
     this.nearIntents = new NearIntentStore(this.db, this.policyGuard, this.gateInstance)
+    this.recordPolicyActive()
     this.reconcileOnStartup()
     if (this.db.prepare("SELECT 1 FROM metadata WHERE key = 'legacy_import'").get()) return
     let raw: string | undefined
@@ -296,6 +297,12 @@ export class SqliteRepository extends JsonRepository {
       if (hashed > 0 && anchor.headHash !== currentPrev) return fail('HEAD_MISMATCH', null, 'La cabeza de la cadena no coincide con el ancla')
     }
     return { verified: true, totalEvents: events.length, brokenAtId: null, error: null, headHash: hashed ? currentPrev : null, hashedEvents: hashed, anchor }
+  }
+  /** Governance event: which policy and tool registry are in force. Written only when they differ from the last recorded ones. */
+  private recordPolicyActive(): void {
+    const result = `policy=${this.policyGuard.getPolicyHash().slice(0, 16)}|tools=${this.gateInstance.tools.hash().slice(0, 16)}`
+    const last = this.db.prepare("SELECT result FROM audit_events WHERE action = 'POLICY_ACTIVE' ORDER BY rowid DESC LIMIT 1").get() as { result: string } | undefined
+    if (last?.result !== result) this.recordAuditEvent({ actor: 'system:startup', action: 'POLICY_ACTIVE', result })
   }
   private workflowEvent(missionId: string, actor: string, state: string): void {
     const event = { id: randomUUID(), type: 'LOCAL_EXECUTION_STATE', actor, timestamp: Date.now(), payload: { missionId, state } }
@@ -507,6 +514,12 @@ export class SqliteRepository extends JsonRepository {
     for (const op of approvedOps) {
       const mission = this.getMission(op.mission_id)
       if (!mission?.context?.tags?.includes('dispatcher-v1')) continue
+      // The emergency stop also covers resuming work that was approved before it: it stays APPROVED and is resumed by the
+      // first start after the stop is lifted.
+      if (this.gateInstance.isStopped()) {
+        this.recordAuditEvent({actor:'system:startup-recovery',missionId:op.mission_id,action:'STARTUP_RECOVERY',result:'APPROVED_RESUME_SKIPPED:EMERGENCY_STOP'})
+        continue
+      }
       for (const task of mission.tasks) { if (task.status === 'RUNNING') { task.status='QUEUED'; task.startedAt=null } }
       this.putMission(mission)
       try {

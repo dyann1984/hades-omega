@@ -69,13 +69,16 @@ describe('audit chain hardening (C-3)', () => {
     const file = join(dir, 'h.sqlite'), legacy = join(dir, 'none.json')
     let repo = new SqliteRepository(file, legacy); await repo.init(); repo.close()
     const db = raw(file)
+    // Reproduce a pre-migration database: unhashed rows only, no chain and an empty anchor yet.
+    db.exec('DELETE FROM audit_events; UPDATE audit_anchor SET count = 0, head_hash = NULL')
     for (let i = 0; i < 2; i++) db.prepare('INSERT INTO audit_events (id,actor,mission_id,action,result,correlation_id,timestamp) VALUES (?,?,?,?,?,?,?)').run(randomUUID(), 'old', null, 'LEGACY', 'ok', 'c', 1 + i)
     db.close()
     repo = new SqliteRepository(file, legacy); await repo.init()
     const a = repo.recordAuditEvent({ actor: 'a', action: 'NEW', result: 'ok' })
     const v = repo.verifyAuditIntegrity(); repo.close()
-    expect(v).toMatchObject({ verified: true, hashedEvents: 1, headHash: a.hash })
-    expect(v.totalEvents).toBeGreaterThanOrEqual(3)
+    // 2 legacy rows (unhashed) + POLICY_ACTIVE written by init() + NEW: only the last two are chained.
+    expect(v).toMatchObject({ verified: true, hashedEvents: 2, headHash: a.hash })
+    expect(v.totalEvents).toBe(4)
   })
 
   it('creates the anchor from existing data when an older database is opened (migration compatibility)', async () => {
@@ -108,7 +111,7 @@ describe('independent read-only verifier (scripts/verify-audit-chain.cjs)', () =
     const { repo, file } = await seeded(); repo.close()
     const r = await exec(['--db', file, '--json'])
     expect(r.code).toBe(0)
-    expect(r.out).toMatchObject({ verdict: 'PASS', hashedEvents: 5 })
+    expect(r.out).toMatchObject({ verdict: 'PASS', hashedEvents: 6 }) // POLICY_ACTIVE from init() + 5 seeded events
     expect(r.out.headHash).toMatch(/^[0-9a-f]{64}$/)
   })
 

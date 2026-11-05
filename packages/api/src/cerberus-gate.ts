@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { createHash, randomUUID } from 'node:crypto'
-import { canonicalJson, requiresHumanApproval, type ActorRole, type ExecutionGate, type ToolRegistry } from '@hades/core'
+import { canonicalJson, requiresHumanApproval, GATE_CODES, type ActorRole, type ExecutionGate, type GateCode, type ToolRegistry } from '@hades/core'
 
 export type GateSource = 'API' | 'AGENT' | 'CHRONOS' | 'MISSION' | 'NEAR'
 export interface AuthorizeRequest {
@@ -14,11 +14,8 @@ export interface AuthorizeRequest {
   /** Approval to consume. Required (after the first ESCALATE) for sensitive tools. */
   approvalId?: string
 }
-export type GateCode =
-  | 'OK' | 'UNKNOWN_TOOL' | 'INVALID_PARAMS' | 'EMERGENCY_STOP' | 'AGENT_NOT_PERMITTED' | 'ROLE_NOT_PERMITTED'
-  | 'INVALID_AMOUNT' | 'AMOUNT_LIMIT' | 'RECIPIENT_NOT_ALLOWED' | 'BUDGET_EXCEEDED'
-  | 'APPROVAL_REQUIRED' | 'APPROVAL_PENDING' | 'APPROVAL_NOT_FOUND' | 'APPROVAL_REJECTED' | 'APPROVAL_EXPIRED'
-  | 'APPROVAL_REUSED' | 'PARAMS_ALTERED' | 'POLICY_CHANGED' | 'EGRESS_NOT_AUTHORIZED'
+/** The stable catalogue lives in @hades/core (decision-codes.ts) so the API, the guard and the docs share one source. */
+export type { GateCode }
 export interface GateDecision {
   outcome: 'PERMIT' | 'DENY' | 'ESCALATE'
   code: GateCode
@@ -73,6 +70,9 @@ export class CerberusGate implements ExecutionGate {
       this.db.prepare('UPDATE near_security SET stopped=? WHERE id=1').run(stopped ? 1 : 0)
       if (stopped) {
         const now = this.now()
+        // One governance event per revoked approval (the stop event below summarizes the switch itself).
+        const revoked = this.db.prepare("SELECT id, tool FROM cerberus_approvals WHERE consumed_at IS NULL AND status IN ('PENDING','APPROVED')").all() as Array<{ id: string; tool: string }>
+        for (const r of revoked) this.opts.audit({ actor, action: 'CERBERUS_APPROVAL_REVOKED', result: `${r.tool}:${r.id}`, correlationId: r.id })
         this.db.prepare("UPDATE cerberus_approvals SET status='REJECTED', decided_by=?, decided_at=?, justification='Revoked by emergency stop', expires_at=NULL WHERE consumed_at IS NULL AND status IN ('PENDING','APPROVED')").run(actor, now)
         this.db.prepare("UPDATE cerberus_decisions SET grant_used_at=? WHERE outcome='PERMIT' AND grant_used_at IS NULL").run(now)
       }
@@ -128,7 +128,14 @@ export class CerberusGate implements ExecutionGate {
 
   authorize(req: AuthorizeRequest): GateDecision {
     return this.db.transaction(() => {
-      const decision = this.evaluate(req)
+      let decision: GateDecision
+      try {
+        // Nested transaction = savepoint: if evaluation throws midway, none of its writes (e.g. a pending approval) survive.
+        decision = this.db.transaction(() => this.evaluate(req))()
+      } catch {
+        // Fail-secure: an unexpected error is a denial, recorded like any other decision. Internal detail is never returned.
+        decision = { outcome: 'DENY', code: 'GATE_INTERNAL_ERROR', reason: GATE_CODES.GATE_INTERNAL_ERROR.description, decisionId: randomUUID() }
+      }
       this.record(req, decision)
       return decision
     })()

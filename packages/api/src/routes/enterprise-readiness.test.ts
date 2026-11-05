@@ -26,7 +26,8 @@ describe('Enterprise Readiness: Audit Blockchain & Multi-agent Resilience', () =
       const e4 = repo.recordAuditEvent({ actor: admin, action: 'APPROVAL_GRANTED', result: 'APPROVED' })
       const e5 = repo.recordAuditEvent({ actor: admin, action: 'MISSION_EXECUTED', result: 'SUCCESS' })
 
-      expect(e1.prevHash).toContain('GENESIS_')
+      // Since init() records POLICY_ACTIVE, the first event written here chains to it, not to GENESIS (verifyAuditIntegrity checks the genesis link).
+      expect(e1.prevHash).toMatch(/^[0-9a-f]{64}$/)
       expect(e2.prevHash).toBe(e1.hash)
       expect(e3.prevHash).toBe(e2.hash)
       expect(e4.prevHash).toBe(e3.hash)
