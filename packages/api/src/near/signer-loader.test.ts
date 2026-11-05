@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { inspect } from 'node:util'
 import { utils } from 'near-api-js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { NearSigner, loadSignerFromEnv } from './signer.js'
+import { NearSigner, loadSignerFromEnv, loadSignerWithVault } from './signer.js'
 
 // Every credential here is SYNTHETIC and generated per run. No real key or seed phrase is read, written or asserted.
 const ACCOUNT = 'hades-omega.testnet'
@@ -90,5 +90,14 @@ describe('credential loader: near-cli-rs 0.30 format and JS-CLI format, strict a
     expect(loadSignerFromEnv({ NEAR_SIGNER_ACCOUNT_ID: ACCOUNT, NEAR_SIGNER_PRIVATE_KEY: secret })!.publicKey).toBe(pub)
     expect(code(() => loadSignerFromEnv({ NEAR_SIGNER_ACCOUNT_ID: ACCOUNT }))).toBe('NEAR_SIGNER_INCOMPLETE')
     expect(code(() => new NearSigner(ACCOUNT, 'ed25519:short'))).toBe('NEAR_SIGNER_KEY_INVALID')
+  })
+  it('uses a vault secret only when explicitly selected and refuses mixed sources', () => {
+    let calls = 0
+    const read = (name: string) => { calls++; expect(name).toBe('NEAR_SIGNER_PRIVATE_KEY'); return secret }
+    expect(loadSignerWithVault({}, read)).toBeNull(); expect(calls).toBe(0)
+    const signer = loadSignerWithVault({ HADES_NEAR_KEY_SOURCE: 'vault', NEAR_SIGNER_ACCOUNT_ID: ACCOUNT }, read)!
+    expect(signer.publicKey).toBe(pub); expect(JSON.stringify(signer)).not.toContain(secret)
+    expect(() => loadSignerWithVault({ HADES_NEAR_KEY_SOURCE: 'vault', NEAR_SIGNER_ACCOUNT_ID: ACCOUNT, NEAR_SIGNER_PRIVATE_KEY: secret }, read)).toThrow('NEAR_SIGNER_AMBIGUOUS_SOURCE')
+    expect(() => loadSignerWithVault({ HADES_NEAR_KEY_SOURCE: 'vault', NEAR_SIGNER_ACCOUNT_ID: ACCOUNT }, () => undefined)).toThrow('NEAR_SIGNER_VAULT_SECRET_MISSING')
   })
 })

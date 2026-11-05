@@ -7,6 +7,8 @@ import Fastify from 'fastify'
 import { SqliteRepository } from './sqlite.js'
 import { registerSecurity } from './security.js'
 import { vaultRoutes } from './routes/vault.js'
+import { loadSignerWithVault } from './near/signer.js'
+import { utils } from 'near-api-js'
 
 const key = () => randomBytes(32).toString('base64')
 const dirs: string[] = []
@@ -80,6 +82,19 @@ describe('encrypted secret vault', () => {
       expect(() => stale.put('TOKEN', 'stale overwrite', 'admin')).toThrow('VAULT_AUTHENTICATION_FAILED')
       expect(repo.createSecretVault(next).get('TOKEN', 'service')).toBe('persisted')
     } finally { if (lock.inTransaction) lock.exec('ROLLBACK'); lock.close(); secondRepo.close(); repo.close() }
+  })
+  it('loads a synthetic NEAR signer from encrypted storage after restart without exposing the secret', async () => {
+    const { repo, db, legacy } = await repository(), master = key(), synthetic = utils.KeyPair.fromRandom('ed25519')
+    repo.createSecretVault(master).put('NEAR_SIGNER_PRIVATE_KEY', synthetic.toString(), 'admin')
+    repo.close()
+    const reopened = new SqliteRepository(db, legacy); await reopened.init()
+    try {
+      const vault = reopened.createSecretVault(master)
+      const signer = loadSignerWithVault({ HADES_NEAR_KEY_SOURCE: 'vault', NEAR_SIGNER_ACCOUNT_ID: 'example.testnet' }, name => vault.get(name, 'system:near-signer'))!
+      expect(signer.publicKey).toBe(synthetic.getPublicKey().toString())
+      expect(JSON.stringify(signer)).not.toContain(synthetic.toString())
+      expect(JSON.stringify(reopened.listAuditEvents({ limit: 100, offset: 0 }))).not.toContain(synthetic.toString())
+    } finally { reopened.close() }
   })
   it('limits HTTP operations to administrators and never returns stored values', async () => {
     const { repo } = await repository(), oldJwt = process.env.JWT_SECRET, oldKey = process.env.HADES_VAULT_MASTER_KEY

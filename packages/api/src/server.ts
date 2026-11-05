@@ -22,7 +22,7 @@ import { vaultRoutes } from './routes/vault.js'
 import { auditFlowRoutes } from './routes/audit-flow.js'
 import { AuditFlowService } from './audit-flow.js'
 import { JsonRpcNearRpc } from './near/rpc.js'
-import { loadSignerFromEnv } from './near/signer.js'
+import { loadSignerWithVault } from './near/signer.js'
 import { nearServiceConfigFromEnv } from './near/submission.js'
 import { createDurableFromEnv, registerDurableGuard } from './durable.js'
 
@@ -86,7 +86,8 @@ async function bootstrap(): Promise<void> {
   app.get('/api/health', healthResponse)
 
   // NEAR submission. Signing stays off unless NEAR_SIGNING_ENABLED=true AND a signer, a contract and execution mode are set.
-  const nearService = repository.createNearSubmissionService({ bridge: near, rpc: new JsonRpcNearRpc(), signer: loadSignerFromEnv(), config: nearServiceConfigFromEnv() })
+  const nearSigner = loadSignerWithVault(process.env, name => repository.createSecretVault(process.env['HADES_VAULT_MASTER_KEY']).get(name, 'system:near-signer'))
+  const nearService = repository.createNearSubmissionService({ bridge: near, rpc: new JsonRpcNearRpc(), signer: nearSigner, config: nearServiceConfigFromEnv() })
   if (nearService.blockers().length === 0) {
     void nearService.recoverAll().catch(e => app.log.error({ err: (e as Error).message }, 'NEAR recovery failed'))
     const timer = setInterval(() => { void nearService.recoverAll().catch(() => undefined) }, 60_000); timer.unref()

@@ -88,3 +88,14 @@ export function loadSignerFromEnv(env: NodeJS.ProcessEnv = process.env): NearSig
   if (!envAccount || !envKey) throw new Error('NEAR_SIGNER_INCOMPLETE')
   return new NearSigner(envAccount, envKey)
 }
+
+/** Explicit opt-in only. The vault supplies the private key; identity remains ordinary server configuration. */
+export function loadSignerWithVault(env: NodeJS.ProcessEnv, getSecret: (name: string) => string | undefined): NearSigner | null {
+  const source = env['HADES_NEAR_KEY_SOURCE']
+  if (!source || source === 'env') return loadSignerFromEnv(env)
+  if (source !== 'vault') throw new Error('NEAR_SIGNER_SOURCE_INVALID')
+  if (env['NEAR_SIGNER_PRIVATE_KEY'] || env['NEAR_SIGNER_KEY_FILE']) throw new Error('NEAR_SIGNER_AMBIGUOUS_SOURCE')
+  const secret = getSecret('NEAR_SIGNER_PRIVATE_KEY')
+  if (!secret) throw new Error('NEAR_SIGNER_VAULT_SECRET_MISSING')
+  return loadSignerFromEnv({ NEAR_SIGNER_ACCOUNT_ID: env['NEAR_SIGNER_ACCOUNT_ID'], NEAR_SIGNER_PRIVATE_KEY: secret })
+}
