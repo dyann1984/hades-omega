@@ -58,10 +58,12 @@ export abstract class AgentBase {
       missionId,
       taskId,
       requestedAt:   Date.now(),
+      // Pin the policy this proposal is evaluated under: a stale proposal is denied by the guard.
+      policyHash:    this.deps.guard.getPolicyHash(),
     }
 
     const decision = this.deps.guard.evaluate(proposal, ctx)
-    const record   = this.deps.audit.createRecord(
+    let record     = this.deps.audit.createRecord(
       proposal,
       decision,
       this.deps.guard.getPolicyVersion(),
@@ -70,20 +72,27 @@ export abstract class AgentBase {
 
     // Register NEAR tx for PERMIT decisions on critical operations
     if (decision.outcome === 'PERMIT' && this.isCriticalOperation(operationType)) {
-      const tx = await this.deps.near.storeAuditHash({
-        auditId:       record.id,
-        contentHash:   record.contentHash,
-        operationType,
-        agentName:     this.name,
-        decision:      decision.outcome,
-        timestampMs:   record.timestamp,
-      })
-      if (tx.mode === 'real') {
-        this.deps.audit.setNearTx(record.id, tx.txHash, tx.explorerUrl)
-        bus.publish({
-          type: 'NEAR_TX_CONFIRMED',
-          payload: { auditId: record.id, txHash: tx.txHash, explorerUrl: tx.explorerUrl },
+      // The attestation is best-effort relative to the decision: a bridge failure must not erase or reverse a decision that
+      // was already made and recorded. The record is marked pending (fixed reason, no error text) and reconciliation is
+      // handled by the NEAR intent flow.
+      try {
+        const tx = await this.deps.near.storeAuditHash({
+          auditId:       record.id,
+          contentHash:   record.contentHash,
+          operationType,
+          agentName:     this.name,
+          decision:      decision.outcome,
+          timestampMs:   record.timestamp,
         })
+        if (tx.mode === 'real') {
+          this.deps.audit.setNearTx(record.id, tx.txHash, tx.explorerUrl)
+          bus.publish({
+            type: 'NEAR_TX_CONFIRMED',
+            payload: { auditId: record.id, txHash: tx.txHash, explorerUrl: tx.explorerUrl },
+          })
+        }
+      } catch {
+        record = this.deps.audit.setNearPending(record.id, 'NEAR_ATTESTATION_FAILED') ?? record
       }
     }
 

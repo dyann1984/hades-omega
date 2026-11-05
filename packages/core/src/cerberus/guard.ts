@@ -8,6 +8,7 @@ import type {
 import type { CerberusPolicy, PolicyRule } from './policy.js'
 import { DEFAULT_POLICY } from './policy.js'
 import { collectAmounts, findHiddenEffectKeys } from './tools.js'
+import { ruleReasonCode, type GuardReasonCode } from './decision-codes.js'
 
 const REGISTERED_OPERATIONS = new Set(['PURCHASE_ORDER', 'BUDGET_APPROVAL', 'VENDOR_EVALUATION', 'PLANNING', 'ANOMALY_REPORT', 'CRYPTO_HASH', 'DOCUMENT_INTAKE', 'BATCH_DOCUMENT_INTAKE', 'DOCUMENT_VALIDATION', 'BATCH_DOCUMENT_VALIDATION', 'DOCUMENT_SUMMARY', 'MULTI_DOCUMENT_COMPARISON', 'DOCUMENT_DELIVERABLE', 'DELIVERABLE_GENERATION'])
 
@@ -32,20 +33,43 @@ export class CerberusGUARD {
     this.policy = { ...merged, hash: this.policyHash }
   }
 
+  /**
+   * Fail-secure: this method never throws. Any internal error (hostile payload, broken rule, bug) is answered with
+   * DENY / GUARD_INTERNAL_ERROR, which the audit trail records like any other decision.
+   */
   evaluate(proposal: OperationProposal, ctx: GUARDContext = {}): GUARDDecision {
     this.evaluationCount++
+    try {
+      return this.evaluateRules(proposal, ctx)
+    } catch {
+      let id = 'unknown'
+      try { id = String(proposal.id) } catch { /* proposal itself is hostile */ }
+      return { proposalId: id, auditId: uuidv4(), outcome: 'DENY', ruleMatched: null, reason: 'GUARD_INTERNAL_ERROR: la evaluación falló; denegado por seguridad (fail-secure)', reasonCode: 'GUARD_INTERNAL_ERROR', escalateTo: null, decidedAt: Date.now() }
+    }
+  }
 
+  /** Total order: priority (high first), then the stricter outcome (DENY > ESCALATE > PERMIT), then rule id. Never the array position. */
+  private static readonly OUTCOME_RANK: Record<GUARDOutcome, number> = { DENY: 0, ESCALATE: 1, PERMIT: 2 }
+  private static compareRules(a: PolicyRule, b: PolicyRule): number {
+    return (b.priority - a.priority) || (CerberusGUARD.OUTCOME_RANK[a.outcome] - CerberusGUARD.OUTCOME_RANK[b.outcome]) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  }
+
+  private evaluateRules(proposal: OperationProposal, ctx: GUARDContext): GUARDDecision {
+    if (proposal.policyHash !== undefined && proposal.policyHash !== this.policyHash) {
+      return this.buildDecision(proposal, null, 'DENY', 'GUARD_POLICY_STALE', 'GUARD_POLICY_STALE: la propuesta se preparó con otra política que la vigente')
+    }
     const activeRules = this.policy.rules
       .filter(r => r.active)
       .filter(r => r.operationType === '*' || r.operationType === proposal.operationType)
       .filter(r => !r.agent || r.agent === '*' || r.agent === proposal.agentName)
-      .sort((a, b) => b.priority - a.priority)
+      .sort(CerberusGUARD.compareRules)
 
     for (const rule of activeRules) {
       const matches = this.matchCondition(rule, proposal, ctx)
       if (matches) {
         const outcome = this.resolveOutcome(rule, proposal, ctx)
-        return this.buildDecision(proposal, rule, outcome)
+        // An ESCALATE rule that resolves to DENY (invalid or over-budget amount) is an amount-limit denial.
+        return this.buildDecision(proposal, rule, outcome, outcome !== rule.outcome && outcome === 'DENY' ? 'POLICY_AMOUNT_LIMIT' : undefined)
       }
     }
 
@@ -152,13 +176,16 @@ export class CerberusGUARD {
     proposal: OperationProposal,
     rule: PolicyRule | null,
     outcome: GUARDOutcome,
+    code?: GuardReasonCode,
+    reasonText?: string,
   ): GUARDDecision {
     return {
       proposalId:  proposal.id,
       auditId:     uuidv4(),
       outcome,
       ruleMatched: rule?.id ?? null,
-      reason:      rule ? `Regla ${rule.id}: ${rule.description}` : 'Sin regla coincidente — DENY por defecto',
+      reasonCode:  code ?? ruleReasonCode(rule?.id ?? null),
+      reason:      reasonText ?? (rule ? `Regla ${rule.id}: ${rule.description}` : 'Sin regla coincidente — DENY por defecto'),
       escalateTo:  outcome === 'ESCALATE' ? 'MINOS' : outcome === 'DENY' && rule?.id === 'R-007' ? 'TARTARUS' : null,
       decidedAt:   Date.now(),
     }

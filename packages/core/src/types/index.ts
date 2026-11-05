@@ -117,6 +117,8 @@ export interface OperationProposal {
   missionId:     ID
   taskId:        ID
   requestedAt:   Timestamp
+  /** Optional: the policy hash this proposal was prepared under. If set and different from the one in force, it is denied. */
+  policyHash?:   string
 }
 
 export interface GUARDDecision {
@@ -125,6 +127,8 @@ export interface GUARDDecision {
   outcome:     GUARDOutcome
   ruleMatched: string | null
   reason:      string | null
+  /** Stable machine-readable code (see cerberus/decision-codes.ts). Optional for decisions persisted before it existed. */
+  reasonCode?: string
   escalateTo:  'MINOS' | 'TARTARUS' | null
   decidedAt:   Timestamp
 }
@@ -146,6 +150,8 @@ export interface AuditRecord {
   contentHash:      string
   nearTxHash:       string | null
   nearExplorerUrl:  string | null
+  /** Set when the on-chain attestation could not be completed; the CERBERUS decision itself is unaffected. */
+  nearPending?:     { since: Timestamp; reason: string } | null
   humanApprovedBy:  string | null
   humanDecisionAt:  Timestamp | null
   executionMode:    ExecutionMode

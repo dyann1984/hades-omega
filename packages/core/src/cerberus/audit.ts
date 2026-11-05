@@ -61,6 +61,15 @@ export class CerberusAUDIT {
     return updated
   }
 
+  /** Marks the record as waiting for its on-chain attestation. Stores a fixed reason code, never error details. */
+  setNearPending(auditId: string, reason: 'NEAR_ATTESTATION_FAILED'): AuditRecord | null {
+    const record = this.records.get(auditId)
+    if (!record) return null
+    const updated = { ...record, nearPending: { since: Date.now(), reason } }
+    this.records.set(auditId, updated)
+    return updated
+  }
+
   setHumanDecision(auditId: string, approvedBy: string): AuditRecord | null {
     const record = this.records.get(auditId)
     if (!record) return null
