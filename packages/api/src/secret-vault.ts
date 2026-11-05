@@ -48,20 +48,25 @@ export class SecretVault {
       if (!this.row(SENTINEL)) this.insert(SENTINEL, CHECK)
       this.insert(name, value)
       this.audit(actor, 'VAULT_SECRET_STORED', this.fingerprint(name))
-    })()
+    }).immediate()
   }
   /** Intended for trusted backend consumers only; never return through an HTTP endpoint. */
   get(name: string, actor: string): string | undefined {
-    this.name(name); this.verify()
-    const row = this.row(name)
-    if (!row) return undefined
-    const value = this.decrypt(name, row)
-    this.audit(actor, 'VAULT_SECRET_ACCESSED', this.fingerprint(name))
-    return value
+    this.name(name)
+    return this.db.transaction(() => {
+      this.verify()
+      const row = this.row(name)
+      if (!row) return undefined
+      const value = this.decrypt(name, row)
+      this.audit(actor, 'VAULT_SECRET_ACCESSED', this.fingerprint(name))
+      return value
+    }).immediate()
   }
   list(): Array<{ name: string; updatedAt: number }> {
-    this.verify()
-    return (this.db.prepare('SELECT name,updated_at FROM vault_secrets WHERE name != ? ORDER BY name').all(SENTINEL) as Array<{ name: string; updated_at: number }>).map(r => ({ name: r.name, updatedAt: r.updated_at }))
+    return this.db.transaction(() => {
+      this.verify()
+      return (this.db.prepare('SELECT name,updated_at FROM vault_secrets WHERE name != ? ORDER BY name').all(SENTINEL) as Array<{ name: string; updated_at: number }>).map(r => ({ name: r.name, updatedAt: r.updated_at }))
+    })()
   }
   delete(name: string, actor: string): boolean {
     this.name(name)
@@ -70,7 +75,7 @@ export class SecretVault {
       const deleted = this.db.prepare('DELETE FROM vault_secrets WHERE name=?').run(name).changes === 1
       if (deleted) this.audit(actor, 'VAULT_SECRET_DELETED', this.fingerprint(name))
       return deleted
-    })()
+    }).immediate()
   }
   /** Call only during a coordinated maintenance window after safely staging the new external key. */
   rotate(encodedKey: string, actor: string): void {
@@ -87,7 +92,7 @@ export class SecretVault {
         for (const row of plaintext) this.insert(row.name, row.value)
         if (!rows.length) this.insert(SENTINEL, CHECK)
         this.audit(actor, 'VAULT_KEY_ROTATED', `entries=${Math.max(0, rows.length - 1)}`)
-      })()
+      }).immediate()
     } catch (e) { this.key = old; throw e }
   }
 }

@@ -64,6 +64,23 @@ describe('encrypted secret vault', () => {
       expect(reopened.createSecretVault(next).get('TOKEN_B', 'service')).toBe('second secret')
     } finally { reopened.close() }
   })
+  it('serializes rotation against another SQLite writer and rejects a stale instance afterwards', async () => {
+    const { repo, db, legacy } = await repository(), old = key(), next = key()
+    const first = repo.createSecretVault(old); first.put('TOKEN', 'persisted', 'admin')
+    const secondRepo = new SqliteRepository(db, legacy); await secondRepo.init()
+    const stale = secondRepo.createSecretVault(old)
+    const Database = (await import('better-sqlite3')).default
+    const lock = new Database(db); lock.pragma('busy_timeout = 0')
+    try {
+      lock.exec('BEGIN IMMEDIATE')
+      expect(() => first.rotate(next, 'admin')).toThrow()
+      lock.exec('ROLLBACK')
+      expect(first.get('TOKEN', 'service')).toBe('persisted')
+      first.rotate(next, 'admin')
+      expect(() => stale.put('TOKEN', 'stale overwrite', 'admin')).toThrow('VAULT_AUTHENTICATION_FAILED')
+      expect(repo.createSecretVault(next).get('TOKEN', 'service')).toBe('persisted')
+    } finally { if (lock.inTransaction) lock.exec('ROLLBACK'); lock.close(); secondRepo.close(); repo.close() }
+  })
   it('limits HTTP operations to administrators and never returns stored values', async () => {
     const { repo } = await repository(), oldJwt = process.env.JWT_SECRET, oldKey = process.env.HADES_VAULT_MASTER_KEY
     process.env.JWT_SECRET = 'test-secret-with-at-least-thirty-two-characters'; process.env.HADES_VAULT_MASTER_KEY = key()
