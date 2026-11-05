@@ -1,4 +1,4 @@
-﻿# Respuesta a la revisiÃ³n externa de CERBERUS (NEXUS / HiveBid / AEGIS)
+# Respuesta a la revisiÃ³n externa de CERBERUS (NEXUS / HiveBid / AEGIS)
 
 Fecha: 2026-11-05. Rama `codex/hades-omega-finalizacion`, HEAD `98b9ee1`. Documento revisado: `docs/CERBERUS_PEER_REVIEW.es.md` (copiado desde `Downloads`, sin cambios). AuditorÃ­a **solo de lectura**: no se modificÃ³ cÃ³digo, contratos, configuraciÃ³n, credenciales ni transacciones; los Ãºnicos archivos nuevos son este informe y la copia del documento original.
 

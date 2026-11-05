@@ -2,6 +2,17 @@
 
 Fecha: 2026-11-05. Rama: `codex/hades-omega-finalizacion`, creada desde `6ad144b`. Este informe no certifica el sistema para producción: la auditoría y las fases solicitadas siguen incompletas.
 
+## Versión candidata para el hackathon (2026-11-05, última actualización)
+
+Regresión completa sin caché (`npx turbo run test type-check lint build --force --concurrency=1`, 12/12 tareas): **461 pruebas aprobadas y 3 omitidas** (api 294 + 3 omitidas, core 92, frontend 75); lint 0 errores (advertencias previas). Esta cifra sustituye a las de 414/454 de secciones anteriores, que son históricas. **Playwright: 22 aprobadas, 2 omitidas.** `e2e-audit-flow.cjs`: 22/22. `check-public-demo-safety.cjs`: todo en verde.
+
+- Bloques A–E de la revisión de CERBERUS cerrados (ver `CERBERUS_PEER_REVIEW_RESPONSE.md` §8).
+- **Brecha comprobada y corregida:** las aprobaciones de misiones locales ejecutaban el estado guardado sin comprobar que fuera el mostrado al aprobador. Con acceso a la base, cambiar documentos, comparación o entrada antes de aprobar (o antes de reanudar tras reinicio) alteraba lo ejecutado. Ahora `local_operations.bound_hash` (migración 14) lo impide: 409 `APPROVAL_BINDING_MISMATCH`, evento de auditoría y nada se ejecuta; rechazar sigue siendo posible. 4 de las 5 pruebas nuevas fallaban antes de la corrección. Límite: filas anteriores a la migración no tienen hash.
+- Ancla externa de la cadena: `verify-audit-chain.cjs --export-anchor / --anchor-file` y `GET /api/v1/cerberus/audit/anchor` (ADMIN). Sin transacciones.
+- Cumplimiento: `docs/matriz-cumplimiento-hackathon.md`. Lista de envío con bloqueos exactos: `HADES_HACKATHON_RELEASE_CHECKLIST.md`.
+- No verificable hoy: `verify-attestation-onchain.cjs` → INCONCLUSIVE (código 2, ningún RPC respondió, HTTP 408); `nearhackathon.com` fue inalcanzable, así que los requisitos oficiales no se pudieron releer.
+- Capacidades no implementadas y declaradas como tales: 6 capacidades del registro, pagos, NEAR Intents, eventos NEP-297 on-chain, enlace evidencia→registro on-chain en la UI, despliegue público alojado.
+
 ## Inventario y estado
 
 | Módulo | Clasificación | Evidencia y brechas |

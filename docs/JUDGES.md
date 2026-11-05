@@ -1,4 +1,4 @@
-﻿# HADES OMEGA â€” Guide for judges
+# HADES OMEGA â€” Guide for judges
 
 You can understand, run and verify HADES OMEGA without access to our computers. Every claim below has a command or link that proves it. Where something is not real or not finished, it says so.
 
