@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { dispatchCapability, type Intake, type Validation, type Comparison } from './capability-dispatcher.js'
+import { dispatchCapability, capabilityInventory, IMPLEMENTED_CAPABILITIES, type Intake, type Validation, type Comparison } from './capability-dispatcher.js'
+
+describe('capability inventory', () => {
+  it('flags exactly the capabilities the dispatcher executes; every other one is rejected, never simulated', () => {
+    const inv = capabilityInventory()
+    expect(inv.length).toBeGreaterThan(0)
+    for (const c of inv) {
+      let outcome: string
+      try { dispatchCapability(c.agent, c.id, undefined); outcome = 'RAN' } catch (e) { outcome = (e as Error).message }
+      // Implemented ones must get past the registry and implementation checks (they fail later on input validation).
+      if (c.implemented) expect(outcome, `${c.agent} ${c.id}`).not.toMatch(/^CAPABILITY_NOT_(AVAILABLE|IMPLEMENTED)$/)
+      else expect(outcome, `${c.agent} ${c.id}`).toBe('CAPABILITY_NOT_IMPLEMENTED')
+    }
+    expect(inv.filter(c => c.implemented)).toHaveLength(IMPLEMENTED_CAPABILITIES.size)
+  })
+})
 
 describe('deterministic capability dispatcher', () => {
   it('passes document evidence through the registered pipeline and seals the actual report', () => {

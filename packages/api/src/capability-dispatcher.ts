@@ -7,6 +7,18 @@ export interface Intake { documents: TextDocument[]; evidence: Evidence }
 export interface Validation { intake: Intake; checks: Array<{filename: string; nonEmpty: boolean; sourceHash: string}> }
 export interface Comparison { validation: Validation; values: Array<{filename: string; amounts: number[]; percentages: number[]}>; ranges: Array<{currency:string;minimum:number;maximum:number;difference:number;documents:string[]}> }
 
+/** Every (agent, capability) pair that `dispatchCapability` really executes. Keep in sync with the branches below (a test enforces it). */
+export const IMPLEMENTED_CAPABILITIES: ReadonlySet<string> = new Set([
+  'CHARON|cap:doc:intake@1.0.0', 'MINOS|cap:doc:validate@1.0.0', 'PERSEPHONE|cap:doc:compare@1.0.0',
+  'ELYSIUM|cap:report:generate@1.0.0', 'TARTARUS|cap:crypto:hash@1.0.0', 'HADES|cap:crypto:hash@1.0.0',
+])
+export const isCapabilityImplemented = (agent: string, capability: string): boolean => IMPLEMENTED_CAPABILITIES.has(`${agent}|${capability}`)
+
+/** Registry entries annotated with whether a local executor exists. A registry entry alone does not mean it is implemented. */
+export function capabilityInventory(): Array<ReturnType<typeof defaultCapabilityRegistry.getAllCapabilities>[number] & { implemented: boolean }> {
+  return defaultCapabilityRegistry.getAllCapabilities().map(c => ({ ...c, implemented: isCapabilityImplemented(c.agent, c.id) }))
+}
+
 /** Explicit implementations only. A registry entry alone does not mean it is implemented here. */
 export function dispatchCapability(agent: AgentName, capability: string, input: unknown): unknown {
   if (!defaultCapabilityRegistry.canExecute(agent, capability)) throw new Error('CAPABILITY_NOT_AVAILABLE')

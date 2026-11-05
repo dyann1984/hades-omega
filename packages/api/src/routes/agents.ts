@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../security.js'
 import { hades, charon, persephone, minos, elysium, tartarus, guard, audit } from '../runtime.js'
 import { defaultCapabilityRegistry, type AgentName } from '@hades/core'
+import { capabilityInventory, isCapabilityImplemented } from '../capability-dispatcher.js'
 
 const agentMap = {
   HADES:      hades,
@@ -42,7 +43,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/capabilities', async req => {
     requireRole(req, ['ADMIN', 'OPERATOR', 'AUDITOR', 'VIEWER'])
-    return ok(defaultCapabilityRegistry.getAllCapabilities())
+    return ok(capabilityInventory())
   })
 
   app.get('/capabilities/agents/:name', async (req, reply) => {
@@ -52,7 +53,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (caps.length === 0) {
       return reply.code(404).send(err('NOT_FOUND', `No hay capacidades registradas para el agente ${name}`))
     }
-    return ok(caps)
+    return ok(caps.map(c => ({ ...c, implemented: isCapabilityImplemented(c.agent, c.id) })))
   })
 }
 
