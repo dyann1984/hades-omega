@@ -9,7 +9,7 @@ Fecha: 2026-11-05. Rama: `codex/hades-omega-finalizacion`, creada desde `6ad144b
 | CHRONOS | IMPLEMENTADO, PENDIENTE DE VALIDACIÓN | SQLite, tareas, historial, recuperación y reintentos. Se corrigió la ejecución de reintentos durante la pausa; 12 pruebas específicas pasaron. Falta completar regresión integral y revisar concurrencia multiproceso. |
 | Motor de agentes y flujo documental | IMPLEMENTADO, PENDIENTE DE VALIDACIÓN | Hay orquestación y capacidades deterministas reales; algunas capacidades registradas no tienen ejecutor. Falta validar integralmente responsabilidades, cancelación y límites. |
 | CERBERUS y sesiones | IMPLEMENTADO, PENDIENTE DE VALIDACIÓN | Existen autorización, roles, aprobaciones y auditoría encadenada. La parada documentada bloquea efectos sensibles, no se ha demostrado que detenga todas las operaciones nuevas y tareas cancelables como exige la misión. |
-| Vault | PENDIENTE | El módulo existente informa estado y presencia de configuración; no constituye un almacén persistente cifrado de secretos. |
+| Vault | IMPLEMENTADO, PENDIENTE DE CIERRE | Almacén cifrado SQLite y consumidores NEAR/LLM con selección explícita; falta procedimiento operativo de rotación y coordinación de instancias. |
 | LLM | BLOQUEADO POR DEPENDENCIA EXTERNA | Planificador Anthropic, política de egreso y límites implementados; falta validación con proveedor real y revisión completa de requisitos. No se utilizaron credenciales ni se efectuaron llamadas de pago. |
 | NEAR | BLOQUEADO POR DEPENDENCIA EXTERNA | Código de preparación, autorización y envío existente; los artefactos históricos se conservan. La verificación pública actual no terminó: el RPC no devolvió la transacción esperada y el script falló al acceder a la respuesta. No se firmó ni transmitió ninguna transacción. |
 | Frontend | IMPLEMENTADO, PENDIENTE DE VALIDACIÓN | React/Vite y paneles existentes; no se ha comprobado cada control ni completado la revisión de integración. |
@@ -20,6 +20,11 @@ Fecha: 2026-11-05. Rama: `codex/hades-omega-finalizacion`, creada desde `6ad144b
 ### Continuación de finalización
 
 #### Avance adicional
+
+- `45d2455` protege el arreglo de concurrencia de Vault; `3823b20` conecta el firmante NEAR con selección explícita de Vault (13 pruebas focalizadas); `5739ae1` conecta el planificador LLM con selección explícita y política de egreso existente (33 pruebas con cliente falso). Ninguna prueba usó credenciales reales ni contactó proveedores.
+- `7671837` reclama reintentos de CHRONOS mediante actualización condicional; 13 pruebas focalizadas pasaron. No demuestra recuperación segura con múltiples procesos activos.
+
+- Continuación de cierre: las operaciones de Vault verifican y acceden a registros dentro de transacciones SQLite; escrituras y rotación adquieren bloqueo inmediato. `secret-vault.test.ts`: 5 pruebas aprobadas, incluida una segunda conexión con bloqueo y rechazo de una instancia con clave antigua. `npm run type-check -w @hades/api` pasó. El módulo sigue incompleto; véase `docs/matriz-trazabilidad-cierre.md`.
 
 - `95e89af` implementa una primitiva de rotación AES-GCM transaccional compatible con los registros existentes. Pruebas locales con claves efímeras: rotación y reapertura con la clave nueva; la antigua se rechaza. Falta interfaz operativa segura, coordinación de procesos y respaldos, e integración de NEAR y LLM con Vault; no se rotó ninguna clave real.
 - `b966eec` revoca aprobaciones pendientes/no consumidas y permisos sin usar al activar la parada. Tras quitarla, la aprobación previa no vuelve a servir. Pruebas focalizadas de Vault, CERBERUS y NEAR: 78 aprobadas; usan dobles locales y no envían transacciones. No demuestra cancelación cooperativa de trabajos activos ni cobertura de rutas alternativas.
@@ -50,7 +55,7 @@ Fecha: 2026-11-05. Rama: `codex/hades-omega-finalizacion`, creada desde `6ad144b
 
 ## Limitaciones y autorización
 
-Faltan el almacén cifrado, la parada y cancelación completas, cobertura funcional de capacidades y controles, validación LLM, E2E, pruebas de seguridad y verificación pública actual. No se ha auditado todo el repositorio ni se ha demostrado que no existan fallos críticos. Producción no está preparada ni modificada. Cualquier uso de credenciales NEAR, firma, envío, despliegue o publicación requiere autorización explícita del usuario. La validación real del LLM requiere proveedor, credenciales y autorización de egreso.
+Faltan la rotación operativa de Vault, la parada y cancelación completas, cobertura funcional de capacidades y controles, validación LLM real, y verificación pública actual. No se ha auditado todo el repositorio ni se ha demostrado que no existan fallos críticos. Producción no está preparada ni modificada. Cualquier uso de credenciales NEAR, firma, envío, despliegue o publicación requiere autorización explícita del usuario. La validación real del LLM requiere proveedor, credenciales y autorización de egreso.
 
 ## Commits
 
