@@ -77,6 +77,9 @@ documents ─▶ HADES (orchestrator) ─▶ CHARON ─▶ MINOS ─▶ PERSEPHO
 | Public "Explore Demo" | **Simulated NEAR by design**: the DEMO session is isolated, temporary and can reach only `/api/v1/demo/*`; it shows `mode: simulation, transactionsSigned: 0` |
 | LLM planning (`llm.plan`, Anthropic) | **Implemented behind an egress policy, disabled by default; not exercised against the live API** in our verification |
 | Payments (`payment.execute`) | **Not implemented**: registered in CERBERUS but has no executor |
+| Agent capabilities `cap:procurement:eval`, `cap:policy:verify`, `cap:financial:analyze`, `cap:resilience:recover`, `cap:orchestration:plan`, `cap:security:guard` | **Not implemented**: listed in the registry, rejected at run time with `CAPABILITY_NOT_IMPLEMENTED` (`/capabilities` reports `implemented`) |
+| Governance events on-chain (NEP-297) | **Not implemented** (needs a contract change); only local events (`POLICY_ACTIVE`, `CERBERUS_APPROVAL_REVOKED`) in the hash-chained audit log |
+| Current on-chain verification | **Depends on a reachable public RPC**; the verifier prints `INCONCLUSIVE` (exit 2) when none answers, never a false PASS |
 | NEAR Intents, Chain Signatures, mainnet | **Not used** |
 | Link "mission evidence → on-chain record" in the UI | **Pending**: the pipeline prepares the intent; the only on-chain record so far attests the contract itself, not a mission |
 | Hosted public deployment | **Pending** (config files exist; none verified here) |
@@ -105,4 +108,4 @@ Current counts are in [`docs/JUDGES.md`](docs/JUDGES.md).
 
 
 ### Auditoría y códigos de CERBERUS
-Verificador independiente de la cadena: `node scripts/verify-audit-chain.cjs --db data/hades.sqlite --json`. Catálogo de códigos de decisión: `docs/cerberus-deny-codes.md` (`GET /api/v1/cerberus/gate/codes`). Estado de la revisión externa: `CERBERUS_PEER_REVIEW_RESPONSE.md` §8.
+Verificador independiente de la cadena: `node scripts/verify-audit-chain.cjs --db data/hades.sqlite --json`. Ancla externa: `--export-anchor ancla.json` (guardarla fuera del servidor; también `GET /api/v1/cerberus/audit/anchor`, ADMIN) y después `--anchor-file ancla.json`. Catálogo de códigos de decisión: `docs/cerberus-deny-codes.md` (`GET /api/v1/cerberus/gate/codes`). Estado de la revisión externa: `CERBERUS_PEER_REVIEW_RESPONSE.md` §8.

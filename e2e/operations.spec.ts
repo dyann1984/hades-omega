@@ -113,6 +113,10 @@ test.describe('Audit flow (agents → CERBERUS approval → evidence → CHRONOS
     // CHRONOS shows the follow-up task that the flow created.
     await goto(page, '/chronos')
     await expect(page.getByText(/Seguimiento de auditoría/).first()).toBeVisible()
+    // The request, the CERBERUS decision and the approval left a verifiable hash chain (checked server-side).
+    const integrity = (await adminApi('GET', '/audit/integrity')).json.data
+    expect(integrity.verified).toBe(true)
+    for (const action of ['POLICY_EVALUATED', 'POLICY_ACTIVE']) expect(((await adminApi('GET', `/audit/events?action=${action}&limit=1`)).json.data as unknown[]).length, action).toBe(1)
     expect(w.problems).toEqual([])
   })
 
