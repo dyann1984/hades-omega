@@ -19,6 +19,7 @@ import { near } from './runtime.js'
 import { LlmGovernor, attachLlmGovernor } from './llm-governor.js'
 import { nearTxRoutes } from './routes/near-tx.js'
 import { vaultRoutes } from './routes/vault.js'
+import { registerEmergencyStopGuard } from './emergency-stop-guard.js'
 import { auditFlowRoutes } from './routes/audit-flow.js'
 import { AuditFlowService } from './audit-flow.js'
 import { JsonRpcNearRpc } from './near/rpc.js'
@@ -96,6 +97,8 @@ async function bootstrap(): Promise<void> {
     const timer = setInterval(() => { void nearService.recoverAll().catch(() => undefined) }, 60_000); timer.unref()
     app.addHook('onClose', async () => { clearInterval(timer) })
   }
+
+  registerEmergencyStopGuard(app, () => repository.gate.isStopped())
 
   // API routes
   await app.register(async (api) => {
