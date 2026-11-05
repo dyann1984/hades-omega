@@ -30,6 +30,7 @@ export interface VaultDeps {
   env?: NodeJS.ProcessEnv
   now?: () => number
   startedAt?: number
+  llmKeyConfigured?: boolean
 }
 
 const present = (v: string | undefined): boolean => typeof v === 'string' && v.trim().length > 0
@@ -81,7 +82,7 @@ export function buildVaultStatus(deps: VaultDeps) {
     facts: { executionMode: ns.executionMode, signerAccountId: ns.signerAccountId, contractId: ns.contractId, signingEnabled: ns.signingEnabled, blockers: ns.blockers.join(',') || null },
   })
 
-  const llm = present(env['ANTHROPIC_API_KEY'])
+  const llm = deps.llmKeyConfigured ?? present(env['ANTHROPIC_API_KEY'])
   const pol = repository.llmPolicy.get()
   const llmUsed = repository.llmPolicy.usageToday()
   connections.push({
@@ -98,7 +99,7 @@ export function buildVaultStatus(deps: VaultDeps) {
     generatedAt: now,
     connections,
     security: { emergencyStop: stopped, pendingApprovals, policyHash: guard.getPolicyHash().slice(0, 16) },
-    settings: SETTINGS.map(s => ({ key: s.key, kind: s.kind, description: s.description, configured: present(env[s.key]), ...(s.kind === 'public' && present(env[s.key]) ? { value: String(env[s.key]).slice(0, 120) } : {}) })),
+    settings: SETTINGS.map(s => ({ key: s.key, kind: s.kind, description: s.description, configured: s.key === 'ANTHROPIC_API_KEY' ? llm : present(env[s.key]), ...(s.kind === 'public' && present(env[s.key]) ? { value: String(env[s.key]).slice(0, 120) } : {}) })),
     chronos: { summary, recentRuns: chronos.runs(undefined, 10).map(r => ({ id: r.id, taskId: r.taskId, status: r.status, trigger: r.trigger, attempt: r.attempt, scheduledFor: r.scheduledFor, finishedAt: r.finishedAt, error: r.error })) },
     rules: policy.rules.map(r => ({ id: r.id, name: r.name, description: r.description, outcome: r.outcome, active: r.active, priority: r.priority })),
     tools,

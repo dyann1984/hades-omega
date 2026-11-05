@@ -35,7 +35,12 @@ export async function vaultRoutes(app: FastifyInstance, repository: SqliteReposi
       return ok({ deleted: secrets.delete((req.params as { name: string }).name, actorOf(req)) })
     } catch (e) { return vaultError(e, reply) }
   })
-  app.get('/vault/status', async () => ok(buildVaultStatus({ repository, near, wsClients: getConnectedClientsCount })))
+  app.get('/vault/status', async (_req, reply) => {
+    try {
+      const llmKeyConfigured = process.env['HADES_LLM_KEY_SOURCE'] === 'vault' ? secrets.list().some(s => s.name === 'ANTHROPIC_API_KEY') : undefined
+      return ok(buildVaultStatus({ repository, near, wsClients: getConnectedClientsCount, llmKeyConfigured }))
+    } catch (e) { return vaultError(e, reply) }
+  })
 
   // Read-only network check; separate from /status so opening the page never depends on an external RPC.
   // Even this read goes through CERBERUS (registered READ tool near.probe), so it is decided and audited like every other action.

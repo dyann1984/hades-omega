@@ -16,14 +16,14 @@ const MAX_OUTPUT_TOKENS = 1500
  * Falls back to RuleBasedPlanner when the key is absent.
  */
 export class ClaudeAnthropicPlanner implements PlannerProvider {
-  private readonly client: Anthropic
+  private readonly client: Pick<Anthropic, 'messages'> | undefined
   private readonly model: string
   private readonly fallback: PlannerProvider
   private readonly governor: () => LlmGovernor | null
 
   constructor(opts: { client?: Pick<Anthropic, 'messages'>; governor?: () => LlmGovernor | null } = {}) {
     this.governor = opts.governor ?? getLlmGovernor
-    this.client = (opts.client as Anthropic | undefined) ?? new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'], baseURL: `https://${LLM_PROVIDER_HOST}`, timeout: 20_000, maxRetries: 0 })
+    this.client = opts.client
     this.model = process.env['ANTHROPIC_PLANNER_MODEL'] ?? 'claude-haiku-5-5'
     this.fallback = createRuleBasedPlanner()
   }
@@ -33,12 +33,6 @@ export class ClaudeAnthropicPlanner implements PlannerProvider {
   }
 
   async plan(intent: MissionIntent): Promise<PlanResult> {
-    if (!process.env['ANTHROPIC_API_KEY']) {
-      const result = await this.fallback.plan(intent)
-      result.warnings.unshift('ANTHROPIC_API_KEY not set — using RuleBasedPlanner fallback')
-      return result
-    }
-
     const systemPrompt = `You are HADES, an AI mission orchestrator. Your task is to generate a structured task plan for business missions.
 
 Available agents and their responsibilities:
@@ -87,7 +81,10 @@ Priority: ${intent.context.priority ?? 'MEDIUM'}`
     if (!permit.allowed) return this.fallbackWithWarning(intent, [`LLM not used (${permit.code}): ${permit.reason} — using RuleBasedPlanner fallback`])
 
     try {
-      const response = await this.client.messages.create({
+      const apiKey = this.client ? undefined : governor.providerKey()
+      if (!this.client && !apiKey) throw new Error('LLM_KEY_UNAVAILABLE')
+      const client = this.client ?? new Anthropic({ apiKey, baseURL: `https://${LLM_PROVIDER_HOST}`, timeout: 20_000, maxRetries: 0 })
+      const response = await client.messages.create({
         model: this.model,
         max_tokens: permit.maxOutputTokens,
         system: systemPrompt,

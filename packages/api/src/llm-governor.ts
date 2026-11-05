@@ -104,11 +104,14 @@ export class LlmGovernor {
     policy: LlmPolicyStore
     audit: (e: { actor: string; action: string; result: string; correlationId?: string }) => void
     env?: NodeJS.ProcessEnv
+    keySource?: () => string | undefined
   }) {}
 
   private get env(): NodeJS.ProcessEnv { return this.deps.env ?? process.env }
   get policy(): LlmPolicyStore { return this.deps.policy }
-  keyConfigured(): boolean { return typeof this.env['ANTHROPIC_API_KEY'] === 'string' && this.env['ANTHROPIC_API_KEY'].length > 0 }
+  /** Server-only: never serialize or log this value. */
+  providerKey(): string | undefined { return this.deps.keySource ? this.deps.keySource() : this.env['ANTHROPIC_API_KEY'] }
+  keyConfigured(): boolean { return !!this.providerKey() }
 
   /** True only when no base-URL override points anywhere but the allowed provider over HTTPS. */
   providerAllowed(): boolean {

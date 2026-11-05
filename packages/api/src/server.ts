@@ -52,7 +52,10 @@ async function bootstrap(): Promise<void> {
   const repository = new SqliteRepository(dbPath, legacyPath)
   await repository.init()
   near.attachGate(repository.gate)
-  attachLlmGovernor(new LlmGovernor({ gate: repository.gate, policy: repository.llmPolicy, audit: e => { repository.recordAuditEvent(e) } }))
+  const llmSource = process.env['HADES_LLM_KEY_SOURCE']
+  if (llmSource && llmSource !== 'env' && llmSource !== 'vault') throw new Error('LLM_KEY_SOURCE_INVALID')
+  if (llmSource === 'vault' && process.env['ANTHROPIC_API_KEY']) throw new Error('LLM_KEY_SOURCE_AMBIGUOUS')
+  attachLlmGovernor(new LlmGovernor({ gate: repository.gate, policy: repository.llmPolicy, audit: e => { repository.recordAuditEvent(e) }, ...(llmSource === 'vault' ? { keySource: () => repository.createSecretVault(process.env['HADES_VAULT_MASTER_KEY']).get('ANTHROPIC_API_KEY', 'system:llm-planner') } : {}) }))
   durable?.start(repository)
   app.addHook('onClose', async () => { if (durable) await durable.stop(repository); repository.close() })
   for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void app.close().finally(() => process.exit(0)) })

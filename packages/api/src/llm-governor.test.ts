@@ -36,6 +36,21 @@ describe('LLM egress control (Anthropic)', () => {
     expect(warnings(r)).toMatch(/POLICY_DISABLED/)
   })
 
+  it('uses an explicitly supplied vault key only after policy permits egress, with a fake client', async () => {
+    const master = Buffer.alloc(32, 7).toString('base64'), vault = repo.createSecretVault(master)
+    vault.put('ANTHROPIC_API_KEY', KEY, 'admin')
+    const source = vi.fn(() => vault.get('ANTHROPIC_API_KEY', 'system:llm-planner'))
+    const g = new LlmGovernor({ gate: repo.gate, policy: repo.llmPolicy, audit: ev => { repo.recordAuditEvent(ev) }, env: {}, keySource: source })
+    const fake = fakeClient(), p = new ClaudeAnthropicPlanner({ client: fake.client, governor: () => g })
+    delete process.env['ANTHROPIC_API_KEY']
+    await p.plan(intent); expect(source).not.toHaveBeenCalled(); expect(fake.create).not.toHaveBeenCalled()
+    enable()
+    const result = await p.plan(intent)
+    expect(fake.create).toHaveBeenCalledTimes(1); expect(result.tasks.some(t => t.origin === 'LLM_GENERATED')).toBe(true)
+    expect(JSON.stringify(repo.listAuditEvents({ limit: 100, offset: 0 }))).not.toContain(KEY)
+    expect(JSON.stringify(result)).not.toContain(KEY)
+  })
+
   it('fails closed when no governor is attached', async () => {
     const { p, create } = planner(null)
     expect(warnings(await p.plan(intent))).toMatch(/no governor attached/)
