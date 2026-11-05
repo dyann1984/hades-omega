@@ -102,3 +102,7 @@ Current counts are in [`docs/JUDGES.md`](docs/JUDGES.md).
 * **Timeline**: the first commit is dated 2026-10-24, after the 2026-10-19 announcement; the whole repository is within the window. The NEAR contract, the transaction pipeline and the on-chain record were built 2026-10-26 to 2026-11-02.
 * **AI-assisted code**: most of the code was written with Claude Code (Anthropic) under human direction and review. Libraries: Fastify, better-sqlite3, React, Vite, near-api-js, near-sdk (Rust), Playwright, Vitest.
 * **License**: see the repository's `LICENSE` file once added by the maintainers.
+
+
+### Auditoría y códigos de CERBERUS
+Verificador independiente de la cadena: `node scripts/verify-audit-chain.cjs --db data/hades.sqlite --json`. Catálogo de códigos de decisión: `docs/cerberus-deny-codes.md` (`GET /api/v1/cerberus/gate/codes`). Estado de la revisión externa: `CERBERUS_PEER_REVIEW_RESPONSE.md` §8.

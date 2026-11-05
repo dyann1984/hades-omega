@@ -90,3 +90,12 @@ Raw logs of this run are in `docs/test-evidence-final/`.
 * The default demo uses deterministic capabilities. The optional LLM planner is implemented but disabled and was not exercised against the live API.
 * `payment.execute` is registered in the policy but has no executor, by design.
 * Hosted public deployment: not done yet (needs the owner's decision).
+
+
+## CERBERUS: endurecimiento posterior a la revisión externa
+
+- **Cadena de auditoría:** `node scripts/verify-audit-chain.cjs --db <archivo.sqlite> --json [--expect-head <hash> --expect-count <n>]` (sólo lectura; PASS/FAIL, código de salida 0/1/2). Detecta alteración, truncamiento de cola, hash nulo y sustitución del último evento. Para detectar a un atacante que reescriba también el ancla interna, guarde `headHash`/`hashedEvents` fuera del servidor y páselos con `--expect-*`.
+- **Códigos de decisión estables:** `GET /api/v1/cerberus/gate/codes` y `docs/cerberus-deny-codes.md`.
+- **Fail-secure:** cualquier error interno de CERBERUS es DENY y queda auditado; la parada de emergencia también impide reanudar operaciones aprobadas al arrancar.
+- **Honestidad:** las pruebas con RPC simulado no prueban nada on-chain; los eventos de gobernanza NEP-297 on-chain no existen (sólo eventos locales en la cadena de auditoría). La firma/transmisión NEAR sigue desactivada por defecto.
+- Detalle por hallazgo: `CERBERUS_PEER_REVIEW_RESPONSE.md`, sección 8.

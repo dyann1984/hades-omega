@@ -11,6 +11,8 @@ Fecha: 2026-11-05. Rama `codex/hades-omega-finalizacion`, HEAD `98b9ee1`. Docume
 
 ## 1. Resumen
 
+> **Actualización:** la tabla siguiente es el diagnóstico inicial (antes de corregir). El estado vigente tras las correcciones locales está en la **sección 8**.
+
 | ID | Hallazgo de NEXUS | Estado real | Severidad residual | Prioridad hackathon |
 |---|---|---|---|---|
 | C-1 | Fail-secure solo declarado; falta hard gate y decisión en la llamada | **PARCIAL** | Media | P1 |
@@ -185,3 +187,22 @@ Plan por bloques (todos aditivos; pruebas rojas primero; tras cada bloque `npx t
 - **F (opcional, con autorización):** anclaje y diseño del contrato v0.5 con NEP-297 en sandbox.
 
 Antes de cada bloque, reutilizar lo existente: `verifyAuditIntegrity`, `AUDIT_CHAIN_VERIFY`, el verificador on-chain, `near_security` y `GateCode`; no duplicar. No se copia código externo; `fast-check` y cualquier otra dependencia requieren revisión de licencia y seguridad.
+
+
+## 8. Estado tras las correcciones locales (fase de cierre)
+
+Alcance: sólo cambios locales y verificables. **No** se tocaron contratos, despliegues, claves reales, firma ni transmisión de transacciones NEAR (firma desactivada por defecto). Las pruebas con dobles (RPC simulado) **no** se presentan como evidencia on-chain.
+
+| ID | Estado inicial | Estado actual | Qué cambió | Evidencia (pruebas) |
+|---|---|---|---|---|
+| C-9 | PARCIAL / NO VERIFICABLE | **MEJORADO** (verificador robusto; la verificación real depende de que haya RPC disponible → veredicto INCONCLUSIVE si no) | Cliente RPC con reintentos y RPC alternos; veredictos PASS/FAIL/INCONCLUSIVE; `docs/04-near-integration.md` y `docs/JUDGES.md` actualizados | `verifier-rpc.test.ts` (7) |
+| C-3 | PARCIAL | **RESUELTO (local)** | Detección de truncamiento, hash nulo, cabeza y ancla local (`audit_anchor`); verificador independiente de sólo lectura `scripts/verify-audit-chain.cjs` con `--expect-head/--expect-count`. Límite: un atacante con control total del archivo puede reescribir también el ancla interna; sólo un ancla **externa** lo detecta | `audit-chain-hardening.test.ts` (10) |
+| C-1 | PARCIAL | **RESUELTO (local)** | `CerberusGUARD.evaluate` y `CerberusGate.authorize` nunca lanzan: ante error → DENY `GUARD_INTERNAL_ERROR`/`GATE_INTERNAL_ERROR`, auditado y sin detalle interno; la recuperación al arranque no reanuda operaciones APPROVED mientras la parada de emergencia está activa (`APPROVED_RESUME_SKIPPED:EMERGENCY_STOP`) | `fail-secure.test.ts`, `cerberus-failsecure.test.ts` |
+| C-7 | VIGENTE | **RESUELTO** | Catálogo único y estable `decision-codes.ts` (34 códigos), `GUARDDecision.reasonCode`, `GET /api/v1/cerberus/gate/codes` (cualquier rol autenticado), mensajes HTTP genéricos; prueba anti-deriva sobre los literales del gate. Ver `docs/cerberus-deny-codes.md` | `cerberus-codes.test.ts`, `cerberus-failsecure.test.ts` |
+| C-2 | PARCIAL | **RESUELTO** | Orden total: prioridad, luego DENY > ESCALATE > PERMIT, luego id; prueba de propiedades con PRNG propio | `fail-secure.test.ts` |
+| C-4 | RESUELTO / PARCIAL | **RESUELTO** en la vía de agentes | `OperationProposal.policyHash` fijado por el agente; propuesta con política obsoleta → DENY `GUARD_POLICY_STALE`. **Limitación:** las aprobaciones de misiones locales siguen sin ligarse a un hash de entrada (no se implementó; queda como mejora) | `fail-secure.test.ts`, `near-failure.test.ts` |
+| C-5 | RESUELTO | **RESUELTO** | Prueba de regresión: la sensibilidad no la decide quien llama | `fail-secure.test.ts` |
+| C-6 | RESUELTO / PARCIAL | **RESUELTO** | Un fallo del puente en la vía de agentes ya no pierde la decisión: queda `nearPending` (código fijo, sin detalle). La recuperación NEAR corre siempre y es de sólo lectura si existe cualquier bloqueo de firma | `near-failure.test.ts`, `submission.test.ts` (C-6) |
+| C-8 | PARCIAL / VIGENTE | **PARCIAL** | Eventos locales: `POLICY_ACTIVE` (una vez por cambio de hash de política/herramientas) y `CERBERUS_APPROVAL_REVOKED` por cada aprobación revocada. **Los eventos NEP-297 on-chain siguen sin existir** (requiere cambio de contrato: bloque F, no autorizado) | `cerberus-failsecure.test.ts` |
+
+**Limitaciones restantes:** (1) C-8 on-chain y cualquier cambio de contrato (bloque F); (2) ancla externa de la cadena de auditoría (hoy sólo se puede fijar `--expect-head` fuera de banda); (3) vinculación de aprobaciones de misiones locales a un hash de entrada; (4) la verificación on-chain de la tx de referencia requiere un RPC accesible en el momento de ejecutar el verificador.
