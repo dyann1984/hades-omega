@@ -52,7 +52,11 @@ check(`no secret VALUE from ${tested.length} local variables appears in the bund
 
 // Network origins the bundle may talk to
 const origins = new Set([...all.matchAll(/https?:\/\/[a-z0-9.-]+(?::\d+)?/gi)].map(m => m[0].toLowerCase()))
-const known = /^(https?:\/\/(www\.w3\.org|localhost(:\d+)?|127\.0\.0\.1(:\d+)?|explorer\.testnet\.near\.org|test\.rpc\.fastnear\.com|fonts\.(googleapis|gstatic)\.com|reactjs\.org|react\.dev|github\.com|nearhackathon\.com|unpkg\.com|cdn\.jsdelivr\.net|threejs\.org|developer\.mozilla\.org|docs\.pmnd\.rs|reactrouter\.com)|http:\/\/localhost)/ // last two: URLs inside library error messages
+// Public NEAR *testnet* read-only RPC endpoints the browser verifier (verify/index.html) falls back across.
+// Read-only by construction: the page holds no key and the check below asserts it cannot send a transaction.
+// No mainnet endpoint belongs here.
+const NEAR_TESTNET_RPC = 'rpc\\.testnet\\.near\\.org|archival-rpc\\.testnet\\.near\\.org|test\\.rpc\\.fastnear\\.com|archival-rpc\\.testnet\\.fastnear\\.com'
+const known = new RegExp(`^(https?:\\/\\/(www\\.w3\\.org|localhost(:\\d+)?|127\\.0\\.0\\.1(:\\d+)?|explorer\\.testnet\\.near\\.org|${NEAR_TESTNET_RPC}|fonts\\.(googleapis|gstatic)\\.com|reactjs\\.org|react\\.dev|github\\.com|nearhackathon\\.com|unpkg\\.com|cdn\\.jsdelivr\\.net|threejs\\.org|developer\\.mozilla\\.org|docs\\.pmnd\\.rs|reactrouter\\.com)|http:\\/\\/localhost)`) // last two: URLs inside library error messages
 const unknown = [...origins].filter(o => !known.test(o) && !(apiUrl && o === new URL(apiUrl).origin.toLowerCase()))
 check('bundle references no unexpected network origin', unknown.length === 0, unknown.length ? unknown.join(', ') : `${origins.size} origins, all expected`)
 if (apiUrl) check('configured API origin is embedded', all.toLowerCase().includes(new URL(apiUrl).origin.toLowerCase()))
