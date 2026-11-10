@@ -82,11 +82,11 @@ documents ─▶ HADES (orchestrator) ─▶ CHARON ─▶ MINOS ─▶ PERSEPHO
 | Current on-chain verification | **Depends on a reachable public RPC**; the verifier prints `INCONCLUSIVE` (exit 2) when none answers, never a false PASS |
 | NEAR Intents, Chain Signatures, mainnet | **Not used** |
 | Link "mission evidence → on-chain record" in the UI | **Pending**: the pipeline prepares the intent; the only on-chain record so far attests the contract itself, not a mission |
-| Hosted public deployment | **Pending** (config files exist; none verified here) |
+| Hosted public deployment | **Online**, re-checked 2026-11-10: web [`hades-omega-ten.vercel.app`](https://hades-omega-ten.vercel.app/) (HTTP 200) + API [`hades-omega.onrender.com/health`](https://hades-omega.onrender.com/health). Verified safe: anonymous `401`, DEMO `403` on every NEAR/CERBERUS/Vault route, no signing key. **Known defect**: `/verify/index.html` there returns the SPA because of the catch-all rewrite in `vercel.json`; fix committed, needs a redeploy |
 
 ## Security evidence
 
-* Secrets: Gitleaks over the full history (0 findings); no `.env`, database, key or WASM is tracked. The restricted key and its seed live only in the operator's OS-protected folder, never in the repository, logs or errors (tests assert this).
+* Secrets: Gitleaks over the full history (0 findings; also in CI via `.github/workflows/secret-scan.yml`), plus an independent pattern scan of all 171 revisions on 2026-11-10 that found no private key, token or credential — only the literal test canaries. No `.env`, database, key or WASM is tracked. The restricted key and its seed live only in the operator's OS-protected folder, never in the repository, logs or errors (tests assert this).
 * `node scripts/check-public-demo-safety.cjs`: anonymous users get 401, DEMO sessions get 403 on every NEAR/CERBERUS/Vault route, and even an ADMIN on such a deployment has `signingEnabled: false` with no signer.
 * Contract: 12 Rust unit tests and 6 integration tests in a local `near-sandbox` against the release WASM (third-party takeover refused, double init refused, failed init rolls the deploy back; mutation-checked).
 
